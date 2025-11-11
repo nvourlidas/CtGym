@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "lib": ["deno.ns", "dom", "dom.iterable"]
+  },
+  "imports": {
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.45.4?target=deno"
+  },
+  "tasks": {
+    "functions:dev": "supabase functions serve"
+  }
+}

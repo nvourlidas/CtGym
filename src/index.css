@@ -1,0 +1,31 @@
+/* src/index.css */
+@import "tailwindcss";
+
+/* Global theme tokens (Tailwind v4) */
+@theme {
+  --color-primary: #2f55d4;
+  --color-secondary: #64748b;
+  --color-accent: #ffc947;
+  --color-success: #16a34a;
+  --color-danger: #dc2626;
+
+  --color-background: #253649;
+  --color-secondary-background: #1f2d3d; /* header + sidebar */
+  --color-surface: #ffffff;
+
+  /* use light text for your dark UI */
+  --color-text-primary: #e5e7eb;
+  --color-text-secondary: #94a3b8;
+}
+
+@layer utilities {
+  .input {
+    @apply h-9 w-full rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary;
+  }
+  .btn-primary {
+    @apply h-9 rounded-md px-3 text-sm bg-primary text-white hover:bg-primary/90;
+  }
+  .btn-secondary {
+    @apply h-9 rounded-md px-3 text-sm border border-white/10 hover:bg-white/5;
+  }
+}
