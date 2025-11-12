@@ -3,61 +3,80 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-// ✅ allow your dev + prod origins
-const ALLOWED_ORIGINS = new Set([
+/** 🔐 Set your allowed origins here */
+const ALLOWED = new Set<string>([
   "http://localhost:5173",
-  "https://your-admin-domain.com",            // ← replace
-  "https://mycreatorapp.cloudtec.gr",         // ← replace if needed
+  "http://127.0.0.1:5173",
+  "https://mycreatorapp.cloudtec.gr", // ← adjust to your admin domain
 ]);
 
-function corsHeadersFor(req: Request) {
+/** Build proper CORS headers for this request */
+function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";
-  const allow = ALLOWED_ORIGINS.has(origin) ? origin : ""; // or "*" if you prefer
+  const allowOrigin = ALLOWED.has(origin) ? origin : "";
+  const reqHdrs = req.headers.get("access-control-request-headers") ?? "";
+
   return {
-    "Access-Control-Allow-Origin": allow,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+    // Allow the exact origin (not *) so credentials work if you ever need them
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Vary": "Origin",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+    // Echo requested headers to satisfy browsers’ preflight
+    "Access-Control-Allow-Headers": reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Max-Age": "86400",
   };
 }
 
+/** Always respond with CORS headers */
+function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
+  return new Response(body, {
+    ...init,
+    headers: { ...(init.headers || {}), ...buildCors(req) },
+  });
+}
+
 serve(async (req) => {
-  // 🔁 Preflight
+  // 1) Preflight
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeadersFor(req) });
+    return withCors(null, { status: 204 }, req);
   }
 
+  // 2) Validate method
   if (req.method !== "POST") {
-    return new Response("Method not allowed", {
-      status: 405,
-      headers: corsHeadersFor(req),
-    });
+    return withCors("Method not allowed", { status: 405 }, req);
   }
 
-  const { email, password, full_name, phone, tenant_id } = await req.json();
+  // 3) Parse + validate body
+  let payload: any;
+  try {
+    payload = await req.json();
+  } catch {
+    return withCors(JSON.stringify({ error: "invalid_json" }), { status: 400 }, req);
+  }
+
+  const { email, password, full_name, phone, tenant_id } = payload || {};
   if (!email || !password || !tenant_id) {
-    return Response.json(
-      { error: "missing_fields" },
-      { status: 400, headers: corsHeadersFor(req) }
-    );
+    return withCors(JSON.stringify({ error: "missing_fields" }), { status: 400 }, req);
   }
 
+  // 4) Admin client
   const url = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
 
+  // 5) Create auth user
   const { data: created, error: createErr } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
     user_metadata: { full_name, phone },
   });
+
   if (createErr || !created?.user) {
-    return Response.json(
-      { error: createErr?.message ?? "create_user_failed" },
-      { status: 400, headers: corsHeadersFor(req) }
-    );
+    return withCors(JSON.stringify({ error: createErr?.message ?? "create_user_failed" }), { status: 400 }, req);
   }
 
+  // 6) Insert profile
   const userId = created.user.id;
   const { error: profErr } = await admin.from("profiles").insert({
     id: userId,
@@ -66,13 +85,12 @@ serve(async (req) => {
     tenant_id,
     role: "member",
   });
+
   if (profErr) {
     await admin.auth.admin.deleteUser(userId);
-    return Response.json(
-      { error: profErr.message },
-      { status: 400, headers: corsHeadersFor(req) }
-    );
+    return withCors(JSON.stringify({ error: profErr.message }), { status: 400 }, req);
   }
 
-  return Response.json({ ok: true, id: userId }, { headers: corsHeadersFor(req) });
+  // 7) Success (with CORS)
+  return withCors(JSON.stringify({ ok: true, id: userId }), { status: 200 }, req);
 });

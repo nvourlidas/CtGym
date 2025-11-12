@@ -66,7 +66,6 @@ export default function MembersPage() {
         <table className="w-full text-sm">
           <thead className="bg-secondary-background/60">
             <tr className="text-left">
-              <Th>ID</Th>
               <Th>Name</Th>
               <Th>Phone</Th>
               <Th>Created</Th>
@@ -82,7 +81,6 @@ export default function MembersPage() {
             )}
             {filtered.map(m => (
               <tr key={m.id} className="border-t border-white/10 hover:bg-secondary/10">
-                <Td>{m.id}</Td>
                 <Td>{m.full_name ?? '—'}</Td>
                 <Td>{m.phone ?? '—'}</Td>
                 <Td>{new Date(m.created_at).toLocaleString()}</Td>

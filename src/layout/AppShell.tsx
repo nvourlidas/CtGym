@@ -1,8 +1,10 @@
 // src/layout/AppShell.tsx
-import { Outlet, NavLink } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { Outlet, NavLink, useLocation  } from 'react-router-dom';
+import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
+import { NAV, type NavEntry } from '../_nav';
+
 
 type Tenant = { name: string };
 
@@ -32,9 +34,8 @@ export default function AppShell() {
 
       {/* Mobile sidebar (off-canvas) */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-64 bg-secondary-background text-text-primary border-r border-white/10 transform transition-transform lg:hidden ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className={`fixed inset-y-0 left-0 z-30 w-64 bg-secondary-background text-text-primary border-r border-white/10 transform transition-transform lg:hidden ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
       >
         <SidebarNav />
       </aside>
@@ -77,33 +78,98 @@ export default function AppShell() {
 }
 
 function SidebarNav() {
+  const { profile } = useAuth();
+  const role = profile?.role ?? 'member';
+  const location = useLocation();
+
+  // filter by role if provided
+  const visible = useMemo(
+    () =>
+      NAV.filter((e) => {
+        if (e.type === 'item') return !e.roles || e.roles.includes(role);
+        if (e.type === 'group') return !e.roles || e.roles.includes(role);
+        return true;
+      }),
+    [role],
+  );
+
   return (
     <nav className="p-3">
-      <Section title="Main" />
-      <NavItem to="/" label="Dashboard" />
-      <NavItem to="/members" label="Members" />
-      <NavItem to="/classes" label="Classes" />
-      <NavItem to="/plans" label="Membership Plans" />
-
-      <Section title="Management" />
-      {/* more links later */}
+      {visible.map((e, i) => {
+        if (e.type === 'section') {
+          return (
+            <div key={`sec-${i}`} className="px-2 pt-4 pb-2 text-[10px] tracking-wide font-semibold uppercase opacity-60">
+              {e.title}
+            </div>
+          );
+        }
+        if (e.type === 'divider') {
+          return <div key={`div-${i}`} className="my-2 border-t border-white/10" />;
+        }
+        if (e.type === 'item') {
+          return <NavItem key={`item-${e.to}-${i}`} to={e.to} label={e.label} end={e.end} />;
+        }
+        // group
+        return <SidebarGroup key={`group-${e.label}-${i}`} entry={e} currentPath={location.pathname} role={role} />;
+      })}
     </nav>
   );
 }
 
-function Section({ title }: { title: string }) {
+function SidebarGroup({ entry, currentPath, role }: {
+  entry: Extract<NavEntry, { type: 'group' }>;
+  currentPath: string;
+  role: string;
+}) {
+  // auto-open if any child matches current path prefix
+  const initiallyOpen = entry.children.some(ch => currentPath.startsWith(ch.to));
+  const [open, setOpen] = useState(initiallyOpen);
+
+  const children = entry.children.filter(ch => !ch.roles || ch.roles.includes(role));
+
   return (
-    <div className="px-2 pt-4 pb-2 text-[10px] tracking-wide font-semibold uppercase opacity-60">
-      {title}
+    <div className="mb-1">
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between rounded-md px-3 py-2 text-sm opacity-80 hover:opacity-100 hover:bg-secondary/10"
+      >
+        <span>{entry.label}</span>
+        <svg
+          width="16" height="16" viewBox="0 0 24 24"
+          className={`transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </button>
+
+      <div className={`overflow-hidden transition-[max-height] duration-200 ${open ? 'max-h-96' : 'max-h-0'}`}>
+        <div className="pl-2">
+          {children.map((ch, idx) => (
+            <NavLink
+              key={`${ch.to}-${idx}`}
+              to={ch.to}
+              end={ch.end}
+              className={({ isActive }) =>
+                [
+                  'block rounded-md px-3 py-2 text-sm transition-colors',
+                  isActive ? 'bg-primary/70 text-text-primary' : 'opacity-80 hover:opacity-100 hover:bg-secondary/10',
+                ].join(' ')
+              }
+            >
+              {ch.label}
+            </NavLink>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
 
-function NavItem({ to, label }: { to: string; label: string }) {
+function NavItem({ to, label, end }: { to: string; label: string; end?: boolean }) {
   return (
     <NavLink
       to={to}
-      end={to === '/'}
+      end={end}
       className={({ isActive }) =>
         [
           'block rounded-md px-3 py-2 text-sm transition-colors',

@@ -1,0 +1,175 @@
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "../../lib/supabase"; // ← adjust path if needed
+import { Activity, Users, Grid3X3, BarChart3, PieChart, Package, Building2, FileText, type LucideIcon } from 'lucide-react';
+
+/* ---- Fixed presets (icon + color) ------------------------------------ */
+type Variant =
+  | "members"
+  | "sessions"
+  | "bookings"
+  | "memberships"
+  | "classes"
+  | "revenue"
+  | "activity"
+  | "files"
+  | "inventory";
+
+const VARIANT_ICON: Record<Variant, LucideIcon> = {
+  members: Users,
+  sessions: Grid3X3,
+  bookings: BarChart3,
+  memberships: PieChart,
+  classes: Grid3X3,
+  revenue: BarChart3,
+  activity: Activity,
+  files: FileText,
+  inventory: Package,
+};
+
+const VARIANT_COLOR: Record<Variant, string> = {
+  members:   "#3b82f6", // blue
+  sessions:  "#22c55e", // green
+  bookings:  "#f59e0b", // amber
+  memberships:"#8b5cf6",// violet
+  classes:   "#14b8a6", // teal
+  revenue:   "#ef4444", // red
+  activity:  "#64748b", // slate
+  files:     "#0ea5e9", // sky
+  inventory: "#f97316", // orange
+};
+
+function hexToRgba(hex: string, alpha = 0.12) {
+  const m = hex.replace("#", "");
+  const bigint = parseInt(m.length === 3 ? m.split("").map(c => c + c).join("") : m, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/* ---- Query helpers (compatible with your previous widget) ------------- */
+function parsePayload(query: string):
+  | { source?: string; date_field?: string; range?: string }
+  | null {
+  try {
+    const obj = JSON.parse(query);
+    return typeof obj === "object" && obj ? (obj as any) : null;
+  } catch {
+    return null;
+  }
+}
+
+function computeRange(range?: string): { start: string | null; end: string | null } {
+  const now = new Date();
+  const startOf = (d: Date, unit: "day" | "month" | "year") => {
+    const x = new Date(d);
+    if (unit === "day") x.setHours(0, 0, 0, 0);
+    if (unit === "month") { x.setDate(1); x.setHours(0, 0, 0, 0); }
+    if (unit === "year")  { x.setMonth(0, 1); x.setHours(0, 0, 0, 0); }
+    return x;
+  };
+  const add = (d: Date, spec: { days?: number; months?: number; years?: number }) => {
+    const x = new Date(d);
+    if (spec.years) x.setFullYear(x.getFullYear() + spec.years);
+    if (spec.months) x.setMonth(x.getMonth() + spec.months);
+    if (spec.days) x.setDate(x.getDate() + spec.days);
+    return x;
+  };
+  switch (range) {
+    case "today": { const s = startOf(now, "day"); return { start: s.toISOString(), end: add(s, { days: 1 }).toISOString() }; }
+    case "yesterday": { const e = startOf(now, "day"); return { start: add(e, { days: -1 }).toISOString(), end: e.toISOString() }; }
+    case "last_7_days":  return { start: add(now, { days: -7 }).toISOString(), end: now.toISOString() };
+    case "last_30_days": return { start: add(now, { days: -30 }).toISOString(), end: now.toISOString() };
+    case "this_month": { const s = startOf(now, "month"); return { start: s.toISOString(), end: add(s, { months: 1 }).toISOString() }; }
+    case "last_month": { const e = startOf(now, "month"); return { start: add(e, { months: -1 }).toISOString(), end: e.toISOString() }; }
+    case "this_year": { const s = startOf(now, "year"); return { start: s.toISOString(), end: add(s, { years: 1 }).toISOString() }; }
+    case "last_year": { const e = startOf(now, "year"); return { start: add(e, { years: -1 }).toISOString(), end: e.toISOString() }; }
+    default: return { start: null, end: null };
+  }
+}
+
+/* ---- Component --------------------------------------------------------- */
+type Props = {
+  /** Just for your layout keying if needed */
+  id?: string;
+  title: string;
+  variant: Variant;
+  /** Either builder JSON payload or raw SQL (handled via RPC in your env) */
+  query: string;
+};
+
+export default function MetricWidget({ id, title, variant, query }: Props) {
+  const payload = useMemo(() => parsePayload(query), [query]);
+  const isRawSQL = !payload;
+
+  const source = payload?.source || "";
+  const [schemaName, tableName] = useMemo(() => {
+    const [s, t] = (source || "").split(".");
+    return [s || "", t || ""];
+  }, [source]);
+  const dateField = useMemo(() => (payload?.date_field || "").replace(/^s\./, ""), [payload?.date_field]);
+  const { start, end } = useMemo(() => computeRange(payload?.range), [payload?.range]);
+
+  const color = VARIANT_COLOR[variant];
+  const IconCmp = VARIANT_ICON[variant] || Activity;
+
+  const [value, setValue] = useState<number | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const run = async () => {
+      setLoading(true); setError(null);
+      try {
+        if (isRawSQL) {
+          // If you have an RPC that returns [{ value: number }]
+          const { data, error } = await (supabase.rpc as any)("execute_metric_query", { p_query: query });
+          if (error) throw error;
+          const count = data?.[0]?.value ?? 0;
+          setValue(Number(count));
+        } else {
+          if (!schemaName || !tableName || !dateField) { setValue(null); return; }
+          // Your existing RPC that returns time-bucketed counts [{ ts, value }]
+          const { data, error } = await supabase.rpc("time_series_count", {
+            p_schema: schemaName,
+            p_table: tableName,
+            p_date_field: dateField,
+            p_granularity: "day",
+            p_start_at: start,
+            p_end_at: end,
+          });
+            if (error) throw error;
+            const total = (data as any[] | null)?.reduce((acc, r) => acc + (Number(r.value) || 0), 0) ?? 0;
+            setValue(total);
+        }
+      } catch (e: any) {
+        setError(e?.message || "Failed to load metric");
+      } finally {
+        setLoading(false);
+      }
+    };
+    run();
+  }, [query, isRawSQL, schemaName, tableName, dateField, start, end]);
+
+  return (
+    <div
+      className="flex items-center justify-between rounded-xl p-4"
+      style={{ backgroundColor: hexToRgba(color, 0.12), borderLeft: `4px solid ${color}` }}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className="flex h-10 w-10 items-center justify-center rounded-full"
+          style={{ backgroundColor: hexToRgba(color, 0.18), color }}
+        >
+          <IconCmp className="h-5 w-5" />
+        </div>
+        <div>
+          <div className="text-2xl font-semibold leading-none">{loading ? "…" : value ?? "--"}</div>
+          <p className="text-xs text-muted-foreground mt-1">{title}</p>
+        </div>
+      </div>
+
+      {error && <span className="text-xs text-red-500">{error}</span>}
+    </div>
+  );
+}
