@@ -78,55 +78,67 @@ serve(async (req) => {
       req,
     );
   }
-
-  const tenant_id = (body?.tenant_id ?? "").trim();
-  const name = (body?.name ?? "").trim();
-  const price = typeof body?.price === "number" ? body.price : null;
-  const description = typeof body?.description === "string"
-    ? body.description
-    : null;
-  const plan_kind = String(body?.plan_kind ?? "duration").toLowerCase();
-  const duration_days = Number.isFinite(body?.duration_days)
-    ? Math.max(0, body.duration_days)
-    : null;
-  const session_credits = Number.isFinite(body?.session_credits)
-    ? Math.max(0, body.session_credits)
-    : null;
-
-  if ((duration_days ?? 0) === 0 && (session_credits ?? 0) === 0) {
+  const id = (body?.id ?? "").trim();
+  if (!id) {
     return withCors(
-      JSON.stringify({ error: "plan_must_have_days_or_credits" }),
+      JSON.stringify({ error: "id_required" }),
       { status: 400 },
       req,
     );
   }
-  if (!["duration", "sessions", "hybrid"].includes(plan_kind)) {
-    return withCors(JSON.stringify({ error: "invalid_plan_kind" }), {
-      status: 400,
-    }, req);
+
+  const updates: any = {};
+  if (typeof body?.name === "string") updates.name = body.name.trim();
+  if (typeof body?.price === "number") updates.price = body.price;
+  if (typeof body?.plan_kind === "string") {
+    const k = body.plan_kind.toLowerCase();
+    if (!["duration", "sessions", "hybrid"].includes(k)) {
+      return withCors(JSON.stringify({ error: "invalid_plan_kind" }), {
+        status: 400,
+      }, req);
+    }
+    updates.plan_kind = k;
+  }
+  if (typeof body?.description === "string") {
+    updates.description = body.description;
   }
 
-  if (!tenant_id || !name) {
-    return withCors(JSON.stringify({ error: "missing_fields" }), {
-      status: 400,
-    }, req);
+  if (Number.isFinite(body?.duration_days)) {
+    updates.duration_days = Math.max(0, body.duration_days);
   }
-  if (tenant_id !== tenantId) {
+  if (Number.isFinite(body?.session_credits)) {
+    updates.session_credits = Math.max(0, body.session_credits);
+  }
+
+  if (updates.duration_days === 0) updates.duration_days = null;
+  if (updates.session_credits === 0) updates.session_credits = null;
+
+  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+  // verify tenant ownership
+  const { data: existing } = await admin.from("membership_plans").select(
+    "id, tenant_id",
+  ).eq("id", id).maybeSingle();
+  if (!existing) {
+    return withCors(
+      JSON.stringify({ error: "not_found" }),
+      { status: 404 },
+      req,
+    );
+  }
+  if (existing.tenant_id !== tenantId) {
     return withCors(JSON.stringify({ error: "tenant_mismatch" }), {
       status: 403,
     }, req);
   }
 
-  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
-  const { data, error } = await admin.from("membership_plans").insert({
-    tenant_id,
-    name,
-    price,
-    plan_kind,
-    duration_days,
-    session_credits,
-    description,
-  }).select("*").single();
+  const { data, error } = await admin
+    .from("membership_plans")
+    .update(updates)
+    .eq("id", id)
+    .select(
+      "id, tenant_id, name, price, description, duration_days, session_credits, plan_kind created_at",
+    )
+    .single();
 
   if (error) {
     return withCors(

@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../auth';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../auth';
+
+type PlanKind = 'duration' | 'sessions' | 'hybrid';
 
 type Plan = {
   id: string;
   tenant_id: string;
   name: string;
-  price: number | null;           // adjust if your column is price_cents / numeric
-  period: 'day' | 'week' | 'month' | 'year';
   description: string | null;
-  active: boolean | null;
+  price: number | null;           // if you store cents, adjust formatMoney()
+  plan_kind: PlanKind;
+  duration_days: number | null;   // days of access
+  session_credits: number | null; // number of sessions
   created_at: string;
 };
 
-export default function MembershipPlansPage() {
+export default function Plans() {
   const { profile } = useAuth();
   const [rows, setRows] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +31,7 @@ export default function MembershipPlansPage() {
     setError(null);
     const { data, error } = await supabase
       .from('membership_plans')
-      .select('id, tenant_id, name, price, period, description, active, created_at')
+      .select('id, tenant_id, name, description, price, plan_kind, duration_days, session_credits, created_at')
       .eq('tenant_id', profile.tenant_id)
       .order('created_at', { ascending: false });
     if (error) setError(error.message);
@@ -76,8 +79,8 @@ export default function MembershipPlansPage() {
             <tr className="text-left">
               <Th>Name</Th>
               <Th>Price</Th>
-              <Th>Period</Th>
-              <Th>Active</Th>
+              <Th>Type</Th>
+              <Th>Benefit</Th>
               <Th>Created</Th>
               <Th className="text-right pr-3">Actions</Th>
             </tr>
@@ -89,8 +92,13 @@ export default function MembershipPlansPage() {
               <tr key={p.id} className="border-t border-white/10 hover:bg-secondary/10">
                 <Td className="font-medium">{p.name}</Td>
                 <Td>{p.price != null ? formatMoney(p.price) : '—'}</Td>
-                <Td className="uppercase">{p.period}</Td>
-                <Td>{p.active ? 'Yes' : 'No'}</Td>
+                <Td className="uppercase">{p.plan_kind}</Td>
+                <Td>
+                  {[
+                    p.duration_days ? `${p.duration_days} days` : null,
+                    p.session_credits ? `${p.session_credits} credits` : null,
+                  ].filter(Boolean).join(' • ') || '—'}
+                </Td>
                 <Td>{new Date(p.created_at).toLocaleString()}</Td>
                 <Td className="text-right">
                   <button className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
@@ -147,19 +155,34 @@ function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) 
   );
 }
 
+/* ── Create ───────────────────────────────────────────────────────────── */
 function CreatePlanModal({ tenantId, onClose }: { tenantId: string; onClose: () => void }) {
   const [name, setName] = useState('');
   const [price, setPrice] = useState<number>(0);
-  const [period, setPeriod] = useState<'day'|'week'|'month'|'year'>('month');
+  const [planKind, setPlanKind] = useState<PlanKind>('duration');
+  const [durationDays, setDurationDays] = useState<number>(0);
+  const [sessionCredits, setSessionCredits] = useState<number>(0);
   const [description, setDescription] = useState('');
-  const [active, setActive] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     if (!name) return;
+    // ensure at least one benefit
+    if ((durationDays || 0) <= 0 && (sessionCredits || 0) <= 0) {
+      alert('Provide duration days and/or session credits.');
+      return;
+    }
     setBusy(true);
     const res = await supabase.functions.invoke('plan-create', {
-      body: { tenant_id: tenantId, name, price, period, description, active },
+      body: {
+        tenant_id: tenantId,
+        name,
+        price,
+        plan_kind: planKind,
+        duration_days: durationDays || null,
+        session_credits: sessionCredits || null,
+        description,
+      },
     });
     setBusy(false);
     if (res.error || (res.data as any)?.error) {
@@ -178,19 +201,30 @@ function CreatePlanModal({ tenantId, onClose }: { tenantId: string; onClose: () 
         <input className="input" type="number" step="0.01" value={price}
                onChange={(e) => setPrice(Number(e.target.value))} />
       </FormRow>
-      <FormRow label="Period">
-        <select className="input" value={period} onChange={(e) => setPeriod(e.target.value as any)}>
-          <option value="day">Day</option>
-          <option value="week">Week</option>
-          <option value="month">Month</option>
-          <option value="year">Year</option>
+      <FormRow label="Plan type">
+        <select className="input" value={planKind} onChange={(e)=>setPlanKind(e.target.value as PlanKind)}>
+          <option value="duration">Duration (days)</option>
+          <option value="sessions">Session credits</option>
+          <option value="hybrid">Both (days + credits)</option>
         </select>
       </FormRow>
+
+      {(planKind === 'duration' || planKind === 'hybrid') && (
+        <FormRow label="Duration (days)">
+          <input className="input" type="number" min={0} value={durationDays}
+                 onChange={(e)=>setDurationDays(Number(e.target.value))} />
+        </FormRow>
+      )}
+
+      {(planKind === 'sessions' || planKind === 'hybrid') && (
+        <FormRow label="Session credits">
+          <input className="input" type="number" min={0} value={sessionCredits}
+                 onChange={(e)=>setSessionCredits(Number(e.target.value))} />
+        </FormRow>
+      )}
+
       <FormRow label="Description">
         <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
-      </FormRow>
-      <FormRow label="Active">
-        <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
       </FormRow>
 
       <div className="mt-4 flex justify-end gap-2">
@@ -203,18 +237,33 @@ function CreatePlanModal({ tenantId, onClose }: { tenantId: string; onClose: () 
   );
 }
 
+/* ── Edit ─────────────────────────────────────────────────────────────── */
 function EditPlanModal({ row, onClose }: { row: Plan; onClose: () => void }) {
   const [name, setName] = useState(row.name);
   const [price, setPrice] = useState<number>(row.price ?? 0);
-  const [period, setPeriod] = useState<Plan['period']>(row.period);
+  const [planKind, setPlanKind] = useState<PlanKind>(row.plan_kind);
+  const [durationDays, setDurationDays] = useState<number>(row.duration_days ?? 0);
+  const [sessionCredits, setSessionCredits] = useState<number>(row.session_credits ?? 0);
   const [description, setDescription] = useState(row.description ?? '');
-  const [active, setActive] = useState(Boolean(row.active));
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
+    if (!name) return;
+    if ((durationDays || 0) <= 0 && (sessionCredits || 0) <= 0) {
+      alert('Provide duration days and/or session credits.');
+      return;
+    }
     setBusy(true);
     const res = await supabase.functions.invoke('plan-update', {
-      body: { id: row.id, name, price, period, description, active },
+      body: {
+        id: row.id,
+        name,
+        price,
+        plan_kind: planKind,
+        duration_days: durationDays,
+        session_credits: sessionCredits,
+        description,
+      },
     });
     setBusy(false);
     if (res.error || (res.data as any)?.error) {
@@ -233,19 +282,30 @@ function EditPlanModal({ row, onClose }: { row: Plan; onClose: () => void }) {
         <input className="input" type="number" step="0.01" value={price}
                onChange={(e) => setPrice(Number(e.target.value))} />
       </FormRow>
-      <FormRow label="Period">
-        <select className="input" value={period} onChange={(e) => setPeriod(e.target.value as any)}>
-          <option value="day">Day</option>
-          <option value="week">Week</option>
-          <option value="month">Month</option>
-          <option value="year">Year</option>
+      <FormRow label="Plan type">
+        <select className="input" value={planKind} onChange={(e)=>setPlanKind(e.target.value as PlanKind)}>
+          <option value="duration">Duration (days)</option>
+          <option value="sessions">Session credits</option>
+          <option value="hybrid">Both (days + credits)</option>
         </select>
       </FormRow>
+
+      {(planKind === 'duration' || planKind === 'hybrid') && (
+        <FormRow label="Duration (days)">
+          <input className="input" type="number" min={0} value={durationDays}
+                 onChange={(e)=>setDurationDays(Number(e.target.value))} />
+        </FormRow>
+      )}
+
+      {(planKind === 'sessions' || planKind === 'hybrid') && (
+        <FormRow label="Session credits">
+          <input className="input" type="number" min={0} value={sessionCredits}
+                 onChange={(e)=>setSessionCredits(Number(e.target.value))} />
+        </FormRow>
+      )}
+
       <FormRow label="Description">
         <textarea className="input" value={description} onChange={(e) => setDescription(e.target.value)} />
-      </FormRow>
-      <FormRow label="Active">
-        <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
       </FormRow>
 
       <div className="mt-4 flex justify-end gap-2">
@@ -281,6 +341,5 @@ function FormRow({ label, children }: any) {
   );
 }
 function formatMoney(n: number) {
-  // if you store cents, divide by 100 here
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(n);
 }

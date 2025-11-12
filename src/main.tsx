@@ -10,9 +10,12 @@ import AppShell from './layout/AppShell';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import Members from './pages/Members';
+import Memberships from './pages/Memberships/MembershipsPage';
 import Classes from './pages/Classes/Classes';
 import ClassSessionsPage from './pages/Classes/ClassSessions';
-import Plans from './pages/Plans';
+import Programs from './pages/Classes/ProgramsPage';
+import Bookings from './pages/Classes/Bookings';
+import Plans from './pages/Memberships/Plans';
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -28,7 +31,10 @@ const router = createBrowserRouter([
       { path: 'members', element: <Members /> },
       { path: 'classes', element: <Classes /> },
       { path: 'sessions', element: <ClassSessionsPage /> },
+      { path: 'programs', element: <Programs /> },
+      { path: 'bookings', element: <Bookings /> },
       { path: 'plans', element: <Plans /> },
+      { path: 'memberships', element: <Memberships /> },
     ],
   },
 ]);

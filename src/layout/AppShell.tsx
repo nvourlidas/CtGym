@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
 import { NAV, type NavEntry } from '../_nav';
+import type { LucideIcon } from 'lucide-react';
 
 
 type Tenant = { name: string };
@@ -107,35 +108,60 @@ function SidebarNav() {
           return <div key={`div-${i}`} className="my-2 border-t border-white/10" />;
         }
         if (e.type === 'item') {
-          return <NavItem key={`item-${e.to}-${i}`} to={e.to} label={e.label} end={e.end} />;
+          return (
+            <NavItem
+              key={`item-${e.to}-${i}`}
+              to={e.to}
+              label={e.label}
+              end={e.end}
+              Icon={e.icon as LucideIcon | undefined}
+            />
+          );
         }
         // group
-        return <SidebarGroup key={`group-${e.label}-${i}`} entry={e} currentPath={location.pathname} role={role} />;
+        return (
+          <SidebarGroup
+            key={`group-${e.label}-${i}`}
+            entry={e}
+            currentPath={location.pathname}
+            role={role}
+          />
+        );
       })}
     </nav>
   );
 }
 
-function SidebarGroup({ entry, currentPath, role }: {
+function SidebarGroup({
+  entry,
+  currentPath,
+  role,
+}: {
   entry: Extract<NavEntry, { type: 'group' }>;
   currentPath: string;
   role: string;
 }) {
   // auto-open if any child matches current path prefix
-  const initiallyOpen = entry.children.some(ch => currentPath.startsWith(ch.to));
+  const initiallyOpen = entry.children.some((ch) => currentPath.startsWith(ch.to));
   const [open, setOpen] = useState(initiallyOpen);
 
-  const children = entry.children.filter(ch => !ch.roles || ch.roles.includes(role));
+  const children = entry.children.filter((ch) => !ch.roles || ch.roles.includes(role));
+  const GroupIcon = entry.icon as LucideIcon | undefined;
 
   return (
     <div className="mb-1">
       <button
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between rounded-md px-3 py-2 text-sm opacity-80 hover:opacity-100 hover:bg-secondary/10"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between rounded-md px-3 py-2 text-md opacity-80 hover:opacity-100 hover:bg-secondary/10"
       >
-        <span>{entry.label}</span>
+        <span className="flex items-center gap-2">
+          {GroupIcon ? <GroupIcon className="h-8 w-4" /> : null}
+          {entry.label}
+        </span>
         <svg
-          width="16" height="16" viewBox="0 0 24 24"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
           className={`transition-transform ${open ? 'rotate-180' : ''}`}
         >
           <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -145,19 +171,14 @@ function SidebarGroup({ entry, currentPath, role }: {
       <div className={`overflow-hidden transition-[max-height] duration-200 ${open ? 'max-h-96' : 'max-h-0'}`}>
         <div className="pl-2">
           {children.map((ch, idx) => (
-            <NavLink
+            <NavItem
               key={`${ch.to}-${idx}`}
               to={ch.to}
+              label={ch.label}
               end={ch.end}
-              className={({ isActive }) =>
-                [
-                  'block rounded-md px-3 py-2 text-sm transition-colors',
-                  isActive ? 'bg-primary/70 text-text-primary' : 'opacity-80 hover:opacity-100 hover:bg-secondary/10',
-                ].join(' ')
-              }
-            >
-              {ch.label}
-            </NavLink>
+              Icon={ch.icon as LucideIcon | undefined}
+              nested
+            />
           ))}
         </div>
       </div>
@@ -165,22 +186,37 @@ function SidebarGroup({ entry, currentPath, role }: {
   );
 }
 
-function NavItem({ to, label, end }: { to: string; label: string; end?: boolean }) {
+function NavItem({
+  to,
+  label,
+  end,
+  Icon,
+  nested = false,
+}: {
+  to: string;
+  label: string;
+  end?: boolean;
+  Icon?: LucideIcon;
+  nested?: boolean;
+}) {
   return (
     <NavLink
       to={to}
       end={end}
       className={({ isActive }) =>
         [
-          'block rounded-md px-3 py-2 text-sm transition-colors',
+          'block rounded-md px-3 py-2 text-md transition-colors flex items-center gap-2',
+          nested ? 'ml-1' : '',
           isActive ? 'bg-primary/70 text-text-primary' : 'opacity-80 hover:opacity-100 hover:bg-secondary/10',
         ].join(' ')
       }
     >
-      {label}
+      {Icon ? <Icon className="h-8 w-4" /> : null}
+      <span>{label}</span>
     </NavLink>
   );
 }
+
 
 function UserMenu() {
   const { session, profile } = useAuth();
