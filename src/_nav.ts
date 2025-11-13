@@ -20,27 +20,27 @@ export type NavEntry =
 export const NAV: NavEntry[] = [
   { type: 'section', title: 'Main' },
   { type: 'item', label: 'Dashboard', to: '/', end: true, icon: LayoutDashboard },
-  { type: 'item', label: 'Members', to: '/members', icon: Users },
-  { type: 'item', label: 'Classes', to: '/classes', icon: Dumbbell },
+  { type: 'item', label: 'Μέλη', to: '/members', icon: Users },
+  { type: 'item', label: 'Τμήματα', to: '/classes', icon: Dumbbell },
 
   {
     type: 'group',
-    label: 'Scheduling',
+    label: 'Προγραμματισμός',
     icon: CalendarClock,
     children: [
-      { label: 'Class Sessions', to: '/sessions', icon: Layers },
-      { label: 'Bookings', to: '/bookings', icon: BookmarkCheck },
-      { label: 'Programs', to: '/programs', icon: CalendarPlus },
+      { label: 'Συνεδρίες', to: '/sessions', icon: Layers },
+      { label: 'Κρατήσεις', to: '/bookings', icon: BookmarkCheck },
+      { label: 'Προγράμματα', to: '/programs', icon: CalendarPlus },
     ],
   },
 
   {
     type: 'group',
-    label: 'Memberships',
+    label: 'Συνδρομές',
     icon: CreditCard,
     children: [
-      { label: 'Membership Plans', to: '/plans', icon: BadgeDollarSign },
-      { label: 'Memberships', to: '/memberships', icon: BookmarkCheck },
+      { label: 'Πλάνα Συνδρομών', to: '/plans', icon: BadgeDollarSign },
+      { label: 'Συνδρομές', to: '/memberships', icon: BookmarkCheck },
     ],
   },
 

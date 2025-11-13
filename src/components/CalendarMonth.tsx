@@ -162,7 +162,7 @@ export function CalendarMonth({
                         onClick={goPrev} aria-label="Prev">‹</button>
 
                     <button className="h-8 rounded-md border border-white/10 px-2 hover:bg-white/5"
-                        onClick={goToday}>Today</button>
+                        onClick={goToday}>Σήμερα</button>
 
                     <button className="h-8 w-8 rounded-md border border-white/10 hover:bg-white/5"
                         onClick={goNext} aria-label="Next">›</button>
@@ -176,13 +176,13 @@ export function CalendarMonth({
                             onClick={() => setViewMode('day')}
                             className={`h-8 px-3 rounded-md border text-sm ${viewMode === 'day' ? 'bg-primary/70 border-primary/70' : 'border-white/10 hover:bg-white/5'}`}
                         >
-                            Day
+                            Ημέρα
                         </button>
                         <button
                             onClick={() => setViewMode('month')}
                             className={`h-8 px-3 rounded-md border text-sm ${viewMode === 'month' ? 'bg-primary/70 border-primary/70' : 'border-white/10 hover:bg白/5'.replace('白', 'white')}`}
                         >
-                            Month
+                            Μήνας
                         </button>
                     </div>
 
@@ -201,7 +201,7 @@ export function CalendarMonth({
                         </div>
                         <div className="space-y-2">
                             {(classId ? rows.filter(r => r.class_id === classId) : rows).length === 0 && (
-                                <div className="text-sm opacity-50 italic">No sessions today</div>
+                                <div className="text-sm opacity-50 italic">Καμία Συνεδρία Σήμερα</div>
                             )}
                             {(classId ? rows.filter(r => r.class_id === classId) : rows).map((s) => (
                                 <button
@@ -220,7 +220,7 @@ export function CalendarMonth({
                     // ===== MONTH VIEW (existing grid) =====
                     <>
                         <div className="grid grid-cols-7 text-[10px] uppercase tracking-wide opacity-70 mb-1">
-                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="px-1 py-1">{d}</div>)}
+                            {['Κυρ', 'Δευ', 'Τρι', 'Τετ', 'Πεμ', 'Παρ', 'Σαβ'].map(d => <div key={d} className="px-1 py-1">{d}</div>)}
                         </div>
                         <div className={height ? 'h-[calc(100%-22px)] overflow-auto' : ''}>
                             <div className="grid grid-cols-7 gap-[1px] bg-white/10 rounded-md overflow-hidden">

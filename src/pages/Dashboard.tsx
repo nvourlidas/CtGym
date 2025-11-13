@@ -67,28 +67,28 @@ export default function Dashboard() {
     <div className="p-6 space-y-6">
       {/* KPI widgets */}
       {/* Row 1 — Totals / Core */}
-      <Section title="Totals & Activity">
+      <Section title="Σύνολα & Δραστηριότητα">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <MetricWidget
-            title="Total Members"
+            title="Συνολικά Μέλη"
             tenantId={tenantId}
             variant="members"
             query={JSON.stringify({ source: "public.profiles", date_field: "created_at", range: "this_year" })}
           />
           <MetricWidget
-            title="Active Memberships"
+            title="Ενεργές Συνδρομές"
             tenantId={tenantId}
             variant="memberships"
             query={JSON.stringify({ source: "public.memberships", date_field: "starts_at", range: "this_month" })}
           />
           <MetricWidget
-            title="Sessions Today"
+            title="Συνδρίες Σήμερα"
             tenantId={tenantId}
             variant="sessions"
             query={JSON.stringify({ source: "public.class_sessions", date_field: "starts_at", range: "today" })}
           />
           <MetricWidget
-            title="Bookings Today"
+            title="Κρατήσεις Σήμερα"
             tenantId={tenantId}
             variant="bookings"
             query={JSON.stringify({ source: "public.bookings", date_field: "created_at", range: "today" })}
@@ -96,22 +96,22 @@ export default function Dashboard() {
         </div>
       </Section>
       {/* Row 2 — Attendance/Bookings Status Today */}
-      <Section title="Attendance / Bookings Today">
+      <Section title="Παρουσίες / Κρατήσεις Σήμερα">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           <MetricWidget
-            title="Check-ins Today"
+            title="Check-ins Σήμερα"
             tenantId={tenantId}
             variant="sessions"
             query={JSON.stringify({ kind: "status_today", status: "checked_in" })}
           />
           <MetricWidget
-            title="Canceled Today"
+            title="Ακυρώσεις Σήμερα"
             tenantId={tenantId}
             variant="bookings"
             query={JSON.stringify({ kind: "status_today", status: "canceled" })}
           />
           <MetricWidget
-            title="No-shows Today"
+            title="No-shows Σήμερα"
             tenantId={tenantId}
             variant="bookings"
             query={JSON.stringify({ kind: "status_today", status: "no_show" })}
@@ -119,16 +119,16 @@ export default function Dashboard() {
         </div>
       </Section>
       {/* Row 3 — Revenue */}
-      <Section title="Revenue">
+      <Section title="Έσοδα">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <MetricWidget
-            title="Revenue Today"
+            title="Έσοδα Σήμερα"
             tenantId={tenantId}
             variant="revenue"
             query={JSON.stringify({ kind: "revenue_cash_today" })}
           />
           <MetricWidget
-            title="Revenue This Month"
+            title="Έσοδα Τρέχον Μήνας"
             tenantId={tenantId}
             variant="revenue"
             query={JSON.stringify({ kind: "revenue_cash_range", range: "this_month" })}
@@ -148,10 +148,10 @@ export default function Dashboard() {
         </div>
       </Section>
       {/* Calendar under all widgets (full width) */}
-      <Section title="Calendar">
+      <Section title="Ημερολόγιο">
         <div className="rounded-md border border-white/10 bg-secondary-background/60 mt-2">
           <div className="px-4 py-3 border-b border-white/10">
-            <h2 className="text-sm font-semibold opacity-80">Calendar</h2>
+            <h2 className="text-sm font-semibold opacity-80">Ημερολόγιο</h2>
           </div>
           <div className="p-3" ref={wrapperRef}>
             <CalendarMonth

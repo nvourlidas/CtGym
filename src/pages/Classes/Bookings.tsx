@@ -32,6 +32,10 @@ export default function BookingsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editRow, setEditRow] = useState<Booking | null>(null);
 
+  // NEW: pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   async function load() {
     if (!profile?.tenant_id) return;
     setLoading(true);
@@ -95,12 +99,27 @@ export default function BookingsPage() {
     );
   }, [rows, q]);
 
+  // Reset to first page when search or page size changes
+  useEffect(() => {
+    setPage(1);
+  }, [q, pageSize]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  const paginated = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
+
+  const startIdx = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endIdx = Math.min(filtered.length, page * pageSize);
+
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center gap-3">
         <input
           className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
-          placeholder="Search bookings…"
+          placeholder="Αναζήτηση κρατήσεων…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -108,27 +127,35 @@ export default function BookingsPage() {
           className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white"
           onClick={() => setShowCreate(true)}
         >
-          New Booking
+          Νέα Κράτηση
         </button>
       </div>
 
-      {error && <div className="mb-4 text-sm border border-danger/30 bg-danger/10 text-danger rounded p-3">{error}</div>}
+      {error && (
+        <div className="mb-4 text-sm border border-danger/30 bg-danger/10 text-danger rounded p-3">
+          {error}
+        </div>
+      )}
 
       <div className="rounded-md border border-white/10 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-secondary-background/60">
             <tr className="text-left">
-              <Th>Member</Th>
-              <Th>Class / Session</Th>
-              <Th>Status</Th>
-              <Th>Created</Th>
-              <Th className="text-right pr-3">Actions</Th>
+              <Th>Μέλος</Th>
+              <Th>Τμήμα / Συνεδρία</Th>
+              <Th>Κατάσταση</Th>
+              <Th>Ημ. Δημιουργίας</Th>
+              <Th className="text-right pr-3">Ενέργειες</Th>
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td className="px-3 py-4 opacity-60" colSpan={5}>Loading…</td></tr>}
-            {!loading && filtered.length === 0 && <tr><td className="px-3 py-4 opacity-60" colSpan={5}>No bookings</td></tr>}
-            {filtered.map(b => (
+            {loading && (
+              <tr><td className="px-3 py-4 opacity-60" colSpan={5}>Loading…</td></tr>
+            )}
+            {!loading && filtered.length === 0 && (
+              <tr><td className="px-3 py-4 opacity-60" colSpan={5}>No bookings</td></tr>
+            )}
+            {!loading && filtered.length > 0 && paginated.map(b => (
               <tr key={b.id} className="border-t border-white/10 hover:bg-secondary/10">
                 <Td>{b.profile?.full_name ?? b.user_id}</Td>
                 <Td>
@@ -139,38 +166,108 @@ export default function BookingsPage() {
                 <Td>{b.status ?? 'booked'}</Td>
                 <Td>{new Date(b.created_at).toLocaleString()}</Td>
                 <Td className="text-right">
-                  <button className="px-2 py-1 text-sm rounded hover:bg-secondary/10" onClick={() => setEditRow(b)}>Edit</button>
+                  <button
+                    className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
+                    onClick={() => setEditRow(b)}
+                  >
+                    Επεξεργασία
+                  </button>
                   <DeleteButton id={b.id} onDeleted={load} />
                 </Td>
               </tr>
             ))}
           </tbody>
         </table>
+
+        {/* Pagination footer */}
+        {!loading && filtered.length > 0 && (
+          <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
+            <div>
+              Εμφάνιση <span className="font-semibold">{startIdx}</span>
+              {filtered.length > 0 && <>–<span className="font-semibold">{endIdx}</span></>} από{' '}
+              <span className="font-semibold">{filtered.length}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span>Γραμμές ανά σελίδα:</span>
+                <select
+                  className="bg-transparent border border-white/10 rounded px-1 py-0.5"
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  Προηγ.
+                </button>
+                <span>
+                  Σελίδα <span className="font-semibold">{page}</span> από{' '}
+                  <span className="font-semibold">{pageCount}</span>
+                </span>
+                <button
+                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                  onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+                  disabled={page === pageCount}
+                >
+                  Επόμενο
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {showCreate && <CreateBookingModal tenantId={profile?.tenant_id!} onClose={() => { setShowCreate(false); load(); }} />}
-      {editRow && <EditBookingModal row={editRow} onClose={() => { setEditRow(null); load(); }} />}
+      {showCreate && (
+        <CreateBookingModal
+          tenantId={profile?.tenant_id!}
+          onClose={() => { setShowCreate(false); load(); }}
+        />
+      )}
+      {editRow && (
+        <EditBookingModal
+          row={editRow}
+          onClose={() => { setEditRow(null); load(); }}
+        />
+      )}
     </div>
   );
 }
 
-function Th({ children, className = '' }: any) { return <th className={`px-3 py-2 font-semibold ${className}`}>{children}</th>; }
-function Td({ children, className = '' }: any) { return <td className={`px-3 py-2 ${className}`}>{children}</td>; }
+function Th({ children, className = '' }: any) {
+  return <th className={`px-3 py-2 font-semibold ${className}`}>{children}</th>;
+}
+function Td({ children, className = '' }: any) {
+  return <td className={`px-3 py-2 ${className}`}>{children}</td>;
+}
 
 function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false);
   const onClick = async () => {
-    if (!confirm('Delete this booking?')) return;
+    if (!confirm('Διαγραφή αυτής της κράτησης; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.')) return;
     setBusy(true);
     const res = await supabase.functions.invoke('booking-delete', { body: { id } });
     setBusy(false);
-    if (res.error || (res.data as any)?.error) alert(res.error?.message ?? (res.data as any)?.error ?? 'Delete failed');
-    else onDeleted();
+    if (res.error || (res.data as any)?.error) {
+      alert(res.error?.message ?? (res.data as any)?.error ?? 'Delete failed');
+    } else {
+      onDeleted();
+    }
   };
   return (
-    <button className="ml-2 px-2 py-1 text-sm rounded text-danger hover:bg-danger/10 disabled:opacity-50"
-            onClick={onClick} disabled={busy}>
-      {busy ? 'Deleting…' : 'Delete'}
+    <button
+      className="ml-2 px-2 py-1 text-sm rounded text-danger hover:bg-danger/10 disabled:opacity-50"
+      onClick={onClick}
+      disabled={busy}
+    >
+      {busy ? 'Διαγραφή...' : 'Διαγραφή'}
     </button>
   );
 }
@@ -185,13 +282,17 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
   useEffect(() => {
     (async () => {
       const { data: m } = await supabase
-        .from('profiles').select('id, full_name')
-        .eq('tenant_id', tenantId).eq('role','member').order('full_name',{ascending:true});
+        .from('profiles')
+        .select('id, full_name')
+        .eq('tenant_id', tenantId)
+        .eq('role', 'member')
+        .order('full_name', { ascending: true });
       setMembers((m as any[]) ?? []);
       const { data: s } = await supabase
         .from('class_sessions')
         .select('id, starts_at, ends_at, capacity, classes(title)')
-        .eq('tenant_id', tenantId).order('starts_at',{ascending:true});
+        .eq('tenant_id', tenantId)
+        .order('starts_at', { ascending: true });
       setSessions((s as any[]) ?? []);
     })();
   }, [tenantId]);
@@ -211,16 +312,20 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
   };
 
   return (
-    <Modal onClose={onClose} title="New Booking">
-      <FormRow label="Member *">
-        <select className="input" value={userId} onChange={(e)=>setUserId(e.target.value)}>
-          <option value="">— select member —</option>
-          {members.map(m => <option key={m.id} value={m.id}>{m.full_name ?? m.id}</option>)}
+    <Modal onClose={onClose} title="Νέα κράτηση">
+      <FormRow label="Μέλος *">
+        <select className="input" value={userId} onChange={(e) => setUserId(e.target.value)}>
+          <option value="">— επίλεξε μέλος —</option>
+          {members.map(m => (
+            <option key={m.id} value={m.id}>
+              {m.full_name ?? m.id}
+            </option>
+          ))}
         </select>
       </FormRow>
-      <FormRow label="Session *">
-        <select className="input" value={sessionId} onChange={(e)=>setSessionId(e.target.value)}>
-          <option value="">— select session —</option>
+      <FormRow label="Συνεδρία *">
+        <select className="input" value={sessionId} onChange={(e) => setSessionId(e.target.value)}>
+          <option value="">— επίλεξε συνεδρία —</option>
           {sessions.map(s => (
             <option key={s.id} value={s.id}>
               {(s.classes?.title ?? '—')} · {new Date(s.starts_at).toLocaleString()} (cap {s.capacity ?? '∞'})
@@ -229,8 +334,10 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
         </select>
       </FormRow>
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" onClick={submit} disabled={busy}>{busy ? 'Creating…' : 'Create'}</button>
+        <button className="btn-secondary" onClick={onClose}>Ακύρωση</button>
+        <button className="btn-primary" onClick={submit} disabled={busy}>
+          {busy ? 'Δημιουργία...' : 'Δημιουργία'}
+        </button>
       </div>
     </Modal>
   );
@@ -252,9 +359,9 @@ function EditBookingModal({ row, onClose }: { row: Booking; onClose: () => void 
   };
 
   return (
-    <Modal onClose={onClose} title="Edit Booking">
-      <FormRow label="Status">
-        <select className="input" value={status} onChange={(e)=>setStatus(e.target.value)}>
+    <Modal onClose={onClose} title="Επεξεργασία Κράτησης">
+      <FormRow label="Κατάσταση">
+        <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="booked">booked</option>
           <option value="checked_in">checked_in</option>
           <option value="cancelled">cancelled</option>
@@ -262,8 +369,10 @@ function EditBookingModal({ row, onClose }: { row: Booking; onClose: () => void 
         </select>
       </FormRow>
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" onClick={submit} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+        <button className="btn-secondary" onClick={onClose}>Ακύρωση</button>
+        <button className="btn-primary" onClick={submit} disabled={busy}>
+          {busy ? 'Αποθήκευση...' : 'Αποθήκευση'}
+        </button>
       </div>
     </Modal>
   );

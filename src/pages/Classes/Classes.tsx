@@ -18,6 +18,10 @@ export default function ClassesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editRow, setEditRow] = useState<GymClass | null>(null);
 
+  // NEW: pagination state
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   async function load() {
     if (!profile?.tenant_id) return;
     setLoading(true);
@@ -42,12 +46,27 @@ export default function ClassesPage() {
     );
   }, [rows, q]);
 
+  // Reset to first page when filter or page size changes
+  useEffect(() => {
+    setPage(1);
+  }, [q, pageSize]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+
+  const paginated = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
+
+  const startIdx = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endIdx = Math.min(filtered.length, page * pageSize);
+
   return (
     <div className="p-6">
       <div className="mb-4 flex items-center gap-3">
         <input
           className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
-          placeholder="Search classes…"
+          placeholder="Αναζήτηση τμημάτων…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -55,7 +74,7 @@ export default function ClassesPage() {
           className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white"
           onClick={() => setShowCreate(true)}
         >
-          New Class
+          Νέο Τμήμα
         </button>
       </div>
 
@@ -63,20 +82,20 @@ export default function ClassesPage() {
         <table className="w-full text-sm">
           <thead className="bg-secondary-background/60">
             <tr className="text-left">
-              <Th>Title</Th>
-              <Th>Description</Th>
-              <Th>Created</Th>
-              <Th className="text-right pr-3">Actions</Th>
+              <Th>Τίτλος</Th>
+              <Th>Περιγραφή</Th>
+              <Th>Ημ. Δημιουργίας</Th>
+              <Th className="text-right pr-3">Ενέργειες</Th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={5}>Loading…</td></tr>
+              <tr><td className="px-3 py-4 opacity-60" colSpan={4}>Loading…</td></tr>
             )}
             {!loading && filtered.length === 0 && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={5}>No classes</td></tr>
+              <tr><td className="px-3 py-4 opacity-60" colSpan={4}>No classes</td></tr>
             )}
-            {filtered.map(c => (
+            {!loading && filtered.length > 0 && paginated.map(c => (
               <tr key={c.id} className="border-t border-white/10 hover:bg-secondary/10">
                 <Td className="font-medium">{c.title}</Td>
                 <Td className="text-text-secondary">{c.description ?? '—'}</Td>
@@ -86,7 +105,7 @@ export default function ClassesPage() {
                     className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
                     onClick={() => setEditRow(c)}
                   >
-                    Edit
+                    Επεξεργασία
                   </button>
                   <DeleteButton id={c.id} onDeleted={load} />
                 </Td>
@@ -94,6 +113,51 @@ export default function ClassesPage() {
             ))}
           </tbody>
         </table>
+
+        {/* Pagination footer */}
+        {!loading && filtered.length > 0 && (
+          <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
+            <div>
+              Εμφάνιση <span className="font-semibold">{startIdx}</span>
+              {filtered.length > 0 && <>–<span className="font-semibold">{endIdx}</span></>} από{' '}
+              <span className="font-semibold">{filtered.length}</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span>Γραμμές ανά σελίδα:</span>
+                <select
+                  className="bg-transparent border border-white/10 rounded px-1 py-0.5"
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page === 1}
+                >
+                  Προηγ.
+                </button>
+                <span>
+                  Σελίδα <span className="font-semibold">{page}</span> από{' '}
+                  <span className="font-semibold">{pageCount}</span>
+                </span>
+                <button
+                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                  onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+                  disabled={page === pageCount}
+                >
+                  Επόμενο
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {showCreate && (
@@ -122,7 +186,7 @@ function Td({ children, className = '' }: any) {
 function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false);
   const onClick = async () => {
-    if (!confirm('Delete this class? This cannot be undone.')) return;
+    if (!confirm('Διαγραφή αυτού του τμήματος; Αυτό δεν μπορεί να αναιρεθεί.')) return;
     setBusy(true);
     await supabase.functions.invoke('class-delete', { body: { id } });
     setBusy(false);
@@ -134,7 +198,7 @@ function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) 
       onClick={onClick}
       disabled={busy}
     >
-      {busy ? 'Deleting…' : 'Delete'}
+      {busy ? 'Διαγραφή…' : 'Διαγραφή'}
     </button>
   );
 }
@@ -155,17 +219,22 @@ function CreateClassModal({ tenantId, onClose }: { tenantId: string; onClose: ()
   };
 
   return (
-    <Modal onClose={onClose} title="New Class">
-      <FormRow label="Title *">
+    <Modal onClose={onClose} title="Νέο Τμήμα">
+      <FormRow label="Τίτλος *">
         <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
       </FormRow>
-      <FormRow label="Description">
-        <textarea className="input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+      <FormRow label="Περιγραφή">
+        <textarea
+          className="input"
+          rows={3}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
       </FormRow>
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        <button className="btn-secondary" onClick={onClose}>Ακύρωση</button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
-          {busy ? 'Creating…' : 'Create'}
+          {busy ? 'Δημιουργία…' : 'Δημιουργία'}
         </button>
       </div>
     </Modal>
@@ -184,25 +253,30 @@ function EditClassModal({ row, onClose }: { row: GymClass; onClose: () => void }
       body: { id: row.id, title: title.trim(), description: description.trim() || null },
     });
     if (res.error) {
-  console.error('Edge error:', res.error);
-  alert(res.error.message ?? 'Function error');
-}
+      console.error('Edge error:', res.error);
+      alert(res.error.message ?? 'Function error');
+    }
     setBusy(false);
     onClose();
   };
 
   return (
-    <Modal onClose={onClose} title="Edit Class">
-      <FormRow label="Title *">
+    <Modal onClose={onClose} title="Επεξεργασία Τμήματος">
+      <FormRow label="Τίτλος *">
         <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
       </FormRow>
-      <FormRow label="Description">
-        <textarea className="input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+      <FormRow label="Περιγραφή">
+        <textarea
+          className="input"
+          rows={3}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
       </FormRow>
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        <button className="btn-secondary" onClick={onClose}>Ακύρωση</button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
-          {busy ? 'Saving…' : 'Save'}
+          {busy ? 'Αποθήκευση…' : 'Αποθήκευση'}
         </button>
       </div>
     </Modal>
