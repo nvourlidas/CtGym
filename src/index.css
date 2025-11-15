@@ -10,14 +10,25 @@
   --color-danger: #dc2626;
 
   --color-background: #253649;
-  --color-secondary-background: #1f2d3d; /* header + sidebar */
+  --color-secondary-background: #1f2d3d;
   --color-surface: #ffffff;
 
-  /* use light text for your dark UI */
   --color-text-primary: #e5e7eb;
   --color-text-secondary: #94a3b8;
 }
 
+.gym-calendar .fc-theme-standard td{
+  border-color: rgba(255, 255, 255, 0.08); 
+}
+
+.gym-calendar .fc-theme-standard th {
+  border: 0 !important;         
+}
+
+.gym-calendar .fc-theme-standard .fc-scrollgrid,
+.gym-calendar .fc-theme-standard .fc-scrollgrid table {
+  border: 0 !important;
+}
 @layer utilities {
   .input {
     @apply h-9 w-full rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary;

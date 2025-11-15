@@ -17,10 +17,10 @@ function buildCors(req: Request) {
   const reqHdrs = req.headers.get("access-control-request-headers") ?? "";
   return {
     "Access-Control-Allow-Origin": allowOrigin,
-    "Vary": "Origin",
+    Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -37,13 +37,18 @@ async function getAuth(req: Request) {
     global: { headers: { Authorization: auth } },
     auth: { persistSession: false },
   });
-  const { data: { user } } = await supa.auth.getUser();
+  const {
+    data: { user },
+  } = await supa.auth.getUser();
   if (!user) return { error: "unauthorized" };
-  const { data: prof } = await supa.from("profiles").select("tenant_id, role")
-    .eq("id", user.id).maybeSingle();
+  const { data: prof } = await supa
+    .from("profiles")
+    .select("tenant_id, role")
+    .eq("id", user.id)
+    .maybeSingle();
   if (!prof) return { error: "profile_not_found" };
-  const isAdmin = user.app_metadata?.role === "admin" ||
-    (prof as any).role === "admin";
+  const isAdmin =
+    user.app_metadata?.role === "admin" || (prof as any).role === "admin";
   return { tenantId: (prof as any).tenant_id as string, isAdmin };
 }
 
@@ -55,9 +60,13 @@ serve(async (req) => {
 
   const auth = await getAuth(req);
   if ((auth as any).error) {
-    return withCors(JSON.stringify({ error: (auth as any).error }), {
-      status: 401,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: (auth as any).error }),
+      {
+        status: 401,
+      },
+      req,
+    );
   }
   const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
   if (!isAdmin) {
@@ -78,6 +87,7 @@ serve(async (req) => {
       req,
     );
   }
+
   const id = (body?.id ?? "").trim();
   if (!id) {
     return withCors(
@@ -88,17 +98,24 @@ serve(async (req) => {
   }
 
   const updates: any = {};
+
   if (typeof body?.name === "string") updates.name = body.name.trim();
   if (typeof body?.price === "number") updates.price = body.price;
+
   if (typeof body?.plan_kind === "string") {
     const k = body.plan_kind.toLowerCase();
     if (!["duration", "sessions", "hybrid"].includes(k)) {
-      return withCors(JSON.stringify({ error: "invalid_plan_kind" }), {
-        status: 400,
-      }, req);
+      return withCors(
+        JSON.stringify({ error: "invalid_plan_kind" }),
+        {
+          status: 400,
+        },
+        req,
+      );
     }
     updates.plan_kind = k;
   }
+
   if (typeof body?.description === "string") {
     updates.description = body.description;
   }
@@ -113,11 +130,36 @@ serve(async (req) => {
   if (updates.duration_days === 0) updates.duration_days = null;
   if (updates.session_credits === 0) updates.session_credits = null;
 
-  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+  // NEW: optional category_id (we only touch it if it was provided)
+  let category_id: string | null | undefined = undefined;
+  if ("category_id" in body) {
+    const raw = body.category_id;
+    if (typeof raw === "string" && raw.trim().length > 0) {
+      category_id = raw.trim();
+    } else {
+      category_id = null; // explicit clear
+    }
+  }
+
+  const admin = createClient(URL, SERVICE, {
+    auth: { persistSession: false },
+  });
+
   // verify tenant ownership
-  const { data: existing } = await admin.from("membership_plans").select(
-    "id, tenant_id",
-  ).eq("id", id).maybeSingle();
+  const { data: existing, error: findErr } = await admin
+    .from("membership_plans")
+    .select("id, tenant_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (findErr) {
+    return withCors(
+      JSON.stringify({ error: findErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
   if (!existing) {
     return withCors(
       JSON.stringify({ error: "not_found" }),
@@ -126,9 +168,40 @@ serve(async (req) => {
     );
   }
   if (existing.tenant_id !== tenantId) {
-    return withCors(JSON.stringify({ error: "tenant_mismatch" }), {
-      status: 403,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: "tenant_mismatch" }),
+      {
+        status: 403,
+      },
+      req,
+    );
+  }
+
+  // If category_id was included, validate and add to updates
+  if (category_id !== undefined) {
+    if (category_id) {
+      const { data: cat, error: cErr } = await admin
+        .from("class_categories")
+        .select("id, tenant_id")
+        .eq("id", category_id)
+        .maybeSingle();
+
+      if (cErr || !cat) {
+        return withCors(
+          JSON.stringify({ error: "invalid_category" }),
+          { status: 400 },
+          req,
+        );
+      }
+      if (cat.tenant_id !== tenantId) {
+        return withCors(
+          JSON.stringify({ error: "category_tenant_mismatch" }),
+          { status: 403 },
+          req,
+        );
+      }
+    }
+    updates.category_id = category_id; // can be string or null
   }
 
   const { data, error } = await admin
@@ -136,7 +209,7 @@ serve(async (req) => {
     .update(updates)
     .eq("id", id)
     .select(
-      "id, tenant_id, name, price, description, duration_days, session_credits, plan_kind created_at",
+      "id, tenant_id, name, price, description, duration_days, session_credits, plan_kind, created_at, category_id",
     )
     .single();
 
@@ -147,5 +220,10 @@ serve(async (req) => {
       req,
     );
   }
-  return withCors(JSON.stringify({ ok: true, data }), { status: 200 }, req);
+
+  return withCors(
+    JSON.stringify({ ok: true, data }),
+    { status: 200 },
+    req,
+  );
 });

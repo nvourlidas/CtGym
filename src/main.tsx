@@ -1,9 +1,12 @@
+
 // src/main.tsx
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import './index.css';
 import { AuthProvider } from './auth/AuthProvider';
+
+
 import AdminRoute from './auth/AdminRoute';
 import AppShell from './layout/AppShell';
 
@@ -13,9 +16,13 @@ import Members from './pages/Members';
 import Memberships from './pages/Memberships/MembershipsPage';
 import Classes from './pages/Classes/Classes';
 import ClassSessionsPage from './pages/Classes/ClassSessions';
-import Programs from './pages/Classes/ProgramsPage';
 import Bookings from './pages/Classes/Bookings';
 import Plans from './pages/Memberships/Plans';
+import Categories from './pages/CategoriesPage';
+
+
+//test program
+import ProgramsPage2 from './pages/Classes/ProgramsPage2';
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -30,8 +37,9 @@ const router = createBrowserRouter([
       { index: true, element: <Dashboard /> },
       { path: 'members', element: <Members /> },
       { path: 'classes', element: <Classes /> },
+      { path: 'categories', element: <Categories /> },
       { path: 'sessions', element: <ClassSessionsPage /> },
-      { path: 'programs', element: <Programs /> },
+      { path: 'programs', element: <ProgramsPage2 /> },
       { path: 'bookings', element: <Bookings /> },
       { path: 'plans', element: <Plans /> },
       { path: 'memberships', element: <Memberships /> },

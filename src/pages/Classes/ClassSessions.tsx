@@ -6,6 +6,11 @@ import SessionAttendanceModal from '../../components/SessionAttendanceModal';
 type GymClass = {
   id: string;
   title: string;
+  class_categories?: {
+    id: string;
+    name: string | null;
+    color: string | null;
+  } | null;
 };
 
 type SessionRow = {
@@ -18,24 +23,29 @@ type SessionRow = {
   created_at: string;
 };
 
+type DateFilter = '' | 'today' | 'week' | 'month';
+
 export default function ClassSessionsPage() {
   const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<SessionRow[]>([]);
   const [classes, setClasses] = useState<GymClass[]>([]);
-  const [qClass, setQClass] = useState<string>(''); // filter
-  const [dateFrom, setDateFrom] = useState<string>(''); // yyyy-mm-dd
-  const [dateTo, setDateTo] = useState<string>('');
+  const [qClass, setQClass] = useState<string>(''); // filter by class
+  const [dateFilter, setDateFilter] = useState<DateFilter>(''); // '', 'today', 'week', 'month'
   const [showCreate, setShowCreate] = useState(false);
   const [editRow, setEditRow] = useState<SessionRow | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // NEW: pagination state
+  // pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // NEW: attendance history modal state
+  // attendance history modal state
   const [attendanceSession, setAttendanceSession] = useState<SessionRow | null>(null);
+
+  // multi-select state
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function load() {
     if (!profile?.tenant_id) return;
@@ -43,21 +53,45 @@ export default function ClassSessionsPage() {
     setError(null);
 
     const [cls, sess] = await Promise.all([
-      supabase.from('classes')
-        .select('id, title')
+      supabase
+        .from('classes')
+        .select(`
+          id,
+          title,
+          class_categories (
+            id,
+            name,
+            color
+          )
+        `)
         .eq('tenant_id', profile.tenant_id)
         .order('title'),
-      supabase.from('class_sessions')
+      supabase
+        .from('class_sessions')
         .select('id, tenant_id, class_id, starts_at, ends_at, capacity, created_at')
         .eq('tenant_id', profile.tenant_id)
-        .order('starts_at', { ascending: true }),
+        .order('starts_at', { ascending: false }), // NEW: latest first
     ]);
 
-    if (!cls.error) setClasses((cls.data as GymClass[]) ?? []);
+    if (!cls.error) {
+      const list: GymClass[] = (cls.data as any[] ?? []).map((row) => ({
+        id: row.id,
+        title: row.title,
+        class_categories: Array.isArray(row.class_categories)
+          ? row.class_categories[0] ?? null
+          : row.class_categories ?? null,
+      }));
+      setClasses(list);
+    }
+
     if (!sess.error) setRows((sess.data as SessionRow[]) ?? []);
+
     if (cls.error || sess.error) {
       setError(cls.error?.message ?? sess.error?.message ?? null);
     }
+
+    // clear selection after reload
+    setSelectedIds([]);
     setLoading(false);
   }
 
@@ -65,20 +99,45 @@ export default function ClassSessionsPage() {
 
   const filtered = useMemo(() => {
     let list = rows;
-    if (qClass) list = list.filter(r => r.class_id === qClass);
-    if (dateFrom) list = list.filter(r => new Date(r.starts_at) >= new Date(dateFrom));
-    if (dateTo) {
-      const end = new Date(dateTo);
-      end.setDate(end.getDate() + 1); // include entire 'to' day
-      list = list.filter(r => new Date(r.starts_at) < end);
+
+    if (qClass) {
+      list = list.filter(r => r.class_id === qClass);
     }
+
+    if (dateFilter) {
+      const now = new Date();
+      let start: Date | null = null;
+      let end: Date | null = null;
+
+      if (dateFilter === 'today') {
+        start = startOfDay(now);
+        end = new Date(start);
+        end.setDate(end.getDate() + 1);
+      } else if (dateFilter === 'week') {
+        start = startOfWeek(now); // Monday–Sunday
+        end = new Date(start);
+        end.setDate(end.getDate() + 7);
+      } else if (dateFilter === 'month') {
+        start = startOfMonth(now);
+        end = new Date(start);
+        end.setMonth(end.getMonth() + 1);
+      }
+
+      if (start && end) {
+        list = list.filter(r => {
+          const d = new Date(r.starts_at);
+          return d >= start! && d < end!;
+        });
+      }
+    }
+
     return list;
-  }, [rows, qClass, dateFrom, dateTo]);
+  }, [rows, qClass, dateFilter]);
 
   // reset page when filters / page size change
   useEffect(() => {
     setPage(1);
-  }, [qClass, dateFrom, dateTo, pageSize]);
+  }, [qClass, dateFilter, pageSize]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
 
@@ -90,7 +149,42 @@ export default function ClassSessionsPage() {
   const startIdx = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const endIdx = Math.min(filtered.length, page * pageSize);
 
-  const classTitle = (id: string) => classes.find(c => c.id === id)?.title ?? '—';
+  const getClass = (id: string) => classes.find(c => c.id === id);
+
+  const pageIds = paginated.map(s => s.id);
+  const allPageSelected =
+    pageIds.length > 0 && pageIds.every(id => selectedIds.includes(id));
+
+  // bulk delete selected sessions
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Διαγραφή ${selectedIds.length} συνεδριών; Αυτή η ενέργεια δεν μπορεί να ακυρωθεί.`)) return;
+
+    setBulkDeleting(true);
+    setError(null);
+    try {
+      const results = await Promise.all(
+        selectedIds.map(id =>
+          supabase.functions.invoke('session-delete', { body: { id } })
+        )
+      );
+      const firstError = results.find(
+        r => r.error || (r.data as any)?.error
+      );
+      if (firstError) {
+        setError(
+          firstError.error?.message ??
+          (firstError.data as any)?.error ??
+          'Η ομαδική διαγραφή είχε σφάλματα.'
+        );
+      } else {
+        setError(null);
+      }
+      await load();
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   return (
     <div className="p-6">
@@ -100,21 +194,52 @@ export default function ClassSessionsPage() {
           value={qClass} onChange={e => setQClass(e.target.value)}
         >
           <option value="">Όλα τα τμήματα</option>
-          {classes.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+          {classes.map(c => (
+            <option key={c.id} value={c.id}>
+              {c.title}
+            </option>
+          ))}
         </select>
 
-        <input type="date"
-          className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
-          value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-        <input type="date"
-          className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
-          value={dateTo} onChange={e => setDateTo(e.target.value)} />
+        {/* Date preset filters */}
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterChip
+            active={dateFilter === ''}
+            label="Όλες οι ημερομηνίες"
+            onClick={() => setDateFilter('')}
+          />
+          <FilterChip
+            active={dateFilter === 'today'}
+            label="Σήμερα"
+            onClick={() => setDateFilter('today')}
+          />
+          <FilterChip
+            active={dateFilter === 'week'}
+            label="Αυτή την εβδομάδα"
+            onClick={() => setDateFilter('week')}
+          />
+          <FilterChip
+            active={dateFilter === 'month'}
+            label="Αυτόν τον μήνα"
+            onClick={() => setDateFilter('month')}
+          />
+        </div>
 
         <button
-          className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white"
+          className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-accent/90 text-white hover:text-black cursor-pointer"
           onClick={() => setShowCreate(true)}
         >
           Νέα Συνεδρία
+        </button>
+
+        <button
+          className="h-9 rounded-md px-3 text-sm border border-danger/50 text-danger hover:bg-danger/10 disabled:opacity-40"
+          disabled={selectedIds.length === 0 || bulkDeleting}
+          onClick={handleBulkDelete}
+        >
+          {bulkDeleting
+            ? 'Διαγραφή επιλεγμένων…'
+            : `Διαγραφή επιλεγμένων (${selectedIds.length})`}
         </button>
       </div>
 
@@ -128,6 +253,38 @@ export default function ClassSessionsPage() {
         <table className="w-full text-sm">
           <thead className="bg-secondary-background/60">
             <tr className="text-left">
+              <Th className="w-8">
+                <input
+                  type="checkbox"
+                  className="
+                    h-4 w-4
+                    rounded-sm
+                    border border-white/30
+                    bg-transparent
+                    accent-primary
+                    transition
+                    focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-0
+                    hover:border-primary/70
+                    cursor-pointer
+                  "
+                  checked={allPageSelected && pageIds.length > 0}
+                  onChange={() => {
+                    setSelectedIds(prev => {
+                      const allSelectedOnPage =
+                        pageIds.length > 0 &&
+                        pageIds.every(id => prev.includes(id));
+                      if (allSelectedOnPage) {
+                        // unselect page
+                        return prev.filter(id => !pageIds.includes(id));
+                      }
+                      // select all on page
+                      const next = new Set(prev);
+                      pageIds.forEach(id => next.add(id));
+                      return Array.from(next);
+                    });
+                  }}
+                />
+              </Th>
               <Th>Τμήμα</Th>
               <Th>Έναρξη</Th>
               <Th>Λήξη</Th>
@@ -136,34 +293,85 @@ export default function ClassSessionsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td className="px-3 py-4 opacity-60" colSpan={5}>Loading…</td></tr>}
-            {!loading && filtered.length === 0 && <tr><td className="px-3 py-4 opacity-60" colSpan={5}>No sessions</td></tr>}
-            {!loading && filtered.length > 0 && paginated.map(s => (
-              <tr key={s.id} className="border-t border-white/10 hover:bg-secondary/10">
-                <Td className="font-medium">
-                  {classTitle(s.class_id)}
-                </Td>
-                <Td>{new Date(s.starts_at).toLocaleString()}</Td>
-                <Td>{s.ends_at ? new Date(s.ends_at).toLocaleString() : '—'}</Td>
-                <Td>{s.capacity ?? '—'}</Td>
-                <Td className="text-right space-x-1">
-                  {/* NEW: History / attendance modal trigger */}
-                  <button
-                    className="px-2 py-1 text-xs rounded border border-white/10 hover:bg-secondary/10"
-                    onClick={() => setAttendanceSession(s)}
-                  >
-                    Ιστορικό
-                  </button>
-                  <button
-                    className="px-2 py-1 text-xs rounded hover:bg-secondary/10"
-                    onClick={() => setEditRow(s)}
-                  >
-                    Επεξεργασία
-                  </button>
-                  <DeleteButton id={s.id} onDeleted={load} setError={setError} />
-                </Td>
+            {loading && (
+              <tr>
+                <td className="px-3 py-4 opacity-60" colSpan={6}>Loading…</td>
               </tr>
-            ))}
+            )}
+            {!loading && filtered.length === 0 && (
+              <tr>
+                <td className="px-3 py-4 opacity-60" colSpan={6}>No sessions</td>
+              </tr>
+            )}
+            {!loading && filtered.length > 0 && paginated.map(s => {
+              const cls = getClass(s.class_id);
+              return (
+                <tr key={s.id} className="border-t border-white/10 hover:bg-secondary/10">
+                  <Td className="w-8">
+                    <input
+                      type="checkbox"
+                      className="
+                        h-4 w-4
+                        rounded-sm
+                        border border-white/30
+                        bg-transparent
+                        accent-primary
+                        transition
+                        focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-0
+                        hover:border-primary/70
+                        cursor-pointer
+                      "
+                      checked={selectedIds.includes(s.id)}
+                      onChange={() =>
+                        setSelectedIds(prev =>
+                          prev.includes(s.id)
+                            ? prev.filter(id => id !== s.id)
+                            : [...prev, s.id]
+                        )
+                      }
+                    />
+                  </Td>
+                  <Td className="font-medium">
+                    <div className="flex flex-col gap-1">
+                      <span>{cls?.title ?? '—'}</span>
+                      <span>
+                        {cls?.class_categories ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/5">
+                            {cls.class_categories.color && (
+                              <span
+                                className="inline-block h-2 w-2 rounded-full border border-white/20"
+                                style={{ backgroundColor: cls.class_categories.color }}
+                              />
+                            )}
+                            <span>{cls.class_categories.name}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-text-secondary">—</span>
+                        )}
+                      </span>
+                    </div>
+                  </Td>
+                  <Td>{formatDateTime(s.starts_at)}</Td>
+                  <Td>{s.ends_at ? formatDateTime(s.ends_at) : '—'}</Td>
+                  <Td>{s.capacity ?? '—'}</Td>
+                  <Td className="text-right space-x-1">
+                    <button
+                      className="px-2 py-1 text-xs rounded border border-white/10 hover:bg-secondary/10"
+                      onClick={() => setAttendanceSession(s)}
+                    >
+                      Ιστορικό
+                    </button>
+                    <button
+                      className="px-2 py-1 text-xs rounded hover:bg-secondary/10"
+                      onClick={() => setEditRow(s)}
+                    >
+                      Επεξεργασία
+                    </button>
+                    <DeleteButton id={s.id} onDeleted={load} setError={setError} />
+                  </Td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
@@ -213,6 +421,7 @@ export default function ClassSessionsPage() {
         )}
       </div>
 
+      {/* Create / Edit / Attendance modals */}
       {showCreate && (
         <CreateSessionModal
           classes={classes}
@@ -229,23 +438,13 @@ export default function ClassSessionsPage() {
           setError={setError}
         />
       )}
-
-      {/* NEW: attendance modal using same component as dashboard */}
       {attendanceSession && profile?.tenant_id && (
         <SessionAttendanceModal
           tenantId={profile.tenant_id}
           sessionId={attendanceSession.id}
-          sessionTitle={classTitle(attendanceSession.class_id)}
-          sessionTime={`${new Date(attendanceSession.starts_at).toLocaleDateString()} • ${new Date(
-            attendanceSession.starts_at,
-          ).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${
-            attendanceSession.ends_at
-              ? '–' +
-                new Date(attendanceSession.ends_at).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : ''
+          sessionTitle={getClass(attendanceSession.class_id)?.title ?? '—'}
+          sessionTime={`${formatDate(attendanceSession.starts_at)} • ${formatTime(attendanceSession.starts_at)}${
+            attendanceSession.ends_at ? '–' + formatTime(attendanceSession.ends_at) : ''
           }`}
           onClose={() => setAttendanceSession(null)}
         />
@@ -261,7 +460,32 @@ function Td({ children, className = '' }: any) {
   return <td className={`px-3 py-2 ${className}`}>{children}</td>;
 }
 
-/* Delete button (unchanged) */
+function FilterChip({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3 h-8 rounded-full text-xs font-medium transition
+        border
+        ${
+          active
+            ? 'bg-accent text-black border-black'
+            : 'bg-secondary-background text-text-secondary border-white/10 hover:border-white/30'
+        }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function DeleteButton({
   id,
   onDeleted,
@@ -297,7 +521,8 @@ function DeleteButton({
   );
 }
 
-/* Create / Edit modals (same as you already had) */
+/* Create / Edit modals + helpers */
+
 function CreateSessionModal({
   classes,
   tenantId,
@@ -310,20 +535,33 @@ function CreateSessionModal({
   setError: (s: string | null) => void;
 }) {
   const [classId, setClassId] = useState(classes[0]?.id ?? '');
-  const [starts, setStarts] = useState<string>(''); // datetime-local
-  const [ends, setEnds] = useState<string>('');
+  const [date, setDate] = useState<string>('');        // yyyy-mm-dd
+  const [startTime, setStartTime] = useState<string>(''); // HH:MM
+  const [endTime, setEndTime] = useState<string>('');     // HH:MM
   const [capacity, setCapacity] = useState<number>(20);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
-    if (!classId || !starts || !ends) return;
+    if (!classId || !date || !startTime || !endTime) {
+      alert('Συμπληρώστε τμήμα, ημερομηνία, ώρα έναρξης και ώρα λήξης.');
+      return;
+    }
+
+    const startsIso = new Date(`${date}T${startTime}`).toISOString();
+    const endsIso = new Date(`${date}T${endTime}`).toISOString();
+
+    if (new Date(endsIso) <= new Date(startsIso)) {
+      alert('Η ώρα λήξης πρέπει να είναι μετά την ώρα έναρξης.');
+      return;
+    }
+
     setBusy(true);
     const res = await supabase.functions.invoke('session-create', {
       body: {
         tenant_id: tenantId,
         class_id: classId,
-        starts_at: new Date(starts).toISOString(),
-        ends_at: new Date(ends).toISOString(),
+        starts_at: startsIso,
+        ends_at: endsIso,
         capacity,
       },
     });
@@ -347,12 +585,35 @@ function CreateSessionModal({
           ))}
         </select>
       </FormRow>
-      <FormRow label="Έναρξη *">
-        <input className="input" type="datetime-local" value={starts} onChange={e => setStarts(e.target.value)} />
+
+      <FormRow label="Ημερομηνία *">
+        <input
+          className="input"
+          type="date"
+          value={date}
+          onChange={e => setDate(e.target.value)}
+        />
       </FormRow>
-      <FormRow label="Λήξη *">
-        <input className="input" type="datetime-local" value={ends} onChange={e => setEnds(e.target.value)} />
-      </FormRow>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormRow label="Ώρα Έναρξης *">
+          <input
+            className="input"
+            type="time"
+            value={startTime}
+            onChange={e => setStartTime(e.target.value)}
+          />
+        </FormRow>
+        <FormRow label="Ώρα Λήξης *">
+          <input
+            className="input"
+            type="time"
+            value={endTime}
+            onChange={e => setEndTime(e.target.value)}
+          />
+        </FormRow>
+      </div>
+
       <FormRow label="Χωρητικότητα">
         <input
           className="input"
@@ -362,12 +623,13 @@ function CreateSessionModal({
           onChange={e => setCapacity(Number(e.target.value))}
         />
       </FormRow>
+
       <div className="mt-4 flex justify-end gap-2">
         <button className="btn-secondary" onClick={onClose}>
-          Cancel
+          Ακύρωση
         </button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
-          {busy ? 'Creating…' : 'Create'}
+          {busy ? 'Δημιουργία...' : 'Δημιουργία'}
         </button>
       </div>
     </Modal>
@@ -386,20 +648,33 @@ function EditSessionModal({
   setError: (s: string | null) => void;
 }) {
   const [classId, setClassId] = useState(row.class_id);
-  const [starts, setStarts] = useState<string>(() => toLocalDT(row.starts_at));
-  const [ends, setEnds] = useState<string>(() => toLocalDT(row.ends_at));
+  const [date, setDate] = useState<string>(() => isoToDateInput(row.starts_at));
+  const [startTime, setStartTime] = useState<string>(() => isoToTimeInput(row.starts_at));
+  const [endTime, setEndTime] = useState<string>(() => isoToTimeInput(row.ends_at));
   const [capacity, setCapacity] = useState<number>(row.capacity ?? 20);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
-    if (!classId || !starts || !ends) return;
+    if (!classId || !date || !startTime || !endTime) {
+      alert('Συμπληρώστε τμήμα, ημερομηνία, ώρα έναρξης και ώρα λήξης.');
+      return;
+    }
+
+    const startsIso = new Date(`${date}T${startTime}`).toISOString();
+    const endsIso = new Date(`${date}T${endTime}`).toISOString();
+
+    if (new Date(endsIso) <= new Date(startsIso)) {
+      alert('Η ώρα λήξης πρέπει να είναι μετά την ώρα έναρξης.');
+      return;
+    }
+
     setBusy(true);
     const res = await supabase.functions.invoke('session-update', {
       body: {
         id: row.id,
         class_id: classId,
-        starts_at: new Date(starts).toISOString(),
-        ends_at: new Date(ends).toISOString(),
+        starts_at: startsIso,
+        ends_at: endsIso,
         capacity,
       },
     });
@@ -423,12 +698,35 @@ function EditSessionModal({
           ))}
         </select>
       </FormRow>
-      <FormRow label="Έναρξη *">
-        <input className="input" type="datetime-local" value={starts} onChange={e => setStarts(e.target.value)} />
+
+      <FormRow label="Ημερομηνία *">
+        <input
+          className="input"
+          type="date"
+          value={date}
+          onChange={e => setDate(e.target.value)}
+        />
       </FormRow>
-      <FormRow label="Λήξη *">
-        <input className="input" type="datetime-local" value={ends} onChange={e => setEnds(e.target.value)} />
-      </FormRow>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <FormRow label="Ώρα Έναρξης *">
+          <input
+            className="input"
+            type="time"
+            value={startTime}
+            onChange={e => setStartTime(e.target.value)}
+          />
+        </FormRow>
+        <FormRow label="Ώρα Λήξης *">
+          <input
+            className="input"
+            type="time"
+            value={endTime}
+            onChange={e => setEndTime(e.target.value)}
+          />
+        </FormRow>
+      </div>
+
       <FormRow label="Χωρητικότητα">
         <input
           className="input"
@@ -438,12 +736,13 @@ function EditSessionModal({
           onChange={e => setCapacity(Number(e.target.value))}
         />
       </FormRow>
+
       <div className="mt-4 flex justify-end gap-2">
         <button className="btn-secondary" onClick={onClose}>
           Ακύρωση
         </button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
-          {busy ? 'Απόθήκευση...' : 'Αποθήκευση'}
+          {busy ? 'Αποθήκευση...' : 'Αποθήκευση'}
         </button>
       </div>
     </Modal>
@@ -451,19 +750,74 @@ function EditSessionModal({
 }
 
 /* helpers */
-function toLocalDT(iso: string) {
-  // returns "yyyy-mm-ddThh:mm" for <input type="datetime-local" />
+
+function isoToDateInput(iso: string) {
   const d = new Date(iso);
   const pad = (n: number) => n.toString().padStart(2, '0');
   const yyyy = d.getFullYear();
   const mm = pad(d.getMonth() + 1);
   const dd = pad(d.getDate());
-  const hh = pad(d.getHours());
-  const mi = pad(d.getMinutes());
-  return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
+  return `${yyyy}-${mm}-${dd}`;
 }
 
-/* small UI helpers (same as your page) */
+function isoToTimeInput(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  return `${hh}:${mi}`;
+}
+
+function formatDateTime(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const dd = pad(d.getDate());
+  const mm = pad(d.getMonth() + 1);
+  const yyyy = d.getFullYear();
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  return `${dd}-${mm}-${yyyy} ${hh}:${mi}`;
+}
+
+function formatDate(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const dd = pad(d.getDate());
+  const mm = pad(d.getMonth() + 1);
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
+function formatTime(iso: string) {
+  const d = new Date(iso);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  return `${hh}:${mi}`;
+}
+
+function startOfDay(d: Date) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function startOfWeek(d: Date) {
+  // Monday as first day of week
+  const x = startOfDay(d);
+  const day = x.getDay(); // 0=Sun,1=Mon,...6=Sat
+  const diff = (day + 6) % 7; // 0 for Mon, 1 for Tue, ...
+  x.setDate(x.getDate() - diff);
+  return x;
+}
+
+function startOfMonth(d: Date) {
+  const x = startOfDay(d);
+  x.setDate(1);
+  return x;
+}
+
+/* small UI helpers */
 function Modal({ title, children, onClose }: any) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">

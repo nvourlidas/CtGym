@@ -8,6 +8,19 @@ type GymClass = {
   title: string;
   description: string | null;
   created_at: string;
+  category_id: string | null;
+  class_categories?: {
+    id: string;
+    name: string;
+    color: string | null;
+  } | null;
+};
+
+
+type Category = {
+  id: string;
+  name: string;
+  color: string | null;
 };
 
 export default function ClassesPage() {
@@ -17,32 +30,80 @@ export default function ClassesPage() {
   const [q, setQ] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [editRow, setEditRow] = useState<GymClass | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
 
   // NEW: pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  async function load() {
-    if (!profile?.tenant_id) return;
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('classes')
-      .select('id, tenant_id, title, description, created_at')
-      .eq('tenant_id', profile.tenant_id)
-      .order('created_at', { ascending: false });
-    if (!error) setRows((data as GymClass[]) ?? []);
-    setLoading(false);
+async function load() {
+  if (!profile?.tenant_id) return;
+  setLoading(true);
+
+  const { data, error } = await supabase
+    .from('classes')
+    .select(
+      `
+        id,
+        tenant_id,
+        title,
+        description,
+        created_at,
+        category_id,
+        class_categories (
+          id,
+          name,
+          color
+        )
+      `
+    )
+    .eq('tenant_id', profile.tenant_id)
+    .order('created_at', { ascending: false });
+
+  if (!error && data) {
+    // supabase returns class_categories as array -> keep only first item
+    const normalized: GymClass[] = (data as any[]).map((row) => ({
+      ...row,
+      class_categories: Array.isArray(row.class_categories)
+        ? row.class_categories[0] ?? null
+        : row.class_categories ?? null,
+    }));
+    setRows(normalized);
   }
 
-  useEffect(() => { load(); }, [profile?.tenant_id]);
+  setLoading(false);
+}
+
+  useEffect(() => {
+    load();
+  }, [profile?.tenant_id]);
+
+  // Load categories for this tenant
+  useEffect(() => {
+    if (!profile?.tenant_id) return;
+
+    supabase
+      .from('class_categories')
+      .select('id, name, color')
+      .eq('tenant_id', profile.tenant_id)
+      .order('name', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error(error);
+        } else {
+          setCategories(data || []);
+        }
+      });
+  }, [profile?.tenant_id]);
 
   const filtered = useMemo(() => {
     if (!q) return rows;
     const needle = q.toLowerCase();
-    return rows.filter(r =>
+    return rows.filter((r) =>
       (r.title ?? '').toLowerCase().includes(needle) ||
       (r.description ?? '').toLowerCase().includes(needle) ||
-      r.id.toLowerCase().includes(needle)
+      r.id.toLowerCase().includes(needle) ||
+      (r.class_categories?.name ?? '').toLowerCase().includes(needle)
     );
   }, [rows, q]);
 
@@ -84,33 +145,66 @@ export default function ClassesPage() {
             <tr className="text-left">
               <Th>Τίτλος</Th>
               <Th>Περιγραφή</Th>
+              <Th>Κατηγορία</Th>
               <Th>Ημ. Δημιουργίας</Th>
               <Th className="text-right pr-3">Ενέργειες</Th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={4}>Loading…</td></tr>
+              <tr>
+                <td className="px-3 py-4 opacity-60" colSpan={5}>
+                  Loading…
+                </td>
+              </tr>
             )}
             {!loading && filtered.length === 0 && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={4}>No classes</td></tr>
-            )}
-            {!loading && filtered.length > 0 && paginated.map(c => (
-              <tr key={c.id} className="border-t border-white/10 hover:bg-secondary/10">
-                <Td className="font-medium">{c.title}</Td>
-                <Td className="text-text-secondary">{c.description ?? '—'}</Td>
-                <Td>{new Date(c.created_at).toLocaleString()}</Td>
-                <Td className="text-right">
-                  <button
-                    className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
-                    onClick={() => setEditRow(c)}
-                  >
-                    Επεξεργασία
-                  </button>
-                  <DeleteButton id={c.id} onDeleted={load} />
-                </Td>
+              <tr>
+                <td className="px-3 py-4 opacity-60" colSpan={5}>
+                  Δεν υπάρχουν τμήματα
+                </td>
               </tr>
-            ))}
+            )}
+            {!loading &&
+              filtered.length > 0 &&
+              paginated.map((c) => (
+                <tr
+                  key={c.id}
+                  className="border-t border-white/10 hover:bg-secondary/10"
+                >
+                  <Td className="font-medium">{c.title}</Td>
+                  <Td className="text-text-secondary">
+                    {c.description ?? '—'}
+                  </Td>
+                  <Td>
+                    {c.class_categories ? (
+                      <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5">
+                        {c.class_categories.color && (
+                          <span
+                            className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                            style={{
+                              backgroundColor: c.class_categories.color,
+                            }}
+                          />
+                        )}
+                        <span>{c.class_categories.name}</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-text-secondary">—</span>
+                    )}
+                  </Td>
+                  <Td>{new Date(c.created_at).toLocaleString()}</Td>
+                  <Td className="text-right">
+                    <button
+                      className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
+                      onClick={() => setEditRow(c)}
+                    >
+                      Επεξεργασία
+                    </button>
+                    <DeleteButton id={c.id} onDeleted={load} />
+                  </Td>
+                </tr>
+              ))}
           </tbody>
         </table>
 
@@ -119,8 +213,12 @@ export default function ClassesPage() {
           <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
             <div>
               Εμφάνιση <span className="font-semibold">{startIdx}</span>
-              {filtered.length > 0 && <>–<span className="font-semibold">{endIdx}</span></>} από{' '}
-              <span className="font-semibold">{filtered.length}</span>
+              {filtered.length > 0 && (
+                <>
+                  –<span className="font-semibold">{endIdx}</span>
+                </>
+              )}{' '}
+              από <span className="font-semibold">{filtered.length}</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1">
@@ -138,7 +236,7 @@ export default function ClassesPage() {
               <div className="flex items-center gap-2">
                 <button
                   className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
                 >
                   Προηγ.
@@ -149,7 +247,7 @@ export default function ClassesPage() {
                 </span>
                 <button
                   className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
-                  onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                   disabled={page === pageCount}
                 >
                   Επόμενο
@@ -163,13 +261,21 @@ export default function ClassesPage() {
       {showCreate && (
         <CreateClassModal
           tenantId={profile?.tenant_id!}
-          onClose={() => { setShowCreate(false); load(); }}
+          categories={categories}
+          onClose={() => {
+            setShowCreate(false);
+            load();
+          }}
         />
       )}
       {editRow && (
         <EditClassModal
           row={editRow}
-          onClose={() => { setEditRow(null); load(); }}
+          categories={categories}
+          onClose={() => {
+            setEditRow(null);
+            load();
+          }}
         />
       )}
     </div>
@@ -183,10 +289,17 @@ function Td({ children, className = '' }: any) {
   return <td className={`px-3 py-2 ${className}`}>{children}</td>;
 }
 
-function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
+function DeleteButton({
+  id,
+  onDeleted,
+}: {
+  id: string;
+  onDeleted: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const onClick = async () => {
-    if (!confirm('Διαγραφή αυτού του τμήματος; Αυτό δεν μπορεί να αναιρεθεί.')) return;
+    if (!confirm('Διαγραφή αυτού του τμήματος; Αυτό δεν μπορεί να αναιρεθεί.'))
+      return;
     setBusy(true);
     await supabase.functions.invoke('class-delete', { body: { id } });
     setBusy(false);
@@ -203,16 +316,30 @@ function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) 
   );
 }
 
-function CreateClassModal({ tenantId, onClose }: { tenantId: string; onClose: () => void }) {
+function CreateClassModal({
+  tenantId,
+  categories,
+  onClose,
+}: {
+  tenantId: string;
+  categories: Category[];
+  onClose: () => void;
+}) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [categoryId, setCategoryId] = useState<string>('');
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     if (!title.trim()) return;
     setBusy(true);
     await supabase.functions.invoke('class-create', {
-      body: { tenant_id: tenantId, title: title.trim(), description: description.trim() || null },
+      body: {
+        tenant_id: tenantId,
+        title: title.trim(),
+        description: description.trim() || null,
+        category_id: categoryId || null,
+      },
     });
     setBusy(false);
     onClose();
@@ -221,7 +348,11 @@ function CreateClassModal({ tenantId, onClose }: { tenantId: string; onClose: ()
   return (
     <Modal onClose={onClose} title="Νέο Τμήμα">
       <FormRow label="Τίτλος *">
-        <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input
+          className="input"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
       </FormRow>
       <FormRow label="Περιγραφή">
         <textarea
@@ -231,8 +362,24 @@ function CreateClassModal({ tenantId, onClose }: { tenantId: string; onClose: ()
           onChange={(e) => setDescription(e.target.value)}
         />
       </FormRow>
+      <FormRow label="Κατηγορία">
+        <select
+          className="input"
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+        >
+          <option value="">Χωρίς κατηγορία</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </FormRow>
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Ακύρωση</button>
+        <button className="btn-secondary" onClick={onClose}>
+          Ακύρωση
+        </button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
           {busy ? 'Δημιουργία…' : 'Δημιουργία'}
         </button>
@@ -241,16 +388,32 @@ function CreateClassModal({ tenantId, onClose }: { tenantId: string; onClose: ()
   );
 }
 
-function EditClassModal({ row, onClose }: { row: GymClass; onClose: () => void }) {
+function EditClassModal({
+  row,
+  categories,
+  onClose,
+}: {
+  row: GymClass;
+  categories: Category[];
+  onClose: () => void;
+}) {
   const [title, setTitle] = useState(row.title ?? '');
   const [description, setDescription] = useState(row.description ?? '');
+  const [categoryId, setCategoryId] = useState<string>(
+    row.category_id ?? ''
+  );
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     if (!title.trim()) return;
     setBusy(true);
     const res = await supabase.functions.invoke('class-update', {
-      body: { id: row.id, title: title.trim(), description: description.trim() || null },
+      body: {
+        id: row.id,
+        title: title.trim(),
+        description: description.trim() || null,
+        category_id: categoryId || null,
+      },
     });
     if (res.error) {
       console.error('Edge error:', res.error);
@@ -263,7 +426,11 @@ function EditClassModal({ row, onClose }: { row: GymClass; onClose: () => void }
   return (
     <Modal onClose={onClose} title="Επεξεργασία Τμήματος">
       <FormRow label="Τίτλος *">
-        <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
+        <input
+          className="input"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+        />
       </FormRow>
       <FormRow label="Περιγραφή">
         <textarea
@@ -273,8 +440,24 @@ function EditClassModal({ row, onClose }: { row: GymClass; onClose: () => void }
           onChange={(e) => setDescription(e.target.value)}
         />
       </FormRow>
+      <FormRow label="Κατηγορία">
+        <select
+          className="input"
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+        >
+          <option value="">Χωρίς κατηγορία</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </FormRow>
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Ακύρωση</button>
+        <button className="btn-secondary" onClick={onClose}>
+          Ακύρωση
+        </button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
           {busy ? 'Αποθήκευση…' : 'Αποθήκευση'}
         </button>
@@ -290,7 +473,12 @@ function Modal({ title, children, onClose }: any) {
       <div className="w-full max-w-lg rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl">
         <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
           <div className="font-semibold">{title}</div>
-          <button onClick={onClose} className="rounded px-2 py-1 hover:bg-white/5">✕</button>
+          <button
+            onClick={onClose}
+            className="rounded px-2 py-1 hover:bg-white/5"
+          >
+            ✕
+          </button>
         </div>
         <div className="p-4">{children}</div>
       </div>

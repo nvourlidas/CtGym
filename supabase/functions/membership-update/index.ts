@@ -17,12 +17,16 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
-  return new Response(body, { ...init, headers: { ...(init.headers || {}), ...buildCors(req) } });
+  return new Response(body, {
+    ...init,
+    headers: { ...(init.headers || {}), ...buildCors(req) },
+  });
 }
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -36,7 +40,9 @@ async function getAuth(req: Request) {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
   });
-  const { data: { user } } = await anon.auth.getUser();
+  const {
+    data: { user },
+  } = await anon.auth.getUser();
   if (!user) return { error: "unauthorized" };
 
   const { data: prof } = await anon
@@ -46,49 +52,94 @@ async function getAuth(req: Request) {
     .maybeSingle();
 
   if (!prof) return { error: "profile_not_found" };
-  const isAdmin = user.app_metadata?.role === "admin" || (prof as any).role === "admin";
+  const isAdmin =
+    user.app_metadata?.role === "admin" || (prof as any).role === "admin";
   return { tenantId: (prof as any).tenant_id as string, isAdmin };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
-  if (req.method !== "POST") return withCors("Method not allowed", { status: 405 }, req);
+  if (req.method !== "POST") {
+    return withCors("Method not allowed", { status: 405 }, req);
+  }
 
   const auth = await getAuth(req);
-  if ((auth as any).error) return withCors(JSON.stringify({ error: (auth as any).error }), { status: 401 }, req);
+  if ((auth as any).error) {
+    return withCors(JSON.stringify({ error: (auth as any).error }), {
+      status: 401,
+    }, req);
+  }
   const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
-  if (!isAdmin) return withCors(JSON.stringify({ error: "forbidden" }), { status: 403 }, req);
+  if (!isAdmin) {
+    return withCors(JSON.stringify({ error: "forbidden" }), {
+      status: 403,
+    }, req);
+  }
 
   let body: any;
-  try { body = await req.json(); } catch { return withCors(JSON.stringify({ error: "invalid_json" }), { status: 400 }, req); }
+  try {
+    body = await req.json();
+  } catch {
+    return withCors(
+      JSON.stringify({ error: "invalid_json" }),
+      { status: 400 },
+      req,
+    );
+  }
 
   const id = String(body?.id ?? "");
-  if (!id) return withCors(JSON.stringify({ error: "id_required" }), { status: 400 }, req);
+  if (!id) {
+    return withCors(JSON.stringify({ error: "id_required" }), {
+      status: 400,
+    }, req);
+  }
 
   const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
 
   // Load existing membership
   const { data: existing, error: exErr } = await admin
     .from("memberships")
-    .select("id, tenant_id, starts_at, ends_at, plan_id, remaining_sessions")
+    .select("id, tenant_id, starts_at, ends_at, plan_id, remaining_sessions, debt, days_remaining")
     .eq("id", id)
     .maybeSingle();
 
   if (exErr || !existing) {
-    return withCors(JSON.stringify({ error: exErr?.message ?? "not_found" }), { status: 404 }, req);
+    return withCors(
+      JSON.stringify({ error: exErr?.message ?? "not_found" }),
+      { status: 404 },
+      req,
+    );
   }
   if (existing.tenant_id !== tenantId) {
-    return withCors(JSON.stringify({ error: "tenant_mismatch" }), { status: 403 }, req);
+    return withCors(JSON.stringify({ error: "tenant_mismatch" }), {
+      status: 403,
+    }, req);
   }
 
   const updates: any = {};
+
+  // Simple fields
   if (typeof body?.status === "string") updates.status = body.status;
-  if (typeof body?.starts_at === "string") updates.starts_at = new Date(body.starts_at).toISOString();
-  if (body?.ends_at === null || typeof body?.ends_at === "string") {
-    updates.ends_at = body?.ends_at ? new Date(body.ends_at).toISOString() : null;
+
+  if (typeof body?.starts_at === "string") {
+    updates.starts_at = new Date(body.starts_at).toISOString();
   }
+
+  if (body?.ends_at === null || typeof body?.ends_at === "string") {
+    updates.ends_at = body?.ends_at
+      ? new Date(body.ends_at).toISOString()
+      : null;
+  }
+
   if (Number.isFinite(body?.remaining_sessions)) {
-    updates.remaining_sessions = Math.max(0, Number(body.remaining_sessions));
+    updates.remaining_sessions = Math.max(
+      0,
+      Number(body.remaining_sessions),
+    );
+  }
+
+  if (Number.isFinite(body?.debt)) {
+    updates.debt = Math.max(0, Number(body.debt));
   }
 
   // If plan_id changes -> reload plan, snapshot, recompute ends/credits
@@ -96,15 +147,23 @@ serve(async (req) => {
     const newPlanId = String(body.plan_id);
     const { data: plan, error: planErr } = await admin
       .from("membership_plans")
-      .select("id, tenant_id, name, price, plan_kind, duration_days, session_credits")
+      .select(
+        "id, tenant_id, name, price, plan_kind, duration_days, session_credits",
+      )
       .eq("id", newPlanId)
       .maybeSingle();
 
     if (planErr || !plan) {
-      return withCors(JSON.stringify({ error: planErr?.message ?? "plan_not_found" }), { status: 400 }, req);
+      return withCors(
+        JSON.stringify({ error: planErr?.message ?? "plan_not_found" }),
+        { status: 400 },
+        req,
+      );
     }
     if (plan.tenant_id !== tenantId) {
-      return withCors(JSON.stringify({ error: "plan_wrong_tenant" }), { status: 403 }, req);
+      return withCors(JSON.stringify({ error: "plan_wrong_tenant" }), {
+        status: 403,
+      }, req);
     }
 
     updates.plan_id = newPlanId;
@@ -113,7 +172,10 @@ serve(async (req) => {
     updates.plan_price = plan.price;
 
     // Reset remaining sessions based on new plan
-    updates.remaining_sessions = plan.session_credits && plan.session_credits > 0 ? Number(plan.session_credits) : null;
+    updates.remaining_sessions =
+      plan.session_credits && plan.session_credits > 0
+        ? Number(plan.session_credits)
+        : null;
 
     // Recompute ends_at if plan has duration
     const startsISO = updates.starts_at ?? existing.starts_at;
@@ -128,6 +190,28 @@ serve(async (req) => {
     }
   }
 
+  // ── Recompute days_remaining based on effective ends_at ───────────────
+  const effectiveEndsISO = updates.ends_at ?? existing.ends_at;
+  if (effectiveEndsISO) {
+    const endDate = new Date(effectiveEndsISO);
+    const today = new Date();
+    const todayMid = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate(),
+    );
+    const endMid = new Date(
+      endDate.getFullYear(),
+      endDate.getMonth(),
+      endDate.getDate(),
+    );
+    const diffMs = endMid.getTime() - todayMid.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    updates.days_remaining = diffDays > 0 ? diffDays : 0;
+  } else {
+    updates.days_remaining = null;
+  }
+
   const { data, error } = await admin
     .from("memberships")
     .update(updates)
@@ -136,7 +220,11 @@ serve(async (req) => {
     .single();
 
   if (error) {
-    return withCors(JSON.stringify({ error: error.message }), { status: 400 }, req);
+    return withCors(JSON.stringify({ error: error.message }), {
+      status: 400,
+    }, req);
   }
-  return withCors(JSON.stringify({ ok: true, data }), { status: 200 }, req);
+  return withCors(JSON.stringify({ ok: true, data }), {
+    status: 200,
+  }, req);
 });

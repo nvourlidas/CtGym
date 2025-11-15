@@ -61,7 +61,7 @@ export default function AppShell() {
                   <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
               </button>
-              <div className="font-semibold">Cloudtec Gym <span className="opacity-60">— Admin</span></div>
+              <div className="font-semibold flex justify-center gap-1"><img src='public\logo yellow 1080 x 1080.svg' className='w-7'></img><span>Cloudtec Gym </span><span className="opacity-60">— Admin</span></div>
               <div className="hidden sm:block text-sm opacity-60">
                 {tenant?.name ? `• ${tenant.name}` : '• —'}
               </div>
@@ -205,7 +205,7 @@ function NavItem({
       end={end}
       className={({ isActive }) =>
         [
-          'block rounded-md px-3 py-2 text-md transition-colors flex items-center gap-2',
+          'rounded-md px-3 py-2 text-md transition-colors flex items-center gap-2',
           nested ? 'ml-1' : '',
           isActive ? 'bg-primary/70 text-text-primary' : 'opacity-80 hover:opacity-100 hover:bg-secondary/10',
         ].join(' ')

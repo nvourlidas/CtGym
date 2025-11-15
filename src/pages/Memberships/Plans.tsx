@@ -4,6 +4,12 @@ import { useAuth } from '../../auth';
 
 type PlanKind = 'duration' | 'sessions' | 'hybrid';
 
+type Category = {
+  id: string;
+  name: string;
+  color: string | null;
+};
+
 type Plan = {
   id: string;
   tenant_id: string;
@@ -14,6 +20,12 @@ type Plan = {
   duration_days: number | null;   // days of access
   session_credits: number | null; // number of sessions
   created_at: string;
+  category_id: string | null;
+  class_categories?: {
+    id: string;
+    name: string | null;
+    color: string | null;
+  } | null;
 };
 
 export default function Plans() {
@@ -25,6 +37,8 @@ export default function Plans() {
   const [editRow, setEditRow] = useState<Plan | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [categories, setCategories] = useState<Category[]>([]);
+
   // NEW: pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -33,24 +47,74 @@ export default function Plans() {
     if (!profile?.tenant_id) return;
     setLoading(true);
     setError(null);
+
     const { data, error } = await supabase
       .from('membership_plans')
-      .select('id, tenant_id, name, description, price, plan_kind, duration_days, session_credits, created_at')
+      .select(`
+        id,
+        tenant_id,
+        name,
+        description,
+        price,
+        plan_kind,
+        duration_days,
+        session_credits,
+        created_at,
+        category_id,
+        class_categories (
+          id,
+          name,
+          color
+        )
+      `)
       .eq('tenant_id', profile.tenant_id)
       .order('created_at', { ascending: false });
-    if (error) setError(error.message);
-    setRows((data as Plan[]) ?? []);
+
+    if (error) {
+      setError(error.message);
+      setRows([]);
+      setLoading(false);
+      return;
+    }
+
+    const normalized: Plan[] = (data as any[] ?? []).map((row) => ({
+      ...row,
+      class_categories: Array.isArray(row.class_categories)
+        ? row.class_categories[0] ?? null
+        : row.class_categories ?? null,
+    }));
+
+    setRows(normalized);
     setLoading(false);
   }
 
   useEffect(() => { load(); }, [profile?.tenant_id]);
+
+  // Load categories for this tenant
+  useEffect(() => {
+    if (!profile?.tenant_id) return;
+
+    supabase
+      .from('class_categories')
+      .select('id, name, color')
+      .eq('tenant_id', profile.tenant_id)
+      .order('name', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('load categories error', error);
+        } else {
+          setCategories(data || []);
+        }
+      });
+  }, [profile?.tenant_id]);
 
   const filtered = useMemo(() => {
     if (!q) return rows;
     const needle = q.toLowerCase();
     return rows.filter(r =>
       (r.name ?? '').toLowerCase().includes(needle) ||
-      (r.description ?? '').toLowerCase().includes(needle)
+      (r.description ?? '').toLowerCase().includes(needle) ||
+      (r.class_categories?.name ?? '').toLowerCase().includes(needle)
     );
   }, [rows, q]);
 
@@ -98,33 +162,49 @@ export default function Plans() {
             <tr className="text-left">
               <Th>Ονομασία</Th>
               <Th>Περιγραφή</Th>
+              <Th>Κατηγορία</Th>
               <Th>Τιμή</Th>
               <Th>Τύπος</Th>
-              <Th>Οφέλοι</Th>
+              <Th>Οφέλη</Th>
               <Th>Δημιουργήθηκε</Th>
               <Th className="text-right pr-3">Ενέργειες</Th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={6}>Loading…</td></tr>
+              <tr><td className="px-3 py-4 opacity-60" colSpan={8}>Loading…</td></tr>
             )}
             {!loading && filtered.length === 0 && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={6}>Κανένα Πλάνο</td></tr>
+              <tr><td className="px-3 py-4 opacity-60" colSpan={8}>Κανένα Πλάνο</td></tr>
             )}
             {!loading && filtered.length > 0 && paginated.map(p => (
               <tr key={p.id} className="border-t border-white/10 hover:bg-secondary/10">
                 <Td className="font-medium">{p.name}</Td>
                 <Td className="font-medium">{p.description}</Td>
+                <Td>
+                  {p.class_categories ? (
+                    <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5">
+                      {p.class_categories.color && (
+                        <span
+                          className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                          style={{ backgroundColor: p.class_categories.color }}
+                        />
+                      )}
+                      <span>{p.class_categories.name}</span>
+                    </span>
+                  ) : (
+                    <span className="text-xs text-text-secondary">—</span>
+                  )}
+                </Td>
                 <Td>{p.price != null ? formatMoney(p.price) : '—'}</Td>
                 <Td className="uppercase">{p.plan_kind}</Td>
                 <Td>
                   {[
                     p.duration_days ? `${p.duration_days} μέρες` : null,
-                    p.session_credits ? `${p.session_credits} υπόλοιπο` : null,
+                    p.session_credits ? `${p.session_credits} συνεδρίες` : null,
                   ].filter(Boolean).join(' • ') || '—'}
                 </Td>
-                <Td>{new Date(p.created_at).toLocaleString()}</Td>
+                <Td>{formatDateDMY(new Date(p.created_at).toLocaleString())}</Td>
                 <Td className="text-right">
                   <button
                     className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
@@ -188,12 +268,14 @@ export default function Plans() {
       {showCreate && (
         <CreatePlanModal
           tenantId={profile?.tenant_id!}
+          categories={categories}
           onClose={() => { setShowCreate(false); load(); }}
         />
       )}
       {editRow && (
         <EditPlanModal
           row={editRow}
+          categories={categories}
           onClose={() => { setEditRow(null); load(); }}
         />
       )}
@@ -233,13 +315,22 @@ function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) 
 }
 
 /* ── Create ───────────────────────────────────────────────────────────── */
-function CreatePlanModal({ tenantId, onClose }: { tenantId: string; onClose: () => void }) {
+function CreatePlanModal({
+  tenantId,
+  categories,
+  onClose,
+}: {
+  tenantId: string;
+  categories: Category[];
+  onClose: () => void;
+}) {
   const [name, setName] = useState('');
   const [price, setPrice] = useState<number>(0);
   const [planKind, setPlanKind] = useState<PlanKind>('duration');
   const [durationDays, setDurationDays] = useState<number>(0);
   const [sessionCredits, setSessionCredits] = useState<number>(0);
   const [description, setDescription] = useState('');
+  const [categoryId, setCategoryId] = useState<string>('');
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -259,6 +350,7 @@ function CreatePlanModal({ tenantId, onClose }: { tenantId: string; onClose: () 
         duration_days: durationDays || null,
         session_credits: sessionCredits || null,
         description,
+        category_id: categoryId || null,
       },
     });
     setBusy(false);
@@ -319,6 +411,21 @@ function CreatePlanModal({ tenantId, onClose }: { tenantId: string; onClose: () 
         </FormRow>
       )}
 
+      <FormRow label="Κατηγορία">
+        <select
+          className="input"
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+        >
+          <option value="">Χωρίς κατηγορία</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </FormRow>
+
       <FormRow label="Περιγραφή">
         <textarea
           className="input"
@@ -338,13 +445,22 @@ function CreatePlanModal({ tenantId, onClose }: { tenantId: string; onClose: () 
 }
 
 /* ── Edit ─────────────────────────────────────────────────────────────── */
-function EditPlanModal({ row, onClose }: { row: Plan; onClose: () => void }) {
+function EditPlanModal({
+  row,
+  categories,
+  onClose,
+}: {
+  row: Plan;
+  categories: Category[];
+  onClose: () => void;
+}) {
   const [name, setName] = useState(row.name);
   const [price, setPrice] = useState<number>(row.price ?? 0);
   const [planKind, setPlanKind] = useState<PlanKind>(row.plan_kind);
   const [durationDays, setDurationDays] = useState<number>(row.duration_days ?? 0);
   const [sessionCredits, setSessionCredits] = useState<number>(row.session_credits ?? 0);
   const [description, setDescription] = useState(row.description ?? '');
+  const [categoryId, setCategoryId] = useState<string>(row.category_id ?? '');
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -363,6 +479,7 @@ function EditPlanModal({ row, onClose }: { row: Plan; onClose: () => void }) {
         duration_days: durationDays,
         session_credits: sessionCredits,
         description,
+        category_id: categoryId || null,
       },
     });
     setBusy(false);
@@ -423,6 +540,21 @@ function EditPlanModal({ row, onClose }: { row: Plan; onClose: () => void }) {
         </FormRow>
       )}
 
+      <FormRow label="Κατηγορία">
+        <select
+          className="input"
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+        >
+          <option value="">Χωρίς κατηγορία</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+      </FormRow>
+
       <FormRow label="Περιγραφή">
         <textarea
           className="input"
@@ -469,4 +601,14 @@ function formatMoney(n: number) {
     currency: 'EUR',
     maximumFractionDigits: 2,
   }).format(n);
+}
+
+function formatDateDMY(iso?: string | null) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
 }

@@ -2,7 +2,7 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Users, Dumbbell, CalendarClock, BookmarkCheck,
-  Layers, CreditCard, BadgeDollarSign, CalendarPlus
+  Layers, CreditCard, BadgeDollarSign, CalendarPlus, Folder
 } from 'lucide-react';
 
 export type NavEntry =
@@ -18,12 +18,17 @@ export type NavEntry =
     };
 
 export const NAV: NavEntry[] = [
-  { type: 'section', title: 'Main' },
+  { type: 'section', title: 'Κυρια' },
   { type: 'item', label: 'Dashboard', to: '/', end: true, icon: LayoutDashboard },
   { type: 'item', label: 'Μέλη', to: '/members', icon: Users },
   { type: 'item', label: 'Τμήματα', to: '/classes', icon: Dumbbell },
+  { type: 'item', label: 'Κατηγορίες', to: '/categories', icon: Folder },
 
-  {
+
+
+  { type: 'section', title: 'Διαχειριση' },
+
+    {
     type: 'group',
     label: 'Προγραμματισμός',
     icon: CalendarClock,
@@ -43,6 +48,4 @@ export const NAV: NavEntry[] = [
       { label: 'Συνδρομές', to: '/memberships', icon: BookmarkCheck },
     ],
   },
-
-  { type: 'section', title: 'Management' },
 ];
