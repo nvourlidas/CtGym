@@ -13,7 +13,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (params.get('err') === 'unauthorized') {
-      setError('Your account does not have admin access.');
+      setError('Ο λογαριασμός σας δεν έχει πρόσβαση διαχειριστή.');
     }
   }, [params]);
 
@@ -21,12 +21,14 @@ export default function LoginPage() {
     setError(null);
     setPending(true);
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password: pw });
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password: pw,
+      });
       if (error) throw error;
 
-      // Check role immediately
       const userId = data.user?.id;
-      if (!userId) throw new Error('No user session');
+      if (!userId) throw new Error('Δεν βρέθηκε συνεδρία χρήστη.');
 
       const { data: profile, error: pErr } = await supabase
         .from('profiles')
@@ -40,47 +42,85 @@ export default function LoginPage() {
       const isAdmin = role === 'owner' || role === 'admin';
       if (!isAdmin) {
         await supabase.auth.signOut();
-        throw new Error('Only admins can sign in to the Admin app.');
+        throw new Error('Μόνο διαχειριστές μπορούν να συνδεθούν στην Admin εφαρμογή.');
       }
 
       navigate('/', { replace: true });
     } catch (e: any) {
-      setError(e?.message || 'Login failed');
+      setError(e?.message || 'Αποτυχία σύνδεσης.');
     } finally {
       setPending(false);
     }
   };
 
   return (
-    <div className="min-h-screen grid place-items-center">
-      <div className="w-full max-w-sm border rounded-lg p-6 space-y-3">
-        <h1 className="text-xl font-semibold">Admin Login</h1>
-        <input
-          className="w-full border rounded px-3 py-2"
-          placeholder="you@example.com"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          type="email"
-          autoComplete="username"
-        />
-        <input
-          className="w-full border rounded px-3 py-2"
-          placeholder="••••••••"
-          value={pw}
-          onChange={(e) => setPw(e.target.value)}
-          type="password"
-          autoComplete="current-password"
-        />
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background bg-gradient-to-br from-background via-background/80 to-slate-950 text-slate-100 px-4">
+      {/* BIG LOGO OUTSIDE CARD */}
+      <div className="flex flex-col items-center mb-8 text-center space-y-3">
+          {/* Change src to your logo path */}
+          <img
+            src="/CTGYM.YELLOW 1080x1080.svg"
+            alt="Cloudtec Gym"
+            className="h-100 w-80 object-contain"
+          />
+        <div className="space-y-1 -mt-22">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Cloudtec Gym Admin
+          </h1>
+          <p className="text-sm text-slate-400">
+            Συνδεθείτε για να διαχειριστείτε το γυμναστήριό σας.
+          </p>
+        </div>
+      </div>
+
+      {/* CARD */}
+      <div className="w-full max-w-md bg-slate-900/70 border border-slate-800 rounded-2xl p-8 shadow-xl space-y-4 mb-40">
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-slate-200" htmlFor="email">
+            Email
+          </label>
+          <input
+            id="email"
+            className="w-full rounded-xl border border-slate-700 bg-slate-900/50 px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            autoComplete="username"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-slate-200" htmlFor="password">
+            Κωδικός πρόσβασης
+          </label>
+          <input
+            id="password"
+            className="w-full rounded-xl border border-slate-700 bg-slate-900/50 px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+            placeholder="••••••••"
+            value={pw}
+            onChange={(e) => setPw(e.target.value)}
+            type="password"
+            autoComplete="current-password"
+          />
+        </div>
+
         <button
-          className="w-full rounded px-3 py-2 bg-black text-white disabled:opacity-50"
+          className="w-full rounded-xl px-3 py-2 bg-primary-600 hover:bg-primary-500 text-sm font-medium text-white transition disabled:opacity-60 disabled:cursor-not-allowed"
           onClick={onLogin}
           disabled={pending}
         >
-          {pending ? 'Signing in…' : 'Sign in'}
+          {pending ? 'Γίνεται σύνδεση…' : 'Σύνδεση'}
         </button>
-        {error && <p className="text-red-600 text-sm">{error}</p>}
-        <p className="text-xs text-gray-500 pt-1">
-          This portal is for gym admins only.
+
+        {error && (
+          <p className="text-red-400 text-sm">
+            {error}
+          </p>
+        )}
+
+        <p className="text-xs text-slate-500 pt-2">
+          Το portal αυτό προορίζεται μόνο για διαχειριστές γυμναστηρίου (admin / owner).
         </p>
       </div>
     </div>

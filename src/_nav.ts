@@ -2,7 +2,9 @@
 import type { LucideIcon } from 'lucide-react';
 import {
   LayoutDashboard, Users, Dumbbell, CalendarClock, BookmarkCheck,
-  Layers, CreditCard, BadgeDollarSign, CalendarPlus, Folder
+  Layers, CreditCard, BadgeDollarSign, CalendarPlus, Folder,
+  Settings,
+  Palette
 } from 'lucide-react';
 
 export type NavEntry =
@@ -46,6 +48,15 @@ export const NAV: NavEntry[] = [
     children: [
       { label: 'Πλάνα Συνδρομών', to: '/plans', icon: BadgeDollarSign },
       { label: 'Συνδρομές', to: '/memberships', icon: BookmarkCheck },
+    ],
+  },
+  
+  {
+    type: 'group',
+    label: 'Settings',
+    icon: Settings,
+    children: [
+      { label: 'Εμφάνιση εφαρμογής', to: '/themesettings', icon: Palette },
     ],
   },
 ];

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase"; // ← adjust path if needed
-import { Activity, Users, Grid3X3, BarChart3, PieChart, Package, Building2, FileText, type LucideIcon } from 'lucide-react';
+import { Activity, Users, Grid3X3, BarChart3, PieChart, Package, FileText, type LucideIcon } from 'lucide-react';
 
 /* ---- Fixed presets (icon + color) ------------------------------------ */
 type Variant =
@@ -100,7 +100,7 @@ type Props = {
   tenantId: string;
 };
 
-export default function MetricWidget({ id, title, variant, query, tenantId }: Props) {
+export default function MetricWidget({ title, variant, query, tenantId }: Props) {
   const payload = useMemo(() => parsePayload(query), [query]);
   const isRawSQL = !payload;
 

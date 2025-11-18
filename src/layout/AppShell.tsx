@@ -61,7 +61,7 @@ export default function AppShell() {
                   <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
               </button>
-              <div className="font-semibold flex justify-center gap-1"><img src='public\logo yellow 1080 x 1080.svg' className='w-7'></img><span>Cloudtec Gym </span><span className="opacity-60">— Admin</span></div>
+              <div className="font-semibold flex justify-center gap-1"><img src='/CTGYM.YELLOW 1080x1080.svg' className='w-35'></img></div>
               <div className="hidden sm:block text-sm opacity-60">
                 {tenant?.name ? `• ${tenant.name}` : '• —'}
               </div>

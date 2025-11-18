@@ -27,6 +27,9 @@ type Booking = {
   user_id: string;
   status: string | null;
   created_at: string;
+  // NEW: drop-in info
+  booking_type?: 'membership' | 'drop_in' | string | null;
+  drop_in_price?: number | null;
   // joined (for display)
   profile?: Member | null;
   session?: SessionRow | null;
@@ -35,10 +38,10 @@ type Booking = {
 type StatusCode = 'booked' | 'checked_in' | 'canceled' | 'no_show';
 
 const STATUS_OPTIONS: { value: StatusCode; label: string }[] = [
-  { value: 'booked',      label: 'Κρατήθηκε' },
-  { value: 'checked_in',  label: 'Παρουσία' },
+  { value: 'booked',     label: 'Κρατήθηκε' },
+  { value: 'checked_in', label: 'Παρουσία' },
   { value: 'canceled',   label: 'Ακυρώθηκε' },
-  { value: 'no_show',     label: 'Δεν προσήλθε' },
+  { value: 'no_show',    label: 'Δεν προσήλθε' },
 ];
 
 type DateFilterMode = 'all' | 'today' | 'custom';
@@ -52,13 +55,15 @@ export default function BookingsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editRow, setEditRow] = useState<Booking | null>(null);
 
-  // NEW: filters
+  // filters
   const [classFilter, setClassFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('today');
   const [customDate, setCustomDate] = useState<string>(''); // yyyy-mm-dd
+  // NEW: booking type filter
+  const [bookingTypeFilter, setBookingTypeFilter] = useState<string>('');
 
-  // NEW: pagination state
+  // pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -72,6 +77,8 @@ export default function BookingsPage() {
       .from('bookings')
       .select(`
         id, tenant_id, session_id, user_id, status, created_at,
+        booking_type,
+        drop_in_price,
         profiles!inner(id, full_name),
         class_sessions!inner(
           id, starts_at, ends_at, capacity,
@@ -89,12 +96,16 @@ export default function BookingsPage() {
       // fallback if join not allowed by RLS
       const { data: bare, error: e2 } = await supabase
         .from('bookings')
-        .select('id, tenant_id, session_id, user_id, status, created_at')
+        .select('id, tenant_id, session_id, user_id, status, created_at, booking_type, drop_in_price')
         .eq('tenant_id', profile.tenant_id)
         .order('created_at', { ascending: false });
 
       if (e2) setError(e2.message);
-      setRows(((bare as any[]) ?? []).map(b => ({ ...b, profile: null, session: null })));
+      setRows(((bare as any[]) ?? []).map(b => ({
+        ...b,
+        profile: null,
+        session: null,
+      })));
     } else {
       const mapped = (data as any[]).map((b) => ({
         id: b.id,
@@ -103,7 +114,11 @@ export default function BookingsPage() {
         user_id: b.user_id,
         status: b.status,
         created_at: b.created_at,
-        profile: b.profiles ? { id: b.profiles.id, full_name: b.profiles.full_name } : null,
+        booking_type: b.booking_type ?? 'membership',
+        drop_in_price: b.drop_in_price ?? null,
+        profile: b.profiles
+          ? { id: b.profiles.id, full_name: b.profiles.full_name }
+          : null,
         session: b.class_sessions
           ? {
               id: b.class_sessions.id,
@@ -155,13 +170,17 @@ export default function BookingsPage() {
       list = list.filter(r => (r.status ?? 'booked') === statusFilter);
     }
 
+    // NEW: Filter by booking type (membership / drop_in)
+    if (bookingTypeFilter) {
+      list = list.filter(r => (r.booking_type ?? 'membership') === bookingTypeFilter);
+    }
+
     // Filter by date (session start date if exists, otherwise created_at)
     if (dateFilterMode === 'today' || (dateFilterMode === 'custom' && customDate)) {
       const start = new Date();
       if (dateFilterMode === 'today') {
         start.setHours(0, 0, 0, 0);
       } else {
-        // custom date
         const [yyyy, mm, dd] = customDate.split('-').map(Number);
         start.setFullYear(yyyy, (mm ?? 1) - 1, dd ?? 1);
         start.setHours(0, 0, 0, 0);
@@ -188,12 +207,12 @@ export default function BookingsPage() {
     }
 
     return list;
-  }, [rows, q, classFilter, statusFilter, dateFilterMode, customDate]);
+  }, [rows, q, classFilter, statusFilter, bookingTypeFilter, dateFilterMode, customDate]);
 
   // Reset to first page when filters / page size change
   useEffect(() => {
     setPage(1);
-  }, [q, pageSize, classFilter, statusFilter, dateFilterMode, customDate]);
+  }, [q, pageSize, classFilter, statusFilter, bookingTypeFilter, dateFilterMode, customDate]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
 
@@ -244,6 +263,17 @@ export default function BookingsPage() {
           ))}
         </select>
 
+        {/* NEW: Filter by booking type */}
+        <select
+          className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
+          value={bookingTypeFilter}
+          onChange={(e) => setBookingTypeFilter(e.target.value)}
+        >
+          <option value="">Όλοι οι τύποι</option>
+          <option value="membership">Μέλος</option>
+          <option value="drop_in">Drop-in</option>
+        </select>
+
         {/* Date filters */}
         <div className="flex items-center gap-2">
           <select
@@ -287,7 +317,7 @@ export default function BookingsPage() {
               <Th>Μέλος</Th>
               <Th>Τμήμα / Συνεδρία</Th>
               <Th>Κατηγορία</Th>
-              <Th>Κατάσταση</Th>
+              <Th>Κατάσταση / Τύπος</Th>
               <Th>Ημ. Δημιουργίας</Th>
               <Th className="text-right pr-3">Ενέργειες</Th>
             </tr>
@@ -299,55 +329,77 @@ export default function BookingsPage() {
             {!loading && filtered.length === 0 && (
               <tr><td className="px-3 py-4 opacity-60" colSpan={6}>No bookings</td></tr>
             )}
-            {!loading && filtered.length > 0 && paginated.map(b => (
-              <tr key={b.id} className="border-t border-white/10 hover:bg-secondary/10">
-                <Td>{b.profile?.full_name ?? b.user_id}</Td>
-                <Td>
-                  <div className="flex flex-col gap-1">
-                    <span>
-                      {(b.session?.classes?.title ?? '—')}
-                      {' · '}
-                      {b.session?.starts_at
-                        ? formatDateTime(b.session.starts_at)
-                        : '—'}
-                    </span>
-                    {b.session?.ends_at && (
-                      <span className="text-[11px] text-text-secondary">
-                        Λήξη: {formatDateTime(b.session.ends_at)}
+            {!loading && filtered.length > 0 && paginated.map(b => {
+              const isDropIn = (b.booking_type ?? 'membership') === 'drop_in';
+              return (
+                <tr key={b.id} className="border-t border-white/10 hover:bg-secondary/10">
+                  <Td>{b.profile?.full_name ?? b.user_id}</Td>
+                  <Td>
+                    <div className="flex flex-col gap-1">
+                      <span>
+                        {(b.session?.classes?.title ?? '—')}
+                        {' · '}
+                        {b.session?.starts_at
+                          ? formatDateTime(b.session.starts_at)
+                          : '—'}
                       </span>
-                    )}
-                  </div>
-                </Td>
-                <Td>
-                  {b.session?.classes?.class_categories ? (
-                    <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5">
-                      {b.session.classes.class_categories.color && (
-                        <span
-                          className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
-                          style={{ backgroundColor: b.session.classes.class_categories.color }}
-                        />
+                      {b.session?.ends_at && (
+                        <span className="text-[11px] text-text-secondary">
+                          Λήξη: {formatDateTime(b.session.ends_at)}
+                        </span>
                       )}
-                      <span>{b.session.classes.class_categories.name}</span>
-                    </span>
-                  ) : (
-                    <span className="text-xs text-text-secondary">—</span>
-                  )}
-                </Td>
-                <Td>
-                  {renderStatusBadge(b.status)}
-                </Td>
-                <Td>{formatDateDMY(b.created_at)}</Td>
-                <Td className="text-right">
-                  <button
-                    className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
-                    onClick={() => setEditRow(b)}
-                  >
-                    Επεξεργασία
-                  </button>
-                  <DeleteButton id={b.id} onDeleted={load} />
-                </Td>
-              </tr>
-            ))}
+                    </div>
+                  </Td>
+                  <Td>
+                    {b.session?.classes?.class_categories ? (
+                      <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5">
+                        {b.session.classes.class_categories.color && (
+                          <span
+                            className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                            style={{ backgroundColor: b.session.classes.class_categories.color }}
+                          />
+                        )}
+                        <span>{b.session.classes.class_categories.name}</span>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-text-secondary">—</span>
+                    )}
+                  </Td>
+                  <Td>
+                    <div className="flex flex-col gap-1">
+                      {renderStatusBadge(b.status)}
+                      <div className="flex items-center gap-2 text-[11px]">
+                        <span
+                          className={
+                            'inline-flex items-center rounded-full px-2 py-0.5 border ' +
+                            (isDropIn
+                              ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                              : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300')
+                          }
+                        >
+                          {isDropIn ? 'Drop-in' : 'Μέλος'}
+                        </span>
+                        {isDropIn && b.drop_in_price != null && (
+                          <span className="opacity-80">
+                            {b.drop_in_price.toFixed(2)}€
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </Td>
+                  <Td>{formatDateDMY(b.created_at)}</Td>
+                  <Td className="text-right">
+                    <button
+                      className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
+                      onClick={() => setEditRow(b)}
+                    >
+                      Επεξεργασία
+                    </button>
+                    <DeleteButton id={b.id} onDeleted={load} />
+                  </Td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
@@ -444,13 +496,15 @@ function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) 
   );
 }
 
-/* Create / Edit modals (μόνο μικρές αλλαγές στο Select Sessions για κατηγορία) */
+/* Create / Edit modals */
 
 function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: () => void }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [userId, setUserId] = useState('');
   const [sessionId, setSessionId] = useState('');
+  // NEW: booking type
+  const [bookingType, setBookingType] = useState<'membership' | 'drop_in'>('membership');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -462,6 +516,7 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
         .eq('role', 'member')
         .order('full_name', { ascending: true });
       setMembers((m as any[]) ?? []);
+
       const { data: s } = await supabase
         .from('class_sessions')
         .select('id, starts_at, ends_at, capacity, classes(id, title, class_categories(name, color))')
@@ -475,7 +530,13 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
     if (!userId || !sessionId) return;
     setBusy(true);
     const res = await supabase.functions.invoke('booking-create', {
-      body: { tenant_id: tenantId, user_id: userId, session_id: sessionId },
+      body: {
+        tenant_id: tenantId,
+        user_id: userId,
+        session_id: sessionId,
+        // NEW: send type (backend can ignore until you update it)
+        booking_type: bookingType,
+      },
     });
     setBusy(false);
     if (res.error || (res.data as any)?.error) {
@@ -511,6 +572,17 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
           ))}
         </select>
       </FormRow>
+      {/* NEW: booking type select */}
+      <FormRow label="Τύπος κράτησης">
+        <select
+          className="input"
+          value={bookingType}
+          onChange={(e) => setBookingType(e.target.value as 'membership' | 'drop_in')}
+        >
+          <option value="membership">Μέλος (συνδρομή)</option>
+          <option value="drop_in">Drop-in (μεμονωμένη)</option>
+        </select>
+      </FormRow>
       <div className="mt-4 flex justify-end gap-2">
         <button className="btn-secondary" onClick={onClose}>Ακύρωση</button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
@@ -527,7 +599,9 @@ function EditBookingModal({ row, onClose }: { row: Booking; onClose: () => void 
 
   const submit = async () => {
     setBusy(true);
-    const res = await supabase.functions.invoke('booking-update', { body: { id: row.id, status } });
+    const res = await supabase.functions.invoke('booking-update', {
+      body: { id: row.id, status },
+    });
     setBusy(false);
     if (res.error || (res.data as any)?.error) {
       alert(res.error?.message ?? (res.data as any)?.error ?? 'Save failed');

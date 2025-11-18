@@ -96,12 +96,37 @@ serve(async (req) => {
   const title = (body?.title ?? "").trim();
   const description = (body?.description ?? null) || null;
   const tenant_id = (body?.tenant_id ?? "").trim();
-  // NEW: optional category_id
+
+  // optional category_id
   const category_id_raw = body?.category_id ?? null;
   const category_id =
     typeof category_id_raw === "string" && category_id_raw.trim().length > 0
       ? category_id_raw.trim()
       : null;
+
+  // NEW: drop-in fields
+  const drop_in_enabled: boolean = !!body?.drop_in_enabled;
+
+  let drop_in_price: number | null = null;
+  if (drop_in_enabled) {
+    const raw = body?.drop_in_price;
+    if (raw !== null && raw !== undefined && raw !== "") {
+      const parsed = Number(raw);
+      if (Number.isNaN(parsed) || parsed < 0) {
+        return withCors(
+          JSON.stringify({ error: "invalid_drop_in_price" }),
+          { status: 400 },
+          req,
+        );
+      }
+      drop_in_price = parsed;
+    } else {
+      // allow 0 or null depending on your business rules; here we allow null = "not set"
+      drop_in_price = null;
+    }
+  } else {
+    drop_in_price = null;
+  }
 
   if (!title) {
     return withCors(
@@ -153,8 +178,18 @@ serve(async (req) => {
 
   const { data, error } = await admin
     .from("classes")
-    .insert({ tenant_id, title, description, category_id })
-    .select("id, tenant_id, title, description, created_at, category_id")
+    .insert({
+      tenant_id,
+      title,
+      description,
+      category_id,
+      // NEW
+      drop_in_enabled,
+      drop_in_price,
+    })
+    .select(
+      "id, tenant_id, title, description, created_at, category_id, drop_in_enabled, drop_in_price",
+    )
     .single();
 
   if (error) {

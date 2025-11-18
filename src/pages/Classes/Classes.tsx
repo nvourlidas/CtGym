@@ -9,13 +9,15 @@ type GymClass = {
   description: string | null;
   created_at: string;
   category_id: string | null;
+  // NEW
+  drop_in_enabled: boolean;
+  drop_in_price: number | null;
   class_categories?: {
     id: string;
     name: string;
     color: string | null;
   } | null;
 };
-
 
 type Category = {
   id: string;
@@ -36,43 +38,45 @@ export default function ClassesPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-async function load() {
-  if (!profile?.tenant_id) return;
-  setLoading(true);
+  async function load() {
+    if (!profile?.tenant_id) return;
+    setLoading(true);
 
-  const { data, error } = await supabase
-    .from('classes')
-    .select(
-      `
+    const { data, error } = await supabase
+      .from('classes')
+      .select(
+        `
         id,
         tenant_id,
         title,
         description,
         created_at,
         category_id,
+        drop_in_enabled,
+        drop_in_price,
         class_categories (
           id,
           name,
           color
         )
       `
-    )
-    .eq('tenant_id', profile.tenant_id)
-    .order('created_at', { ascending: false });
+      )
+      .eq('tenant_id', profile.tenant_id)
+      .order('created_at', { ascending: false });
 
-  if (!error && data) {
-    // supabase returns class_categories as array -> keep only first item
-    const normalized: GymClass[] = (data as any[]).map((row) => ({
-      ...row,
-      class_categories: Array.isArray(row.class_categories)
-        ? row.class_categories[0] ?? null
-        : row.class_categories ?? null,
-    }));
-    setRows(normalized);
+    if (!error && data) {
+      // supabase returns class_categories as array -> keep only first item
+      const normalized: GymClass[] = (data as any[]).map((row) => ({
+        ...row,
+        class_categories: Array.isArray(row.class_categories)
+          ? row.class_categories[0] ?? null
+          : row.class_categories ?? null,
+      }));
+      setRows(normalized);
+    }
+
+    setLoading(false);
   }
-
-  setLoading(false);
-}
 
   useEffect(() => {
     load();
@@ -146,6 +150,8 @@ async function load() {
               <Th>Τίτλος</Th>
               <Th>Περιγραφή</Th>
               <Th>Κατηγορία</Th>
+              {/* NEW */}
+              <Th>Drop-in</Th>
               <Th>Ημ. Δημιουργίας</Th>
               <Th className="text-right pr-3">Ενέργειες</Th>
             </tr>
@@ -153,14 +159,14 @@ async function load() {
           <tbody>
             {loading && (
               <tr>
-                <td className="px-3 py-4 opacity-60" colSpan={5}>
+                <td className="px-3 py-4 opacity-60" colSpan={6}>
                   Loading…
                 </td>
               </tr>
             )}
             {!loading && filtered.length === 0 && (
               <tr>
-                <td className="px-3 py-4 opacity-60" colSpan={5}>
+                <td className="px-3 py-4 opacity-60" colSpan={6}>
                   Δεν υπάρχουν τμήματα
                 </td>
               </tr>
@@ -191,6 +197,22 @@ async function load() {
                       </span>
                     ) : (
                       <span className="text-xs text-text-secondary">—</span>
+                    )}
+                  </Td>
+                  {/* NEW: Drop-in column */}
+                  <Td>
+                    {c.drop_in_enabled ? (
+                      <span className="text-xs">
+                        Ναι
+                        {c.drop_in_price != null && (
+                          <span className="opacity-80">
+                            {' '}
+                            ({c.drop_in_price.toFixed(2)}€)
+                          </span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-text-secondary">Όχι</span>
                     )}
                   </Td>
                   <Td>{new Date(c.created_at).toLocaleString()}</Td>
@@ -328,7 +350,9 @@ function CreateClassModal({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [categoryId, setCategoryId] = useState<string>('');
-  const [busy, setBusy] = useState(false);
+  // NEW
+  const [dropInEnabled, setDropInEnabled] = useState(false);
+  const [dropInPrice, setDropInPrice] = useState<number | null>(null);
 
   const submit = async () => {
     if (!title.trim()) return;
@@ -339,11 +363,16 @@ function CreateClassModal({
         title: title.trim(),
         description: description.trim() || null,
         category_id: categoryId || null,
+        // NEW
+        drop_in_enabled: dropInEnabled,
+        drop_in_price: dropInEnabled ? dropInPrice : null,
       },
     });
     setBusy(false);
     onClose();
   };
+
+  const [busy, setBusy] = useState(false);
 
   return (
     <Modal onClose={onClose} title="Νέο Τμήμα">
@@ -376,6 +405,39 @@ function CreateClassModal({
           ))}
         </select>
       </FormRow>
+
+      {/* NEW: Drop-in config */}
+      <FormRow label="Drop-in συμμετοχή">
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={dropInEnabled}
+              onChange={(e) => setDropInEnabled(e.target.checked)}
+            />
+            <span>Επιτρέπεται drop-in για αυτό το τμήμα</span>
+          </label>
+          {dropInEnabled && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm opacity-80">Τιμή ανά συμμετοχή (€):</span>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                className="input max-w-[120px]"
+                value={dropInPrice ?? ''}
+                onChange={(e) =>
+                  setDropInPrice(
+                    e.target.value === '' ? null : Number(e.target.value)
+                  )
+                }
+              />
+            </div>
+          )}
+        </div>
+      </FormRow>
+
       <div className="mt-4 flex justify-end gap-2">
         <button className="btn-secondary" onClick={onClose}>
           Ακύρωση
@@ -402,6 +464,13 @@ function EditClassModal({
   const [categoryId, setCategoryId] = useState<string>(
     row.category_id ?? ''
   );
+  // NEW: init from row
+  const [dropInEnabled, setDropInEnabled] = useState<boolean>(
+    row.drop_in_enabled ?? false
+  );
+  const [dropInPrice, setDropInPrice] = useState<number | null>(
+    row.drop_in_price ?? null
+  );
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -413,6 +482,9 @@ function EditClassModal({
         title: title.trim(),
         description: description.trim() || null,
         category_id: categoryId || null,
+        // NEW
+        drop_in_enabled: dropInEnabled,
+        drop_in_price: dropInEnabled ? dropInPrice : null,
       },
     });
     if (res.error) {
@@ -454,6 +526,39 @@ function EditClassModal({
           ))}
         </select>
       </FormRow>
+
+      {/* NEW: Drop-in config */}
+      <FormRow label="Drop-in συμμετοχή">
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={dropInEnabled}
+              onChange={(e) => setDropInEnabled(e.target.checked)}
+            />
+            <span>Επιτρέπεται drop-in για αυτό το τμήμα</span>
+          </label>
+          {dropInEnabled && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm opacity-80">Τιμή ανά συμμετοχή (€):</span>
+              <input
+                type="number"
+                min={0}
+                step={0.5}
+                className="input max-w-[120px]"
+                value={dropInPrice ?? ''}
+                onChange={(e) =>
+                  setDropInPrice(
+                    e.target.value === '' ? null : Number(e.target.value)
+                  )
+                }
+              />
+            </div>
+          )}
+        </div>
+      </FormRow>
+
       <div className="mt-4 flex justify-end gap-2">
         <button className="btn-secondary" onClick={onClose}>
           Ακύρωση

@@ -19,6 +19,7 @@ import ClassSessionsPage from './pages/Classes/ClassSessions';
 import Bookings from './pages/Classes/Bookings';
 import Plans from './pages/Memberships/Plans';
 import Categories from './pages/CategoriesPage';
+import ThemeSettings from './pages/ThemeSettingsPage';
 
 
 //test program
@@ -43,6 +44,7 @@ const router = createBrowserRouter([
       { path: 'bookings', element: <Bookings /> },
       { path: 'plans', element: <Plans /> },
       { path: 'memberships', element: <Memberships /> },
+      { path: 'themesettings', element: <ThemeSettings /> },
     ],
   },
 ]);

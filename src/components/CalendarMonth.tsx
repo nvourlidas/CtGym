@@ -11,7 +11,7 @@ type Session = {
     classes?: { title: string }[] | { title: string } | null;
 };
 type ViewMode = 'month' | 'day';
-type GymClass = { id: string; title: string };
+
 
 function startOfMonth(d: Date) { const x = new Date(d); x.setDate(1); x.setHours(0, 0, 0, 0); return x; }
 function endOfMonth(d: Date) { const x = new Date(d); x.setMonth(x.getMonth() + 1, 0); x.setHours(23, 59, 59, 999); return x; }
@@ -43,12 +43,11 @@ export function CalendarMonth({
 
     const [viewMode, setViewMode] = useState<ViewMode>('month');
     const [rows, setRows] = useState<Session[]>([]);
-    const [classes, setClasses] = useState<GymClass[]>([]);
+
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
     const monthStart = useMemo(() => startOfMonth(cursor), [cursor]);
-    const monthEnd = useMemo(() => endOfMonth(cursor), [cursor]);
     const gridStart = useMemo(() => startOfWeek(monthStart), [monthStart]);
     const gridDays = 42; // 6 weeks
 
@@ -106,17 +105,12 @@ export function CalendarMonth({
             setError(sess.error?.message ?? cls.error?.message ?? 'Failed to load');
         } else {
             setRows((sess.data as Session[]) ?? []);
-            setClasses((cls.data as GymClass[]) ?? []);
+           
         }
         setLoading(false);
     }
 
     useEffect(() => { load(); /* eslint-disable-next-line */ }, [tenantId, cursor, classId, viewMode]);
-
-    const filtered = useMemo(
-        () => (classId ? rows.filter(r => r.class_id === classId) : rows),
-        [rows, classId]
-    );
 
     const sessionsByDay = useMemo(() => {
         const map: Record<string, Session[]> = {};
@@ -223,7 +217,7 @@ export function CalendarMonth({
                             {['Κυρ', 'Δευ', 'Τρι', 'Τετ', 'Πεμ', 'Παρ', 'Σαβ'].map(d => <div key={d} className="px-1 py-1">{d}</div>)}
                         </div>
                         <div className={height ? 'h-[calc(100%-22px)] overflow-auto' : ''}>
-                            <div className="grid grid-cols-7 gap-[1px] bg-white/10 rounded-md overflow-hidden">
+                            <div className="grid grid-cols-7 gap-1 bg-white/10 rounded-md overflow-hidden">
                                 {days.map((day, idx) => {
                                     const key = ymdLocal(day); // important: local key
                                     const isOtherMonth = day.getMonth() !== monthStart.getMonth();

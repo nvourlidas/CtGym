@@ -8,6 +8,9 @@ type Booking = {
   user_id: string;
   status: "booked" | "checked_in" | "canceled" | "no_show" | string;
   created_at: string;
+  // NEW
+  booking_type: "membership" | "drop_in" | string;
+  drop_in_price: number | null;
 };
 
 type Profile = {
@@ -33,16 +36,29 @@ export default function SessionAttendanceModal({
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<Booking[]>([]);
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
+  // NEW: capacity state
+  const [capacity, setCapacity] = useState<number | null>(null);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       setError(null);
 
-      // 1) fetch bookings for this session
+      // 1) fetch bookings for this session (NOW includes booking_type + drop_in_price)
       const b = await supabase
         .from("bookings")
-        .select("id, tenant_id, session_id, user_id, status, created_at")
+        .select(
+          `
+          id,
+          tenant_id,
+          session_id,
+          user_id,
+          status,
+          created_at,
+          booking_type,
+          drop_in_price
+        `
+        )
         .eq("tenant_id", tenantId)
         .eq("session_id", sessionId)
         .order("created_at", { ascending: true });
@@ -69,6 +85,19 @@ export default function SessionAttendanceModal({
           setProfiles(map);
         }
       }
+
+      // 3) fetch session capacity
+      const s = await supabase
+        .from("class_sessions")
+        .select("capacity")
+        .eq("tenant_id", tenantId)
+        .eq("id", sessionId)
+        .maybeSingle();
+
+      if (!s.error && s.data) {
+        setCapacity(s.data.capacity ?? null);
+      }
+
       setLoading(false);
     })();
   }, [tenantId, sessionId]);
@@ -88,6 +117,19 @@ export default function SessionAttendanceModal({
     return g;
   }, [rows]);
 
+  // NEW: active bookings (booked + checked_in)
+  const activeCount = useMemo(
+    () =>
+      rows.filter((r) => {
+        const s = (r.status || "").toLowerCase();
+        return s === "booked" || s === "checked_in";
+      }).length,
+    [rows]
+  );
+
+  const remainingSlots =
+    capacity && capacity > 0 ? Math.max(capacity - activeCount, 0) : null;
+
   const Section = ({
     title,
     items,
@@ -105,15 +147,37 @@ export default function SessionAttendanceModal({
         )}
         {items.map((b) => {
           const p = profiles[b.user_id];
+          const isDropIn = (b.booking_type || "").toLowerCase() === "drop_in";
           return (
             <div
               key={b.id}
               className="rounded-md border border-white/10 px-2 py-1 text-sm"
               title={p?.full_name || b.user_id}
             >
-              <div className="font-medium truncate">
-                {p?.full_name ?? "—"}
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-medium truncate">
+                  {p?.full_name ?? "—"}
+                </div>
+
+                {/* badge showing membership vs drop-in */}
+                <div className="flex items-center gap-1 shrink-0">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ${
+                      isDropIn
+                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                        : "bg-emerald-500/15 text-emerald-300 border border-emerald-500/40"
+                    }`}
+                  >
+                    {isDropIn ? "Drop-in" : "Μέλος"}
+                  </span>
+                  {isDropIn && b.drop_in_price != null && (
+                    <span className="text-[11px] opacity-80">
+                      {b.drop_in_price.toFixed(2)}€
+                    </span>
+                  )}
+                </div>
               </div>
+
               <div className="text-xs opacity-70 truncate">
                 {p?.phone ?? b.user_id}
               </div>
@@ -135,6 +199,23 @@ export default function SessionAttendanceModal({
             </div>
             {sessionTime && (
               <div className="text-xs opacity-70">{sessionTime}</div>
+            )}
+            {/* NEW: capacity info */}
+            {!loading && (
+              <div className="text-xs opacity-80">
+                Συμμετέχοντες:{" "}
+                <span className="font-semibold">{activeCount}</span>
+                {capacity != null && capacity > 0 && (
+                  <>
+                    {" "}
+                    / <span className="font-semibold">{capacity}</span>
+                    {" · "}Ελεύθερες θέσεις:{" "}
+                    <span className="font-semibold">
+                      {remainingSlots ?? 0}
+                    </span>
+                  </>
+                )}
+              </div>
             )}
           </div>
           <button

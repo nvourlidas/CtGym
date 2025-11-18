@@ -2,7 +2,7 @@
 import MetricWidget from '../components/widgets/MetricWidget';
 import { useAuth } from '../auth';
 import { CalendarMonth } from '../components/CalendarMonth';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import SessionAttendanceModal from "../components/SessionAttendanceModal";
 
 
@@ -32,18 +32,18 @@ export default function Dashboard() {
   const [selected, setSelected] = useState<SessionForModal | null>(null);
 
 
-  const [vh, setVh] = useState<number>();
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    function recalc() {
-      if (!wrapperRef.current) return;
-      const top = wrapperRef.current.getBoundingClientRect().top + window.scrollY;
-      setVh(Math.max(300, window.innerHeight - (top - window.scrollY) - 24)); // 24px bottom margin
-    }
-    recalc();
-    window.addEventListener('resize', recalc);
-    return () => window.removeEventListener('resize', recalc);
-  }, []);
+  // const [vh, setVh] = useState<number>();
+  // const wrapperRef = useRef<HTMLDivElement>(null);
+  // useEffect(() => {
+  //   function recalc() {
+  //     if (!wrapperRef.current) return;
+  //     const top = wrapperRef.current.getBoundingClientRect().top + window.scrollY;
+  //     setVh(Math.max(300, window.innerHeight - (top - window.scrollY) - 24)); // 24px bottom margin
+  //   }
+  //   recalc();
+  //   window.addEventListener('resize', recalc);
+  //   return () => window.removeEventListener('resize', recalc);
+  // }, []);
 
   function Section({
     title,
@@ -153,7 +153,7 @@ export default function Dashboard() {
           <div className="px-4 py-3 border-b border-white/10">
             <h2 className="text-sm font-semibold opacity-80">Ημερολόγιο</h2>
           </div>
-          <div className="p-3" ref={wrapperRef}>
+          <div className="p-3">
             <CalendarMonth
               tenantId={tenantId}
 
