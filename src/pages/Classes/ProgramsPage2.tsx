@@ -12,8 +12,8 @@ import elLocale from '@fullcalendar/core/locales/el';
 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
-import SessionModal from '../../components/SessionModal';
-import ProgramGeneratorModal from '../../components/ProgramGeneratorModal';
+import SessionModal from '../../components/Programs/SessionModal';
+import ProgramGeneratorModal from '../../components/Programs/ProgramGeneratorModal';
 
 export type SessionRowFromDb = {
     id: string;
@@ -23,6 +23,7 @@ export type SessionRowFromDb = {
     ends_at: string | null;
     capacity: number | null;
     classes?: { title: string }[] | null;
+    cancel_before_hours: number | null;
 };
 
 export type SessionRow = {
@@ -33,6 +34,7 @@ export type SessionRow = {
     ends_at: string | null;
     capacity: number | null;
     classes?: { title: string } | null;
+    cancel_before_hours: number | null;
 };
 
 type CalendarView = 'month' | 'week' | 'day';
@@ -74,6 +76,7 @@ export default function ProgramsPage() {
           starts_at,
           ends_at,
           capacity,
+            cancel_before_hours,
           classes:classes(title)
         `
                 )

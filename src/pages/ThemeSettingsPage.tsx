@@ -13,8 +13,18 @@ type Theme = {
     text_muted: string;
     success_color: string;
     error_color: string;
-    app_logo_url?: string;
+    app_logo_url?: string | null;
 };
+
+type ColorKey =
+    | 'primary_color'
+    | 'accent_color'
+    | 'bg_color'
+    | 'card_color'
+    | 'text_color'
+    | 'text_muted'
+    | 'success_color'
+    | 'error_color';
 
 const defaultTheme: Theme = {
     primary_color: '#2f55d4',
@@ -32,7 +42,9 @@ export default function ThemeSettingsPage() {
     const [theme, setTheme] = useState<Theme>(defaultTheme);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [logoFile, setLogoFile] = useState<File | null>(null);
     const [uploadingLogo, setUploadingLogo] = useState(false);
+
 
     useEffect(() => {
         if (!profile) return;
@@ -62,9 +74,63 @@ export default function ThemeSettingsPage() {
         load();
     }, [profile]);
 
-    const handleChange = (key: keyof Theme, value: string) => {
-        setTheme((prev) => ({ ...prev, [key]: value }));
+    const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0] ?? null;
+        setLogoFile(file);
     };
+
+    const handleUploadLogoAndSave = async () => {
+        if (!profile || !logoFile) return;
+
+        try {
+            setUploadingLogo(true);
+
+            const formData = new FormData();
+            formData.append('file', logoFile);
+
+            // ⬇️ use supabase.functions.invoke instead of fetch
+            const { data, error } = await supabase.functions.invoke('upload-logo', {
+                body: formData,
+            });
+
+            if (error) {
+                console.error('Upload failed', error);
+                return;
+            }
+
+            const url = (data as any)?.url as string | undefined;
+            if (!url) {
+                console.error('No URL returned from edge function', data);
+                return;
+            }
+
+            // Save URL to tenant_themes
+            const payload = {
+                tenant_id: profile.tenant_id,
+                ...theme,
+                app_logo_url: url,
+            };
+
+            const { error: saveError } = await supabase
+                .from('tenant_themes')
+                .upsert(payload, { onConflict: 'tenant_id' });
+
+            if (saveError) {
+                console.error('Saving logo URL failed', saveError);
+                return;
+            }
+
+            // Update local state & clear file
+            setTheme((prev) => ({ ...prev, app_logo_url: url }));
+            setLogoFile(null);
+        } catch (err) {
+            console.error('upload+save logo error', err);
+        } finally {
+            setUploadingLogo(false);
+        }
+    };
+
+
 
     const handleSave = async () => {
         if (!profile) return;
@@ -83,47 +149,6 @@ export default function ThemeSettingsPage() {
     };
 
 
-    const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || !profile) return;
-
-        try {
-            setUploadingLogo(true);
-
-            const fileExt = file.name.split('.').pop();
-            const fileName = `tenant-${profile.tenant_id}-logo.${fileExt}`;
-            const filePath = `logos/${fileName}`;
-
-            // 1) upload στο bucket
-            const { error: uploadError } = await supabase.storage
-                .from('tenant-assets')            // 👈 το bucket name σου
-                .upload(filePath, file, {
-                    upsert: true,                   // overwrite αν υπάρχει
-                });
-
-            if (uploadError) {
-                console.log('upload logo error', uploadError);
-                return;
-            }
-
-            // 2) πάρε public URL
-            const { data } = supabase.storage
-                .from('tenant-assets')
-                .getPublicUrl(filePath);
-
-            const publicUrl = data?.publicUrl ?? null;
-            if (!publicUrl) return;
-
-            // 3) γράψε το URL στο theme state
-            setTheme((prev) => ({
-                ...prev,
-                app_logo_url: publicUrl,
-            }));
-        } finally {
-            setUploadingLogo(false);
-        }
-    };
-
     if (loading) return <div>Loading theme…</div>;
 
     return (
@@ -141,36 +166,33 @@ export default function ThemeSettingsPage() {
                         ['text_muted', 'Text muted'],
                         ['success_color', 'Success'],
                         ['error_color', 'Error'],
-                    ] as [keyof Theme, string][]
+                    ] as [ColorKey, string][]
                 ).map(([key, label]) => (
                     <div key={key} className="flex items-center gap-3">
                         <label className="w-32">{label}</label>
+
+                        {/* color picker */}
                         <input
                             type="color"
-                            value={theme[key]}
-                            onChange={(e) => handleChange(key, e.target.value)}
+                            value={theme[key]}             // ✅ πάντα string
+                            onChange={(e) =>
+                                setTheme((prev) => ({ ...prev, [key]: e.target.value }))
+                            }
                         />
+
+                        {/* text input */}
                         <input
                             type="text"
                             className="border rounded px-2 py-1 flex-1"
-                            value={theme[key]}
-                            onChange={(e) => handleChange(key, e.target.value)}
+                            value={theme[key]}             // ✅ πάντα string
+                            onChange={(e) =>
+                                setTheme((prev) => ({ ...prev, [key]: e.target.value }))
+                            }
                         />
                     </div>
                 ))}
+
             </div>
-
-            <div className="mt-6 space-y-2">
-                <label className="block font-medium">App logo</label>
-                <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/svg+xml"
-                    onChange={handleLogoUpload}
-                    disabled={uploadingLogo}
-                />
-            </div>
-
-
             <button
                 onClick={handleSave}
                 disabled={saving}
@@ -179,6 +201,42 @@ export default function ThemeSettingsPage() {
                 {saving ? 'Αποθήκευση…' : 'Αποθήκευση'}
             </button>
 
+            <div className="mt-6 space-y-2">
+                <label className="block font-medium">Logo</label>
+
+                <div className="flex items-center gap-3">
+                    <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/svg+xml"
+                        onChange={handleLogoFileChange}
+                        disabled={uploadingLogo}
+                    />
+
+                    <button
+                        type="button"
+                        onClick={handleUploadLogoAndSave}
+                        disabled={!logoFile || uploadingLogo}
+                        className="px-3 py-2 rounded bg-blue-600 text-white text-sm disabled:opacity-40"
+                    >
+                        {uploadingLogo ? 'Ανέβασμα…' : 'Upload & Save'}
+                    </button>
+                </div>
+
+                {/* optional manual URL edit */}
+                <input
+                    type="text"
+                    className="border rounded px-2 py-1 w-full mt-2"
+                    placeholder="Cloudflare logo URL"
+                    value={theme.app_logo_url ?? ''}
+                    onChange={(e) =>
+                        setTheme((prev) => ({
+                            ...prev,
+                            app_logo_url: e.target.value || null,
+                        }))
+                    }
+                />
+
+            </div>
             {/* Small preview */}
             <MobilePreview theme={theme} />
         </div>

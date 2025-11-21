@@ -1,14 +1,14 @@
 // src/components/ProgramGeneratorModal.tsx
-import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../auth';
+import { useEffect, useRef, useState } from 'react';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../auth';
 
 type GymClass = { id: string; title: string };
 
 export default function ProgramGeneratorModal({
   open,
   onClose,
-  onGenerated
+  onGenerated,
 }: {
   open: boolean;
   onClose: () => void;
@@ -19,12 +19,17 @@ export default function ProgramGeneratorModal({
 
   const [classes, setClasses] = useState<GymClass[]>([]);
   const [classId, setClassId] = useState('');
+  const [classSearch, setClassSearch] = useState('');
+  const [classDropdownOpen, setClassDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
   const [dayOfWeek, setDayOfWeek] = useState<'0' | '1' | '2' | '3' | '4' | '5' | '6'>('1'); // Δευτέρα
   const [startTime, setStartTime] = useState('18:00');
   const [endTime, setEndTime] = useState('19:00');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [capacity, setCapacity] = useState<number | ''>('');
+  const [cancelBeforeHours, setCancelBeforeHours] = useState<number | ''>(''); // NEW
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -40,11 +45,31 @@ export default function ProgramGeneratorModal({
     loadClasses();
   }, [tenantId, open]);
 
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!classDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!dropdownRef.current) return;
+      if (!dropdownRef.current.contains(e.target as Node)) {
+        setClassDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handler);
+    return () => window.removeEventListener('mousedown', handler);
+  }, [classDropdownOpen]);
+
   if (!open) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tenantId || !classId || !fromDate || !toDate || !startTime || !endTime) return;
+
+    const cancelVal =
+      cancelBeforeHours === '' ? null : Number(cancelBeforeHours);
+    if (cancelVal != null && (isNaN(cancelVal) || cancelVal < 0)) {
+      alert('Το πεδίο "Ακύρωση μέχρι (ώρες πριν)" πρέπει να είναι >= 0.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -71,7 +96,8 @@ export default function ProgramGeneratorModal({
             class_id: classId,
             starts_at: s.toISOString(),
             ends_at: e2.toISOString(),
-            capacity: capVal
+            capacity: capVal,
+            cancel_before_hours: cancelVal, // NEW
           });
         }
       }
@@ -93,6 +119,11 @@ export default function ProgramGeneratorModal({
     }
   };
 
+  const filteredClasses = classes.filter((c) =>
+    c.title.toLowerCase().includes(classSearch.toLowerCase())
+  );
+  const selectedClass = classes.find((c) => c.id === classId);
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
       <div className="w-full max-w-2xl rounded-xl border border-white/10 bg-secondary-background p-6 shadow-2xl text-text-primary">
@@ -110,21 +141,57 @@ export default function ProgramGeneratorModal({
         </div>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
-          <div>
+          {/* Custom searchable dropdown for class */}
+          <div ref={dropdownRef} className="relative">
             <label className="block text-sm font-medium mb-1">Μάθημα</label>
-            <select
-              className="input"
-              value={classId}
-              onChange={(e) => setClassId(e.target.value)}
-              required
+            <button
+              type="button"
+              className="input flex items-center justify-between"
+              onClick={() => setClassDropdownOpen((v) => !v)}
             >
-              <option value="">Επιλέξτε μάθημα…</option>
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title}
-                </option>
-              ))}
-            </select>
+              <span>
+                {selectedClass ? selectedClass.title : 'Επιλέξτε μάθημα…'}
+              </span>
+              <span className="ml-2 text-xs opacity-70">
+                {classDropdownOpen ? '▲' : '▼'}
+              </span>
+            </button>
+
+            {classDropdownOpen && (
+              <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
+                <div className="p-2 border-b border-white/10">
+                  <input
+                    autoFocus
+                    className="input !h-9 !text-sm"
+                    placeholder="Αναζήτηση μαθήματος..."
+                    value={classSearch}
+                    onChange={(e) => setClassSearch(e.target.value)}
+                  />
+                </div>
+                <div className="max-h-60 overflow-y-auto">
+                  {filteredClasses.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-text-secondary">
+                      Δεν βρέθηκαν μαθήματα
+                    </div>
+                  )}
+                  {filteredClasses.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`w-full px-3 py-2 text-left text-sm hover:bg:white/5 ${
+                        c.id === classId ? 'bg-white/10' : ''
+                      }`}
+                      onClick={() => {
+                        setClassId(c.id);
+                        setClassDropdownOpen(false);
+                      }}
+                    >
+                      {c.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -188,13 +255,34 @@ export default function ProgramGeneratorModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Διαθέσιμες θέσεις (προαιρετικό)</label>
+            <label className="block text-sm font-medium mb-1">
+              Διαθέσιμες θέσεις (προαιρετικό)
+            </label>
             <input
               type="number"
               min={0}
               className="input"
               value={capacity}
-              onChange={(e) => setCapacity(e.target.value === '' ? '' : Number(e.target.value))}
+              onChange={(e) =>
+                setCapacity(e.target.value === '' ? '' : Number(e.target.value))
+              }
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Ακύρωση μέχρι (ώρες πριν, προαιρετικό)
+            </label>
+            <input
+              type="number"
+              min={0}
+              className="input"
+              value={cancelBeforeHours}
+              onChange={(e) =>
+                setCancelBeforeHours(
+                  e.target.value === '' ? '' : Number(e.target.value)
+                )
+              }
             />
           </div>
 

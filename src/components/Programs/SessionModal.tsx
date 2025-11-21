@@ -1,8 +1,8 @@
-// src/components/SessionModal.tsx
-import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../auth';
-import type { SessionRow, SessionRowFromDb } from '../pages/Classes/ProgramsPage2';
+// src/components/Programs/SessionModal.tsx
+import { useEffect, useRef, useState } from 'react';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../auth';
+import type { SessionRow, SessionRowFromDb } from '../../pages/Classes/ProgramsPage2';
 
 type GymClass = { id: string; title: string };
 
@@ -26,9 +26,14 @@ export default function SessionModal({
 
   const [classes, setClasses] = useState<GymClass[]>([]);
   const [classId, setClassId] = useState<string>('');
-  const [startsAt, setStartsAt] = useState<string>(''); // datetime-local
+  const [classSearch, setClassSearch] = useState('');
+  const [classDropdownOpen, setClassDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const [startsAt, setStartsAt] = useState<string>(''); // datetime-local (local time)
   const [endsAt, setEndsAt] = useState<string>('');
   const [capacity, setCapacity] = useState<number | ''>('');
+  const [cancelBeforeHours, setCancelBeforeHours] = useState<number | ''>(''); // NEW
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -45,19 +50,38 @@ export default function SessionModal({
     loadClasses();
   }, [tenantId, open]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    if (!classDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!dropdownRef.current) return;
+      if (!dropdownRef.current.contains(e.target as Node)) {
+        setClassDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handler);
+    return () => window.removeEventListener('mousedown', handler);
+  }, [classDropdownOpen]);
+
   useEffect(() => {
     if (session) {
+      // EDIT MODE – convert UTC ISO from DB -> local datetime-local string
       setClassId(session.class_id);
-      setStartsAt(session.starts_at.slice(0, 16)); // yyyy-MM-ddTHH:mm
-      setEndsAt(session.ends_at ? session.ends_at.slice(0, 16) : '');
+      setStartsAt(isoToLocalInputValue(session.starts_at));
+      setEndsAt(session.ends_at ? isoToLocalInputValue(session.ends_at) : '');
       setCapacity(session.capacity ?? '');
+      setCancelBeforeHours(
+        session.cancel_before_hours != null ? session.cancel_before_hours : ''
+      );
     } else if (defaultDate) {
+      // CREATE MODE – default from clicked calendar date (local)
       const base = new Date(defaultDate);
       const end = new Date(base.getTime() + 60 * 60 * 1000);
       setStartsAt(toLocalInputValue(base));
       setEndsAt(toLocalInputValue(end));
       setClassId('');
       setCapacity('');
+      setCancelBeforeHours('');
     }
   }, [session, defaultDate]);
 
@@ -70,12 +94,16 @@ export default function SessionModal({
     if (!tenantId || !classId || !startsAt || !endsAt) return;
 
     setSaving(true);
-    const startIso = new Date(startsAt).toISOString();
-    const endIso = new Date(endsAt).toISOString();
+
+    // LOCAL -> UTC for saving in DB
+    const startIso = localInputToIso(startsAt);
+    const endIso = localInputToIso(endsAt);
     const capVal = capacity === '' ? null : Number(capacity);
+    const cancelVal =
+      cancelBeforeHours === '' ? null : Number(cancelBeforeHours);
 
     try {
-      if (isEdit) {
+      if (isEdit && session) {
         const { data, error } = await supabase
           .from('class_sessions')
           .update({
@@ -83,10 +111,11 @@ export default function SessionModal({
             starts_at: startIso,
             ends_at: endIso,
             capacity: capVal,
+            cancel_before_hours: cancelVal,
           })
-          .eq('id', session!.id)
+          .eq('id', session.id)
           .select(
-            `id, tenant_id, class_id, starts_at, ends_at, capacity, classes:classes(title)`
+            `id, tenant_id, class_id, starts_at, ends_at, capacity, cancel_before_hours, classes:classes(title)`
           )
           .single();
 
@@ -110,9 +139,10 @@ export default function SessionModal({
             starts_at: startIso,
             ends_at: endIso,
             capacity: capVal,
+            cancel_before_hours: cancelVal,
           })
           .select(
-            `id, tenant_id, class_id, starts_at, ends_at, capacity, classes:classes(title)`
+            `id, tenant_id, class_id, starts_at, ends_at, capacity, cancel_before_hours, classes:classes(title)`
           )
           .single();
 
@@ -138,8 +168,8 @@ export default function SessionModal({
 
   const handleDelete = async () => {
     if (!session) return;
-    const confirm = window.confirm('Σίγουρα θέλετε να διαγράψετε αυτή τη συνεδρία;');
-    if (!confirm) return;
+    const confirmDel = window.confirm('Σίγουρα θέλετε να διαγράψετε αυτή τη συνεδρία;');
+    if (!confirmDel) return;
 
     setDeleting(true);
     try {
@@ -159,6 +189,11 @@ export default function SessionModal({
     }
   };
 
+  const filteredClasses = classes.filter((c) =>
+    c.title.toLowerCase().includes(classSearch.toLowerCase())
+  );
+  const selectedClass = classes.find((c) => c.id === classId);
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
       <div className="w-full max-w-lg rounded-xl border border-white/10 bg-secondary-background p-6 shadow-2xl text-text-primary">
@@ -176,21 +211,57 @@ export default function SessionModal({
         </div>
 
         <form className="space-y-4" onSubmit={handleSubmit}>
-          <div>
+          {/* Searchable class dropdown */}
+          <div ref={dropdownRef} className="relative">
             <label className="block text-sm font-medium mb-1">Μάθημα</label>
-            <select
-              className="input"
-              value={classId}
-              onChange={(e) => setClassId(e.target.value)}
-              required
+            <button
+              type="button"
+              className="input flex items-center justify-between"
+              onClick={() => setClassDropdownOpen((v) => !v)}
             >
-              <option value="">Επιλέξτε μάθημα…</option>
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title}
-                </option>
-              ))}
-            </select>
+              <span>
+                {selectedClass ? selectedClass.title : 'Επιλέξτε μάθημα…'}
+              </span>
+              <span className="ml-2 text-xs opacity-70">
+                {classDropdownOpen ? '▲' : '▼'}
+              </span>
+            </button>
+
+            {classDropdownOpen && (
+              <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
+                <div className="p-2 border-b border-white/10">
+                  <input
+                    autoFocus
+                    className="input !h-9 !text-sm"
+                    placeholder="Αναζήτηση μαθήματος..."
+                    value={classSearch}
+                    onChange={(e) => setClassSearch(e.target.value)}
+                  />
+                </div>
+                <div className="max-h-60 overflow-y-auto">
+                  {filteredClasses.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-text-secondary">
+                      Δεν βρέθηκαν μαθήματα
+                    </div>
+                  )}
+                  {filteredClasses.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
+                        c.id === classId ? 'bg-white/10' : ''
+                      }`}
+                      onClick={() => {
+                        setClassId(c.id);
+                        setClassDropdownOpen(false);
+                      }}
+                    >
+                      {c.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -217,7 +288,9 @@ export default function SessionModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Διαθέσιμες θέσεις</label>
+            <label className="block text-sm font-medium mb-1">
+              Διαθέσιμες θέσεις
+            </label>
             <input
               type="number"
               min={0}
@@ -225,6 +298,23 @@ export default function SessionModal({
               value={capacity}
               onChange={(e) =>
                 setCapacity(e.target.value === '' ? '' : Number(e.target.value))
+              }
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Ακύρωση μέχρι (ώρες πριν, προαιρετικό)
+            </label>
+            <input
+              type="number"
+              min={0}
+              className="input"
+              value={cancelBeforeHours}
+              onChange={(e) =>
+                setCancelBeforeHours(
+                  e.target.value === '' ? '' : Number(e.target.value)
+                )
               }
             />
           </div>
@@ -266,6 +356,7 @@ export default function SessionModal({
   );
 }
 
+/** Converts a Date (local) -> "YYYY-MM-DDTHH:mm" for datetime-local */
 function toLocalInputValue(d: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
   return (
@@ -279,4 +370,16 @@ function toLocalInputValue(d: Date) {
     ':' +
     pad(d.getMinutes())
   );
+}
+
+/** Converts UTC ISO string from DB -> local datetime-local string */
+function isoToLocalInputValue(iso: string) {
+  const d = new Date(iso); // JS converts UTC -> local automatically
+  return toLocalInputValue(d);
+}
+
+/** Converts datetime-local string (local) -> UTC ISO string for DB */
+function localInputToIso(local: string) {
+  // "YYYY-MM-DDTHH:mm" interpreted as local time
+  return new Date(local).toISOString();
 }

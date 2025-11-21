@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
+import MemberDetailsModal from '../components/Members/MemberDetailsModal';
 
 type Member = {
   id: string;
@@ -9,16 +10,11 @@ type Member = {
   tenant_id: string | null;
   role: 'member';
   created_at: string;
-  email?: string | null; // optional from user metadata if you join auth
-};
-
-type BookingHistoryRow = {
-  id: string;
-  status: string | null;
-  created_at: string;
-  session_start: string | null;
-  session_end: string | null;
-  class_title: string | null;
+  email: string | null;
+  birth_date?: string | null;
+  address?: string | null;
+  afm?: string | null;
+  max_dropin_debt?: number | null;
 };
 
 export default function MembersPage() {
@@ -29,35 +25,102 @@ export default function MembersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editRow, setEditRow] = useState<Member | null>(null);
 
-  // NEW: pagination state
+  // pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // NEW: history modal state
-  const [historyMember, setHistoryMember] = useState<{
-    id: string;
-    name: string | null;
-  } | null>(null);
+  // Details modal state
+  const [detailsMember, setDetailsMember] = useState<Member | null>(null);
+
+  // debts per member
+  const [membershipDebts, setMembershipDebts] = useState<Record<string, number>>({});
+  const [dropinDebts, setDropinDebts] = useState<Record<string, number>>({});
+
+  const formatMoney = (value: number) => `${value.toFixed(2)} €`;
 
   async function load() {
     if (!profile?.tenant_id) return;
     setLoading(true);
+
+    // 1) Load members (profiles)
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, full_name, phone, tenant_id, role, created_at')
+      .select(
+        'id, full_name, phone, tenant_id, role, created_at, birth_date, address, afm, max_dropin_debt, email'
+      )
       .eq('tenant_id', profile.tenant_id)
       .eq('role', 'member')
       .order('created_at', { ascending: false });
-    if (!error) setRows((data as Member[]) ?? []);
+
+    if (error) {
+      console.error(error);
+      setRows([]);
+      setMembershipDebts({});
+      setDropinDebts({});
+      setLoading(false);
+      return;
+    }
+
+    const members = (data as Member[]) ?? [];
+    setRows(members);
+
+    const memberIds = members.map((m) => m.id);
+    if (memberIds.length === 0) {
+      setMembershipDebts({});
+      setDropinDebts({});
+      setLoading(false);
+      return;
+    }
+
+    // 2) Membership debts: sum(memberships.debt) per user_id
+    const { data: membershipsData, error: membErr } = await supabase
+      .from('memberships')
+      .select('user_id, debt')
+      .eq('tenant_id', profile.tenant_id)
+      .in('user_id', memberIds);
+
+    const membershipMap: Record<string, number> = {};
+    if (!membErr && membershipsData) {
+      (membershipsData as any[]).forEach((m) => {
+        const uid = m.user_id as string;
+        const debtVal = Number(m.debt ?? 0);
+        if (!Number.isFinite(debtVal)) return;
+        membershipMap[uid] = (membershipMap[uid] ?? 0) + debtVal;
+      });
+    }
+
+    // 3) Drop-in debts: sum(drop_in_price) where booking_type='drop_in' and drop_in_paid=false
+    const { data: bookingsData, error: bookErr } = await supabase
+      .from('bookings')
+      .select('user_id, drop_in_price, booking_type, drop_in_paid')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('booking_type', 'drop_in')
+      .eq('drop_in_paid', false)
+      .in('user_id', memberIds);
+
+    const dropinMap: Record<string, number> = {};
+    if (!bookErr && bookingsData) {
+      (bookingsData as any[]).forEach((b) => {
+        const uid = b.user_id as string;
+        const priceVal = Number(b.drop_in_price ?? 0);
+        if (!Number.isFinite(priceVal)) return;
+        dropinMap[uid] = (dropinMap[uid] ?? 0) + priceVal;
+      });
+    }
+
+    setMembershipDebts(membershipMap);
+    setDropinDebts(dropinMap);
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [profile?.tenant_id]);
+  useEffect(() => {
+    load();
+  }, [profile?.tenant_id]);
 
   const filtered = useMemo(() => {
     if (!q) return rows;
     const needle = q.toLowerCase();
-    return rows.filter(r =>
+    return rows.filter((r) =>
       (r.full_name ?? '').toLowerCase().includes(needle) ||
       (r.phone ?? '').toLowerCase().includes(needle) ||
       r.id.toLowerCase().includes(needle)
@@ -102,44 +165,71 @@ export default function MembersPage() {
             <tr className="text-left">
               <Th>Όνομα</Th>
               <Th>Τηλέφωνο</Th>
+              <Th>Συνολική Οφειλή</Th>
+              <Th>Max Drop-in Οφειλή</Th>
               <Th>Ημ. Δημιουργίας</Th>
               <Th className="text-right pr-3">Ενέργειες</Th>
             </tr>
           </thead>
           <tbody>
             {loading && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={4}>Loading…</td></tr>
+              <tr>
+                <td className="px-3 py-4 opacity-60" colSpan={6}>
+                  Loading…
+                </td>
+              </tr>
             )}
             {!loading && filtered.length === 0 && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={4}>No members</td></tr>
-            )}
-            {!loading && filtered.length > 0 && paginated.map(m => (
-              <tr key={m.id} className="border-t border-white/10 hover:bg-secondary/10">
-                <Td>{m.full_name ?? '—'}</Td>
-                <Td>{m.phone ?? '—'}</Td>
-                <Td>{new Date(m.created_at).toLocaleString()}</Td>
-                <Td className="text-right space-x-1">
-                  <button
-                    className="px-2 py-1 text-xs rounded border border-white/10 hover:bg-secondary/10"
-                    onClick={() =>
-                      setHistoryMember({
-                        id: m.id,
-                        name: m.full_name,
-                      })
-                    }
-                  >
-                    Ιστορικό
-                  </button>
-                  <button
-                    className="px-2 py-1 text-xs rounded hover:bg-secondary/10"
-                    onClick={() => setEditRow(m)}
-                  >
-                    Επεξεργασία
-                  </button>
-                  <DeleteButton id={m.id} onDeleted={load} />
-                </Td>
+              <tr>
+                <td className="px-3 py-4 opacity-60" colSpan={6}>
+                  No members
+                </td>
               </tr>
-            ))}
+            )}
+            {!loading &&
+              filtered.length > 0 &&
+              paginated.map((m) => {
+                const membershipDebt = membershipDebts[m.id] ?? 0;
+                const dropinDebt = dropinDebts[m.id] ?? 0;
+                const totalDebt = membershipDebt + dropinDebt;
+
+                return (
+                  <tr
+                    key={m.id}
+                    className="border-t border-white/10 hover:bg-secondary/10"
+                  >
+                    <Td>{m.full_name ?? '—'}</Td>
+                    <Td>{m.phone ?? '—'}</Td>
+                    <Td>
+                      
+                                        {totalDebt != null && totalDebt !== 0
+                    ? <span className="text-amber-300 font-medium">{formatMoney(totalDebt)}</span>
+                    : <span className="text-emerald-300 text-xs uppercase tracking-wide"> 0 </span>}
+                    </Td>
+                    <Td>
+                      {m.max_dropin_debt != null
+                        ? formatMoney(Number(m.max_dropin_debt))
+                        : '—'}
+                    </Td>
+                    <Td>{new Date(m.created_at).toLocaleString()}</Td>
+                    <Td className="text-right space-x-1">
+                      <button
+                        className="px-2 py-1 text-xs rounded border border-white/10 hover:bg-secondary/10"
+                        onClick={() => setDetailsMember(m)}
+                      >
+                        Λεπτομέρειες
+                      </button>
+                      <button
+                        className="px-2 py-1 text-xs rounded hover:bg-secondary/10"
+                        onClick={() => setEditRow(m)}
+                      >
+                        Επεξεργασία
+                      </button>
+                      <DeleteButton id={m.id} onDeleted={load} />
+                    </Td>
+                  </tr>
+                );
+              })}
           </tbody>
         </table>
 
@@ -148,8 +238,12 @@ export default function MembersPage() {
           <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
             <div>
               Εμφάνιση <span className="font-semibold">{startIdx}</span>
-              {filtered.length > 0 && <>–<span className="font-semibold">{endIdx}</span></>} από{' '}
-              <span className="font-semibold">{filtered.length}</span>
+              {filtered.length > 0 && (
+                <>
+                  –<span className="font-semibold">{endIdx}</span>
+                </>
+              )}{' '}
+              από <span className="font-semibold">{filtered.length}</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1">
@@ -167,7 +261,7 @@ export default function MembersPage() {
               <div className="flex items-center gap-2">
                 <button
                   className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
                 >
                   Προηγ.
@@ -178,7 +272,7 @@ export default function MembersPage() {
                 </span>
                 <button
                   className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
-                  onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                   disabled={page === pageCount}
                 >
                   Επόμενο
@@ -189,26 +283,31 @@ export default function MembersPage() {
         )}
       </div>
 
-      {showCreate && (
+      {showCreate && profile?.tenant_id && (
         <CreateMemberModal
-          tenantId={profile?.tenant_id!}
-          onClose={() => { setShowCreate(false); load(); }}
+          tenantId={profile.tenant_id}
+          onClose={() => {
+            setShowCreate(false);
+            load();
+          }}
         />
       )}
       {editRow && (
         <EditMemberModal
           row={editRow}
-          onClose={() => { setEditRow(null); load(); }}
+          onClose={() => {
+            setEditRow(null);
+            load();
+          }}
         />
       )}
 
-      {/* NEW: Member bookings history modal */}
-      {historyMember && profile?.tenant_id && (
-        <MemberBookingsModal
+      {/* Details modal (Details + History + Economic tabs) */}
+      {detailsMember && profile?.tenant_id && (
+        <MemberDetailsModal
+          member={detailsMember}
           tenantId={profile.tenant_id}
-          memberId={historyMember.id}
-          memberName={historyMember.name ?? historyMember.id}
-          onClose={() => setHistoryMember(null)}
+          onClose={() => setDetailsMember(null)}
         />
       )}
     </div>
@@ -225,7 +324,12 @@ function Td({ children, className = '' }: any) {
 function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false);
   const onClick = async () => {
-    if (!confirm('Διαγραφή αυτού του μέλους; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.')) return;
+    if (
+      !confirm(
+        'Διαγραφή αυτού του μέλους; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.'
+      )
+    )
+      return;
     setBusy(true);
     await supabase.functions.invoke('member-delete', { body: { id } });
     setBusy(false);
@@ -242,10 +346,21 @@ function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) 
   );
 }
 
-function CreateMemberModal({ tenantId, onClose }: { tenantId: string; onClose: () => void }) {
+/* CREATE */
+function CreateMemberModal({
+  tenantId,
+  onClose,
+}: {
+  tenantId: string;
+  onClose: () => void;
+}) {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [birthDate, setBirthDate] = useState('');
+  const [address, setAddress] = useState('');
+  const [afm, setAfm] = useState('');
+  const [maxDropinDebt, setMaxDropinDebt] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -253,7 +368,17 @@ function CreateMemberModal({ tenantId, onClose }: { tenantId: string; onClose: (
     if (!email || !password) return;
     setBusy(true);
     await supabase.functions.invoke('member-create', {
-      body: { email, password, full_name: fullName, phone, tenant_id: tenantId },
+      body: {
+        email,
+        password,
+        full_name: fullName,
+        phone,
+        tenant_id: tenantId,
+        birth_date: birthDate || null,
+        address: address || null,
+        afm: afm || null,
+        max_dropin_debt: maxDropinDebt ? Number(maxDropinDebt) : null,
+      },
     });
     setBusy(false);
     onClose();
@@ -262,19 +387,70 @@ function CreateMemberModal({ tenantId, onClose }: { tenantId: string; onClose: (
   return (
     <Modal onClose={onClose} title="Νέο Μέλος">
       <FormRow label="Όνομα *">
-        <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+        <input
+          className="input"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+        />
       </FormRow>
       <FormRow label="Email *">
-        <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <input
+          className="input"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
       </FormRow>
       <FormRow label="Τηλέφωνο">
-        <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <input
+          className="input"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+        />
+      </FormRow>
+      <FormRow label="Ημ. γέννησης">
+        <input
+          className="input"
+          type="date"
+          value={birthDate}
+          onChange={(e) => setBirthDate(e.target.value)}
+        />
+      </FormRow>
+      <FormRow label="Διεύθυνση">
+        <input
+          className="input"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+        />
+      </FormRow>
+      <FormRow label="ΑΦΜ">
+        <input
+          className="input"
+          value={afm}
+          onChange={(e) => setAfm(e.target.value)}
+        />
+      </FormRow>
+      <FormRow label="Μέγιστο χρέος drop-in">
+        <input
+          className="input"
+          type="number"
+          step="0.01"
+          value={maxDropinDebt}
+          onChange={(e) => setMaxDropinDebt(e.target.value)}
+        />
       </FormRow>
       <FormRow label="Password *">
-        <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <input
+          className="input"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
       </FormRow>
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Ακύρωση</button>
+        <button className="btn-secondary" onClick={onClose}>
+          Ακύρωση
+        </button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
           {busy ? 'Δημιουργία...' : 'Δημιουργία'}
         </button>
@@ -283,16 +459,38 @@ function CreateMemberModal({ tenantId, onClose }: { tenantId: string; onClose: (
   );
 }
 
-function EditMemberModal({ row, onClose }: { row: Member; onClose: () => void }) {
+/* EDIT */
+function EditMemberModal({
+  row,
+  onClose,
+}: {
+  row: Member;
+  onClose: () => void;
+}) {
   const [fullName, setFullName] = useState(row.full_name ?? '');
   const [phone, setPhone] = useState(row.phone ?? '');
+  const [birthDate, setBirthDate] = useState(row.birth_date ?? '');
+  const [address, setAddress] = useState(row.address ?? '');
+  const [afm, setAfm] = useState(row.afm ?? '');
+  const [maxDropinDebt, setMaxDropinDebt] = useState(
+    row.max_dropin_debt != null ? String(row.max_dropin_debt) : ''
+  );
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     setBusy(true);
     await supabase.functions.invoke('member-update', {
-      body: { id: row.id, full_name: fullName, phone, password: password || undefined },
+      body: {
+        id: row.id,
+        full_name: fullName,
+        phone,
+        password: password || undefined,
+        birth_date: birthDate || null,
+        address: address || null,
+        afm: afm || null,
+        max_dropin_debt: maxDropinDebt ? Number(maxDropinDebt) : null,
+      },
     });
     setBusy(false);
     onClose();
@@ -301,10 +499,49 @@ function EditMemberModal({ row, onClose }: { row: Member; onClose: () => void })
   return (
     <Modal onClose={onClose} title="Επεξεργασία Μέλους">
       <FormRow label="Όνομα">
-        <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
+        <input
+          className="input"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+        />
       </FormRow>
       <FormRow label="Τηλέφωνο">
-        <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <input
+          className="input"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+        />
+      </FormRow>
+      <FormRow label="Ημ. γέννησης">
+        <input
+          className="input"
+          type="date"
+          value={birthDate}
+          onChange={(e) => setBirthDate(e.target.value)}
+        />
+      </FormRow>
+      <FormRow label="Διεύθυνση">
+        <input
+          className="input"
+          value={address}
+          onChange={(e) => setAddress(e.target.value)}
+        />
+      </FormRow>
+      <FormRow label="ΑΦΜ">
+        <input
+          className="input"
+          value={afm}
+          onChange={(e) => setAfm(e.target.value)}
+        />
+      </FormRow>
+      <FormRow label="Μέγιστο χρέος drop-in">
+        <input
+          className="input"
+          type="number"
+          step="0.01"
+          value={maxDropinDebt}
+          onChange={(e) => setMaxDropinDebt(e.target.value)}
+        />
       </FormRow>
       <FormRow label="Νέο password (προαιρετικό)">
         <input
@@ -316,117 +553,12 @@ function EditMemberModal({ row, onClose }: { row: Member; onClose: () => void })
         />
       </FormRow>
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Ακύρωση</button>
+        <button className="btn-secondary" onClick={onClose}>
+          Ακύρωση
+        </button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
           {busy ? 'Αποθήκευση...' : 'Αποθήκευση'}
         </button>
-      </div>
-    </Modal>
-  );
-}
-
-/* NEW: Member bookings history modal */
-function MemberBookingsModal({
-  tenantId,
-  memberId,
-  memberName,
-  onClose,
-}: {
-  tenantId: string;
-  memberId: string;
-  memberName: string;
-  onClose: () => void;
-}) {
-  const [rows, setRows] = useState<BookingHistoryRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      setError(null);
-      const { data, error } = await supabase
-        .from('bookings')
-        .select(`
-          id,
-          status,
-          created_at,
-          class_sessions(
-            starts_at,
-            ends_at,
-            classes(title)
-          )
-        `)
-        .eq('tenant_id', tenantId)
-        .eq('user_id', memberId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        setError(error.message);
-        setRows([]);
-      } else {
-        const mapped = (data as any[] ?? []).map((b) => ({
-          id: b.id,
-          status: b.status,
-          created_at: b.created_at,
-          session_start: b.class_sessions?.starts_at ?? null,
-          session_end: b.class_sessions?.ends_at ?? null,
-          class_title: b.class_sessions?.classes?.title ?? null,
-        }));
-        setRows(mapped);
-      }
-      setLoading(false);
-    })();
-  }, [tenantId, memberId]);
-
-  const formatDateTime = (iso: string | null) =>
-    iso ? new Date(iso).toLocaleString() : '—';
-
-  return (
-    <Modal title={`Κρατήσεις — ${memberName}`} onClose={onClose}>
-      {error && (
-        <div className="mb-3 text-sm border border-danger/30 bg-danger/10 text-danger rounded p-3">
-          {error}
-        </div>
-      )}
-
-      <div className="rounded-md border border-white/10 overflow-hidden max-h-[60vh] w-full">
-        <table className="w-full text-sm">
-          <thead className="bg-secondary-background/60">
-            <tr className="text-left">
-              <Th>Τμήμα</Th>
-              <Th>Συνεδρία</Th>
-              <Th>Κατάσταση</Th>
-              <Th>Ημ. Κράτησης</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={4}>Loading…</td></tr>
-            )}
-            {!loading && rows.length === 0 && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={4}>Δεν υπάρχουν κρατήσεις</td></tr>
-            )}
-            {!loading && rows.map((r) => (
-              <tr key={r.id} className="border-t border-white/10 hover:bg-secondary/10">
-                <Td>{r.class_title ?? '—'}</Td>
-                <Td>
-                  {r.session_start
-                    ? `${new Date(r.session_start).toLocaleDateString()} • ${new Date(r.session_start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                    : '—'}
-                </Td>
-                <Td className="capitalize">
-                  {r.status ?? 'booked'}
-                </Td>
-                <Td>{formatDateTime(r.created_at)}</Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-4 flex justify-end">
-        <button className="btn-secondary" onClick={onClose}>Κλείσιμο</button>
       </div>
     </Modal>
   );
@@ -439,13 +571,19 @@ function Modal({ title, children, onClose }: any) {
       <div className="w-full max-w-lg rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl">
         <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
           <div className="font-semibold">{title}</div>
-          <button onClick={onClose} className="rounded px-2 py-1 hover:bg-white/5">✕</button>
+          <button
+            onClick={onClose}
+            className="rounded px-2 py-1 hover:bg-white/5"
+          >
+            ✕
+          </button>
         </div>
         <div className="p-4">{children}</div>
       </div>
     </div>
   );
 }
+
 function FormRow({ label, children }: any) {
   return (
     <label className="block mb-3">

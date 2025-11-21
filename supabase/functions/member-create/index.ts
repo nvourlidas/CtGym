@@ -22,7 +22,8 @@ function buildCors(req: Request) {
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     // Echo requested headers to satisfy browsers’ preflight
-    "Access-Control-Allow-Headers": reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -51,46 +52,101 @@ serve(async (req) => {
   try {
     payload = await req.json();
   } catch {
-    return withCors(JSON.stringify({ error: "invalid_json" }), { status: 400 }, req);
+    return withCors(
+      JSON.stringify({ error: "invalid_json" }),
+      { status: 400 },
+      req,
+    );
   }
 
-  const { email, password, full_name, phone, tenant_id } = payload || {};
+  const {
+    email,
+    password,
+    full_name,
+    phone,
+    tenant_id,
+    birth_date,
+    address,
+    afm,
+    max_dropin_debt,
+  } = payload || {};
+
   if (!email || !password || !tenant_id) {
-    return withCors(JSON.stringify({ error: "missing_fields" }), { status: 400 }, req);
+    return withCors(
+      JSON.stringify({ error: "missing_fields" }),
+      { status: 400 },
+      req,
+    );
   }
 
   // 4) Admin client
   const url = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
-
-  // 5) Create auth user
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { full_name, phone },
+  const admin = createClient(url, serviceKey, {
+    auth: { persistSession: false },
   });
 
+  // 5) Create auth user
+  const { data: created, error: createErr } = await admin.auth.admin.createUser(
+    {
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: {
+        full_name,
+        phone,
+        // you *could* also forward address/birth_date here if you want in auth metadata
+      },
+    },
+  );
+
   if (createErr || !created?.user) {
-    return withCors(JSON.stringify({ error: createErr?.message ?? "create_user_failed" }), { status: 400 }, req);
+    return withCors(
+      JSON.stringify({
+        error: createErr?.message ?? "create_user_failed",
+      }),
+      { status: 400 },
+      req,
+    );
   }
 
   // 6) Insert profile
   const userId = created.user.id;
+
+  // ensure numeric or null for max_dropin_debt
+  let maxDropinValue: number | null = null;
+  if (max_dropin_debt !== undefined && max_dropin_debt !== null && max_dropin_debt !== "") {
+    const n = Number(max_dropin_debt);
+    maxDropinValue = Number.isFinite(n) ? n : null;
+  }
+
   const { error: profErr } = await admin.from("profiles").insert({
     id: userId,
     full_name,
     phone,
     tenant_id,
     role: "member",
+    email,
+    birth_date: birth_date || null, // expects "YYYY-MM-DD" string
+    address: address || null,
+    afm: afm || null,
+    max_dropin_debt: maxDropinValue,
   });
 
   if (profErr) {
+    // rollback auth user if profile insert fails
     await admin.auth.admin.deleteUser(userId);
-    return withCors(JSON.stringify({ error: profErr.message }), { status: 400 }, req);
+    return withCors(
+      JSON.stringify({ error: profErr.message }),
+      { status: 400 },
+      req,
+    );
   }
 
   // 7) Success (with CORS)
-  return withCors(JSON.stringify({ ok: true, id: userId }), { status: 200 }, req);
+  return withCors(
+    JSON.stringify({ ok: true, id: userId }),
+    { status: 200 },
+    req,
+  );
 });

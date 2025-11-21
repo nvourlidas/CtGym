@@ -3,7 +3,7 @@ import MetricWidget from '../components/widgets/MetricWidget';
 import { useAuth } from '../auth';
 import { CalendarMonth } from '../components/CalendarMonth';
 import { useState } from 'react';
-import SessionAttendanceModal from "../components/SessionAttendanceModal";
+import SessionAttendanceModal from "../components/Programs/SessionAttendanceModal";
 
 
 

@@ -17,42 +17,116 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
+
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
-  return new Response(body, { ...init, headers: { ...(init.headers || {}), ...buildCors(req) } });
+  return new Response(body, {
+    ...init,
+    headers: { ...(init.headers || {}), ...buildCors(req) },
+  });
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
-  if (req.method !== "POST") return withCors("Method not allowed", { status: 405 }, req);
+  if (req.method === "OPTIONS") {
+    return withCors(null, { status: 204 }, req);
+  }
+  if (req.method !== "POST") {
+    return withCors("Method not allowed", { status: 405 }, req);
+  }
 
   let payload: any;
-  try { payload = await req.json(); } catch { return withCors(JSON.stringify({ error: "invalid_json" }), { status: 400 }, req); }
+  try {
+    payload = await req.json();
+  } catch {
+    return withCors(
+      JSON.stringify({ error: "invalid_json" }),
+      { status: 400 },
+      req,
+    );
+  }
 
-  const { id, full_name, phone, password } = payload || {};
-  if (!id) return withCors(JSON.stringify({ error: "missing_id" }), { status: 400 }, req);
+  const {
+    id,
+    full_name,
+    phone,
+    password,
+    birth_date,
+    address,
+    afm,
+    max_dropin_debt,
+  } = payload || {};
+
+  if (!id) {
+    return withCors(
+      JSON.stringify({ error: "missing_id" }),
+      { status: 400 },
+      req,
+    );
+  }
 
   const url = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+  const admin = createClient(url, serviceKey, {
+    auth: { persistSession: false },
+  });
 
-  // optional password change
+  // Optional password change
   if (password && String(password).length >= 6) {
-    const { error: pwErr } = await admin.auth.admin.updateUserById(id, { password });
-    if (pwErr) return withCors(JSON.stringify({ error: pwErr.message }), { status: 400 }, req);
+    const { error: pwErr } = await admin.auth.admin.updateUserById(id, {
+      password,
+    });
+    if (pwErr) {
+      return withCors(
+        JSON.stringify({ error: pwErr.message }),
+        { status: 400 },
+        req,
+      );
+    }
   }
 
-  // update profile fields
+  // Prepare profile updates
   const updates: Record<string, unknown> = {};
+
   if (typeof full_name !== "undefined") updates.full_name = full_name;
   if (typeof phone !== "undefined") updates.phone = phone;
+  if (typeof birth_date !== "undefined") {
+    // expects "YYYY-MM-DD" or empty string; empty → null
+    updates.birth_date = birth_date || null;
+  }
+  if (typeof address !== "undefined") {
+    updates.address = address || null;
+  }
+  if (typeof afm !== "undefined") {
+    updates.afm = afm || null;
+  }
+  if (typeof max_dropin_debt !== "undefined") {
+    if (
+      max_dropin_debt === null ||
+      max_dropin_debt === ""
+    ) {
+      updates.max_dropin_debt = null;
+    } else {
+      const n = Number(max_dropin_debt);
+      updates.max_dropin_debt = Number.isFinite(n) ? n : null;
+    }
+  }
 
   if (Object.keys(updates).length) {
-    const { error: upErr } = await admin.from("profiles").update(updates).eq("id", id);
-    if (upErr) return withCors(JSON.stringify({ error: upErr.message }), { status: 400 }, req);
+    const { error: upErr } = await admin
+      .from("profiles")
+      .update(updates)
+      .eq("id", id);
+    if (upErr) {
+      return withCors(
+        JSON.stringify({ error: upErr.message }),
+        { status: 400 },
+        req,
+      );
+    }
   }
 
   return withCors(JSON.stringify({ ok: true }), { status: 200 }, req);
