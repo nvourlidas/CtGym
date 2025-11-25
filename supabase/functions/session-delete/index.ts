@@ -2,7 +2,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-const ALLOWED = new Set(["http://localhost:5173","http://127.0.0.1:5173","https://mycreatorapp.cloudtec.gr"]);
+const ALLOWED = new Set(["http://localhost:5173","http://127.0.0.1:5173","https://mycreatorapp.cloudtec.gr", "https://ctgym.cloudtec.gr",]);
 function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";
   const allowOrigin = ALLOWED.has(origin) ? origin : "";

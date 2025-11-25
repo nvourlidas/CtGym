@@ -7,6 +7,7 @@ const ALLOWED = new Set<string>([
   "http://localhost:5173",
   "http://127.0.0.1:5173",
   "https://mycreatorapp.cloudtec.gr",
+  "https://ctgym.cloudtec.gr",
 ]);
 function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";

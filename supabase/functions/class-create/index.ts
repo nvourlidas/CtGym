@@ -8,6 +8,7 @@ const ALLOWED = new Set<string>([
   "http://localhost:5173",
   "http://127.0.0.1:5173",
   "https://mycreatorapp.cloudtec.gr",
+  "https://ctgym.cloudtec.gr",
 ]);
 
 function buildCors(req: Request) {
@@ -104,6 +105,13 @@ serve(async (req) => {
       ? category_id_raw.trim()
       : null;
 
+  // NEW: optional coach_id
+  const coach_id_raw = body?.coach_id ?? null;
+  const coach_id =
+    typeof coach_id_raw === "string" && coach_id_raw.trim().length > 0
+      ? coach_id_raw.trim()
+      : null;
+
   // NEW: drop-in fields
   const drop_in_enabled: boolean = !!body?.drop_in_enabled;
 
@@ -121,7 +129,7 @@ serve(async (req) => {
       }
       drop_in_price = parsed;
     } else {
-      // allow 0 or null depending on your business rules; here we allow null = "not set"
+      // allow null = "not set"
       drop_in_price = null;
     }
   } else {
@@ -176,6 +184,30 @@ serve(async (req) => {
     }
   }
 
+  // NEW: validate coach_id belongs to same tenant
+  if (coach_id) {
+    const { data: coach, error: coachErr } = await admin
+      .from("coaches")
+      .select("id, tenant_id")
+      .eq("id", coach_id)
+      .maybeSingle();
+
+    if (coachErr || !coach) {
+      return withCors(
+        JSON.stringify({ error: "invalid_coach" }),
+        { status: 400 },
+        req,
+      );
+    }
+    if (coach.tenant_id !== tenant_id) {
+      return withCors(
+        JSON.stringify({ error: "coach_tenant_mismatch" }),
+        { status: 403 },
+        req,
+      );
+    }
+  }
+
   const { data, error } = await admin
     .from("classes")
     .insert({
@@ -183,12 +215,12 @@ serve(async (req) => {
       title,
       description,
       category_id,
-      // NEW
+      coach_id,         // NEW
       drop_in_enabled,
       drop_in_price,
     })
     .select(
-      "id, tenant_id, title, description, created_at, category_id, drop_in_enabled, drop_in_price",
+      "id, tenant_id, title, description, created_at, category_id, coach_id, drop_in_enabled, drop_in_price",
     )
     .single();
 

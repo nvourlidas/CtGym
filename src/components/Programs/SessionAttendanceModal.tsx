@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { QrCode } from "lucide-react";
+import { SessionQrModal } from "../../components/SessionQrModal";
+
+
 
 type Booking = {
   id: string;
@@ -38,6 +42,9 @@ export default function SessionAttendanceModal({
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   // NEW: capacity state
   const [capacity, setCapacity] = useState<number | null>(null);
+
+  const [checkinToken, setCheckinToken] = useState<string | null>(null);
+  const [qrOpen, setQrOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -89,13 +96,14 @@ export default function SessionAttendanceModal({
       // 3) fetch session capacity
       const s = await supabase
         .from("class_sessions")
-        .select("capacity")
+        .select("capacity, checkin_token")
         .eq("tenant_id", tenantId)
         .eq("id", sessionId)
         .maybeSingle();
 
       if (!s.error && s.data) {
         setCapacity(s.data.capacity ?? null);
+        setCheckinToken(s.data.checkin_token ?? null);
       }
 
       setLoading(false);
@@ -162,11 +170,10 @@ export default function SessionAttendanceModal({
                 {/* badge showing membership vs drop-in */}
                 <div className="flex items-center gap-1 shrink-0">
                   <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ${
-                      isDropIn
-                        ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                        : "bg-emerald-500/15 text-emerald-300 border border-emerald-500/40"
-                    }`}
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ${isDropIn
+                      ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                      : "bg-emerald-500/15 text-emerald-300 border border-emerald-500/40"
+                      }`}
                   >
                     {isDropIn ? "Drop-in" : "Μέλος"}
                   </span>
@@ -200,7 +207,6 @@ export default function SessionAttendanceModal({
             {sessionTime && (
               <div className="text-xs opacity-70">{sessionTime}</div>
             )}
-            {/* NEW: capacity info */}
             {!loading && (
               <div className="text-xs opacity-80">
                 Συμμετέχοντες:{" "}
@@ -218,13 +224,28 @@ export default function SessionAttendanceModal({
               </div>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="rounded px-2 py-1 hover:bg-white/5"
-          >
-            ✕
-          </button>
+
+          <div className="flex items-center gap-2">
+            {/* QR icon button */}
+            <button
+              disabled={!checkinToken}
+              onClick={() => setQrOpen(true)}
+              className="rounded px-2 py-1 hover:bg-white/5 disabled:opacity-40"
+              title="QR check-in"
+            >
+              <QrCode className="w-7 h-6" />
+            </button>
+
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              className="rounded px-2 py-1 hover:bg-white/5"
+            >
+              ✕
+            </button>
+          </div>
         </div>
+
 
         {/* body */}
         <div className="p-4">
@@ -245,6 +266,16 @@ export default function SessionAttendanceModal({
           )}
         </div>
       </div>
+      <SessionQrModal
+        open={qrOpen}
+        onClose={() => setQrOpen(false)}
+        tenantId={tenantId}
+        sessionId={sessionId}
+        sessionTitle={sessionTitle}
+        token={checkinToken}
+      />
+
+
     </div>
   );
 }

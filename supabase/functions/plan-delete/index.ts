@@ -7,7 +7,7 @@ const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 
-const ALLOWED = new Set(["http://localhost:5173","http://127.0.0.1:5173","https://mycreatorapp.cloudtec.gr"]);
+const ALLOWED = new Set(["http://localhost:5173","http://127.0.0.1:5173","https://mycreatorapp.cloudtec.gr", "https://ctgym.cloudtec.gr"]);
 function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";
   const allowOrigin = ALLOWED.has(origin) ? origin : "";

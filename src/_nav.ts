@@ -4,7 +4,9 @@ import {
   LayoutDashboard, Users, Dumbbell, CalendarClock, BookmarkCheck,
   Layers, CreditCard, BadgeDollarSign, CalendarPlus, Folder,
   Settings,
-  Palette
+  Palette,
+  ContactRound,
+  Info
 } from 'lucide-react';
 
 export type NavEntry =
@@ -25,6 +27,7 @@ export const NAV: NavEntry[] = [
   { type: 'item', label: 'Μέλη', to: '/members', icon: Users },
   { type: 'item', label: 'Τμήματα', to: '/classes', icon: Dumbbell },
   { type: 'item', label: 'Κατηγορίες', to: '/categories', icon: Folder },
+  { type: 'item', label: 'Γυμναστές', to: '/coaches', icon: ContactRound },
 
 
 
@@ -57,6 +60,7 @@ export const NAV: NavEntry[] = [
     icon: Settings,
     children: [
       { label: 'Εμφάνιση εφαρμογής', to: '/themesettings', icon: Palette },
+      { label: 'Πληροφορίες Γυμναστηρίου', to: '/gyminfo', icon: Info },
     ],
   },
 ];

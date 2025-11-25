@@ -8,6 +8,7 @@ const ALLOWED = new Set([
   "http://localhost:5173",
   "http://127.0.0.1:5173",
   "https://mycreatorapp.cloudtec.gr",
+  "https://ctgym.cloudtec.gr",
 ]);
 const cors = (req: Request) => ({
   "Access-Control-Allow-Origin": ALLOWED.has(req.headers.get("origin") ?? "")

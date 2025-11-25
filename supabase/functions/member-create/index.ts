@@ -8,6 +8,7 @@ const ALLOWED = new Set<string>([
   "http://localhost:5173",
   "http://127.0.0.1:5173",
   "https://mycreatorapp.cloudtec.gr", // ← adjust to your admin domain
+  "https://ctgym.cloudtec.gr",
 ]);
 
 /** Build proper CORS headers for this request */

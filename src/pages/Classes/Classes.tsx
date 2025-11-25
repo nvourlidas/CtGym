@@ -2,6 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 
+
+type CoachRef = {
+  id: string;
+  full_name: string;
+};
+
 type GymClass = {
   id: string;
   tenant_id: string;
@@ -9,20 +15,26 @@ type GymClass = {
   description: string | null;
   created_at: string;
   category_id: string | null;
-  // NEW
   drop_in_enabled: boolean;
   drop_in_price: number | null;
+  coach_id: string | null;
   class_categories?: {
     id: string;
     name: string;
     color: string | null;
   } | null;
+  coach?: CoachRef | null;
 };
 
 type Category = {
   id: string;
   name: string;
   color: string | null;
+};
+
+type Coach = {
+  id: string;
+  full_name: string;
 };
 
 export default function ClassesPage() {
@@ -33,6 +45,7 @@ export default function ClassesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editRow, setEditRow] = useState<GymClass | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [coaches, setCoaches] = useState<Coach[]>([]);
 
   // NEW: pagination state
   const [page, setPage] = useState(1);
@@ -54,10 +67,15 @@ export default function ClassesPage() {
         category_id,
         drop_in_enabled,
         drop_in_price,
+        coach_id,
         class_categories (
           id,
           name,
           color
+        ),
+        coaches (
+          id,
+          full_name
         )
       `
       )
@@ -71,6 +89,9 @@ export default function ClassesPage() {
         class_categories: Array.isArray(row.class_categories)
           ? row.class_categories[0] ?? null
           : row.class_categories ?? null,
+        coach: Array.isArray(row.coaches)
+          ? row.coaches[0] ?? null
+          : row.coaches ?? null,
       }));
       setRows(normalized);
     }
@@ -99,6 +120,27 @@ export default function ClassesPage() {
         }
       });
   }, [profile?.tenant_id]);
+
+
+  // Load coaches for this tenant
+  useEffect(() => {
+    if (!profile?.tenant_id) return;
+
+    supabase
+      .from('coaches')
+      .select('id, full_name')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('is_active', true)
+      .order('full_name', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error(error);
+        } else {
+          setCoaches(data || []);
+        }
+      });
+  }, [profile?.tenant_id]);
+
 
   const filtered = useMemo(() => {
     if (!q) return rows;
@@ -150,9 +192,8 @@ export default function ClassesPage() {
               <Th>Τίτλος</Th>
               <Th>Περιγραφή</Th>
               <Th>Κατηγορία</Th>
-              {/* NEW */}
+              <Th>Προπονητής</Th>
               <Th>Drop-in</Th>
-              <Th>Ημ. Δημιουργίας</Th>
               <Th className="text-right pr-3">Ενέργειες</Th>
             </tr>
           </thead>
@@ -199,7 +240,13 @@ export default function ClassesPage() {
                       <span className="text-xs text-text-secondary">—</span>
                     )}
                   </Td>
-                  {/* NEW: Drop-in column */}
+                  <Td>
+                    {c.coach ? (
+                      <span className="text-xs">{c.coach.full_name}</span>
+                    ) : (
+                      <span className="text-xs text-text-secondary">—</span>
+                    )}
+                  </Td>
                   <Td>
                     {c.drop_in_enabled ? (
                       <span className="text-xs">
@@ -215,7 +262,6 @@ export default function ClassesPage() {
                       <span className="text-xs text-text-secondary">Όχι</span>
                     )}
                   </Td>
-                  <Td>{new Date(c.created_at).toLocaleString()}</Td>
                   <Td className="text-right">
                     <button
                       className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
@@ -284,6 +330,7 @@ export default function ClassesPage() {
         <CreateClassModal
           tenantId={profile?.tenant_id!}
           categories={categories}
+          coaches={coaches}
           onClose={() => {
             setShowCreate(false);
             load();
@@ -294,6 +341,7 @@ export default function ClassesPage() {
         <EditClassModal
           row={editRow}
           categories={categories}
+          coaches={coaches}
           onClose={() => {
             setEditRow(null);
             load();
@@ -341,16 +389,18 @@ function DeleteButton({
 function CreateClassModal({
   tenantId,
   categories,
+  coaches,
   onClose,
 }: {
   tenantId: string;
   categories: Category[];
+  coaches: Coach[];
   onClose: () => void;
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [categoryId, setCategoryId] = useState<string>('');
-  // NEW
+  const [coachId, setCoachId] = useState<string>('');
   const [dropInEnabled, setDropInEnabled] = useState(false);
   const [dropInPrice, setDropInPrice] = useState<number | null>(null);
 
@@ -363,7 +413,7 @@ function CreateClassModal({
         title: title.trim(),
         description: description.trim() || null,
         category_id: categoryId || null,
-        // NEW
+        coach_id: coachId || null,
         drop_in_enabled: dropInEnabled,
         drop_in_price: dropInEnabled ? dropInPrice : null,
       },
@@ -405,8 +455,20 @@ function CreateClassModal({
           ))}
         </select>
       </FormRow>
-
-      {/* NEW: Drop-in config */}
+      <FormRow label="Προπονητής">
+        <select
+          className="input"
+          value={coachId}
+          onChange={(e) => setCoachId(e.target.value)}
+        >
+          <option value="">Χωρίς προπονητή</option>
+          {coaches.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.full_name}
+            </option>
+          ))}
+        </select>
+      </FormRow>
       <FormRow label="Drop-in συμμετοχή">
         <div className="flex flex-col gap-2">
           <label className="flex items-center gap-2 text-sm">
@@ -453,10 +515,12 @@ function CreateClassModal({
 function EditClassModal({
   row,
   categories,
+  coaches,
   onClose,
 }: {
   row: GymClass;
   categories: Category[];
+  coaches: Coach[];
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(row.title ?? '');
@@ -464,6 +528,7 @@ function EditClassModal({
   const [categoryId, setCategoryId] = useState<string>(
     row.category_id ?? ''
   );
+  const [coachId, setCoachId] = useState<string>(row.coach_id ?? '');
   // NEW: init from row
   const [dropInEnabled, setDropInEnabled] = useState<boolean>(
     row.drop_in_enabled ?? false
@@ -482,7 +547,7 @@ function EditClassModal({
         title: title.trim(),
         description: description.trim() || null,
         category_id: categoryId || null,
-        // NEW
+        coach_id: coachId || null,
         drop_in_enabled: dropInEnabled,
         drop_in_price: dropInEnabled ? dropInPrice : null,
       },
@@ -526,8 +591,21 @@ function EditClassModal({
           ))}
         </select>
       </FormRow>
+      <FormRow label="Προπονητής">
+        <select
+          className="input"
+          value={coachId}
+          onChange={(e) => setCoachId(e.target.value)}
+        >
+          <option value="">Χωρίς προπονητή</option>
+          {coaches.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.full_name}
+            </option>
+          ))}
+        </select>
+      </FormRow>
 
-      {/* NEW: Drop-in config */}
       <FormRow label="Drop-in συμμετοχή">
         <div className="flex flex-col gap-2">
           <label className="flex items-center gap-2 text-sm">

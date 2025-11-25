@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import SessionAttendanceModal from '../../components/Programs/SessionAttendanceModal';
+import { QrCode } from 'lucide-react';
+import { SessionQrModal } from '../../components/SessionQrModal';
+
 
 type GymClass = {
   id: string;
@@ -20,6 +23,7 @@ type SessionRow = {
   starts_at: string; // ISO
   ends_at: string;   // ISO
   capacity: number | null;
+  checkin_token: string | null;
   created_at: string;
   cancel_before_hours?: number | null; // 👈 NEW FIELD
 };
@@ -37,12 +41,17 @@ export default function ClassSessionsPage() {
   const [editRow, setEditRow] = useState<SessionRow | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+
+
   // pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
   // attendance history modal state
   const [attendanceSession, setAttendanceSession] = useState<SessionRow | null>(null);
+
+  // NEW: QR modal state
+  const [qrSession, setQrSession] = useState<SessionRow | null>(null);
 
   // multi-select state
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -70,8 +79,8 @@ export default function ClassSessionsPage() {
       supabase
         .from('class_sessions')
         .select(
-          'id, tenant_id, class_id, starts_at, ends_at, capacity, created_at, cancel_before_hours'
-        ) // 👈 include cancel_before_hours
+          'id, tenant_id, class_id, starts_at, ends_at, capacity, created_at, cancel_before_hours, checkin_token'
+        )
         .eq('tenant_id', profile.tenant_id)
         .order('starts_at', { ascending: false }), // latest first
     ]);
@@ -184,8 +193,8 @@ export default function ClassSessionsPage() {
       if (firstError) {
         setError(
           firstError.error?.message ??
-            (firstError.data as any)?.error ??
-            'Η ομαδική διαγραφή είχε σφάλματα.'
+          (firstError.data as any)?.error ??
+          'Η ομαδική διαγραφή είχε σφάλματα.'
         );
       } else {
         setError(null);
@@ -387,6 +396,14 @@ export default function ClassSessionsPage() {
                     <Td className="text-right space-x-1">
                       <button
                         className="px-2 py-1 text-xs rounded border border-white/10 hover:bg-secondary/10"
+                        onClick={() => setQrSession(s)}
+                        disabled={!s.checkin_token}
+                        title="QR check-in"
+                      >
+                        <QrCode className="inline-block w-6 h-5" />
+                      </button>
+                      <button
+                        className="px-2 py-1 text-xs rounded border border-white/10 hover:bg-secondary/10"
                         onClick={() => setAttendanceSession(s)}
                       >
                         Ιστορικό
@@ -489,12 +506,23 @@ export default function ClassSessionsPage() {
           sessionTitle={getClass(attendanceSession.class_id)?.title ?? '—'}
           sessionTime={`${formatDate(attendanceSession.starts_at)} • ${formatTime(
             attendanceSession.starts_at
-          )}${
-            attendanceSession.ends_at
-              ? '–' + formatTime(attendanceSession.ends_at)
-              : ''
-          }`}
+          )}${attendanceSession.ends_at
+            ? '–' + formatTime(attendanceSession.ends_at)
+            : ''
+            }`}
           onClose={() => setAttendanceSession(null)}
+        />
+      )}
+
+      {/* NEW: QR modal */}
+      {qrSession && profile?.tenant_id && (
+        <SessionQrModal
+          open={true}
+          onClose={() => setQrSession(null)}
+          tenantId={profile.tenant_id}
+          sessionId={qrSession.id}
+          sessionTitle={getClass(qrSession.class_id)?.title ?? '—'}
+          token={qrSession.checkin_token}
         />
       )}
     </div>
@@ -523,10 +551,9 @@ function FilterChip({
       onClick={onClick}
       className={`px-3 h-8 rounded-full text-xs font-medium transition
         border
-        ${
-          active
-            ? 'bg-accent text-black border-black'
-            : 'bg-secondary-background text-text-secondary border-white/10 hover:border-white/30'
+        ${active
+          ? 'bg-accent text-black border-black'
+          : 'bg-secondary-background text-text-secondary border-white/10 hover:border-white/30'
         }`}
     >
       {label}
