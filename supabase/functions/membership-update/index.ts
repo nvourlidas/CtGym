@@ -16,7 +16,7 @@ function buildCors(req: Request) {
   const reqHdrs = req.headers.get("access-control-request-headers") ?? "";
   return {
     "Access-Control-Allow-Origin": allowOrigin,
-    "Vary": "Origin",
+    Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     "Access-Control-Allow-Headers":
       reqHdrs || "authorization, x-client-info, apikey, content-type",
@@ -100,7 +100,9 @@ serve(async (req) => {
   // Load existing membership
   const { data: existing, error: exErr } = await admin
     .from("memberships")
-    .select("id, tenant_id, starts_at, ends_at, plan_id, remaining_sessions, debt, days_remaining")
+    .select(
+      "id, tenant_id, starts_at, ends_at, plan_id, remaining_sessions, debt, days_remaining",
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -143,6 +145,33 @@ serve(async (req) => {
     updates.debt = Math.max(0, Number(body.debt));
   }
 
+  // NEW: custom_price (per-membership price override)
+  if (Object.prototype.hasOwnProperty.call(body, "custom_price")) {
+    if (body.custom_price === null || body.custom_price === "") {
+      updates.custom_price = null;
+    } else {
+      const parsed = Number(body.custom_price);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return withCors(
+          JSON.stringify({ error: "invalid_custom_price" }),
+          { status: 400 },
+          req,
+        );
+      }
+      updates.custom_price = parsed;
+    }
+  }
+
+  // NEW: discount_reason
+  if (Object.prototype.hasOwnProperty.call(body, "discount_reason")) {
+    const raw = body.discount_reason;
+    if (raw === null || raw === "") {
+      updates.discount_reason = null;
+    } else if (typeof raw === "string") {
+      updates.discount_reason = raw.trim();
+    }
+  }
+
   // If plan_id changes -> reload plan, snapshot, recompute ends/credits
   if (typeof body?.plan_id === "string" && body.plan_id) {
     const newPlanId = String(body.plan_id);
@@ -170,7 +199,7 @@ serve(async (req) => {
     updates.plan_id = newPlanId;
     updates.plan_kind = plan.plan_kind;
     updates.plan_name = plan.name;
-    updates.plan_price = plan.price;
+    updates.plan_price = plan.price; // snapshot of base price
 
     // Reset remaining sessions based on new plan
     updates.remaining_sessions =

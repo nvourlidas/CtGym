@@ -39,7 +39,9 @@ type MembershipDebtRow = {
   id: string;
   debt: number;
   planPrice: number | null;
+  customPrice: number | null;
 };
+
 
 type DropinDebtRow = {
   id: string;
@@ -191,9 +193,10 @@ export default function MemberDetailsModal({
       // 1) Memberships: user_id + debt + membership_plans.price
       const { data: memberships, error: membErr } = await supabase
         .from('memberships')
-        .select('debt, membership_plans(price)')
+        .select('debt, plan_price, custom_price')
         .eq('tenant_id', tenantId)
         .eq('user_id', member.id);
+
 
       if (membErr) {
         setEconomicError(membErr.message);
@@ -237,10 +240,17 @@ export default function MemberDetailsModal({
     // Membership total = sum(membership_plans.price)
     for (const m of memberships) {
       const debtVal = Number(m.debt ?? 0);
-      const priceVal = Number(m.membership_plans?.price ?? 0);
 
-      if (Number.isFinite(debtVal)) membershipDebt += debtVal;
-      if (Number.isFinite(priceVal)) membershipTotal += priceVal;
+      // prefer custom_price (με έκπτωση), αλλιώς snapshot plan_price
+      const effectivePrice = m.custom_price ?? m.plan_price ?? 0;
+      const priceVal = Number(effectivePrice);
+
+      if (Number.isFinite(debtVal)) {
+        membershipDebt += debtVal;
+      }
+      if (Number.isFinite(priceVal)) {
+        membershipTotal += priceVal;
+      }
     }
 
     let dropinDebt = 0;
@@ -703,13 +713,7 @@ function MembershipDebtModal({
 
       const { data, error } = await supabase
         .from('memberships')
-        .select(
-          `
-          id,
-          debt,
-          membership_plans(price)
-        `
-        )
+        .select('id, debt, plan_price, custom_price')
         .eq('tenant_id', tenantId)
         .eq('user_id', memberId)
         .gt('debt', 0);
@@ -721,8 +725,10 @@ function MembershipDebtModal({
         const mapped: MembershipDebtRow[] = (data as any[] ?? []).map((m) => ({
           id: m.id,
           debt: Number(m.debt ?? 0),
-          planPrice: m.membership_plans?.price ?? null,
+          planPrice: m.plan_price ?? null,
+          customPrice: m.custom_price ?? null,
         }));
+
         setRows(mapped);
       }
 
@@ -801,9 +807,15 @@ function MembershipDebtModal({
                   </div>
                   {r.planPrice != null && (
                     <div className="text-xs text-text-secondary mb-1">
-                      Τιμή πλάνου: {r.planPrice.toFixed(2)} €
+                      Βασική τιμή πλάνου: {r.planPrice.toFixed(2)} €
                     </div>
                   )}
+                  {r.customPrice != null && (
+                    <div className="text-xs text-text-secondary mb-1">
+                      Τιμή μέλους (με έκπτωση): {r.customPrice.toFixed(2)} €
+                    </div>
+                  )}
+
                   <label className="block text-xs mb-1">
                     Οφειλή (€)
                   </label>

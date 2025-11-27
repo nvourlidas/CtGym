@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 
@@ -30,11 +30,13 @@ type MembershipRow = {
   remaining_sessions: number | null;
   plan_kind: string | null; // snapshot
   plan_name: string | null; // snapshot
-  plan_price: number | null;// snapshot
+  plan_price: number | null;// snapshot βασική τιμή πλάνου
+  custom_price: number | null; // τελική τιμή για αυτό το μέλος (αν υπάρχει έκπτωση)
+  discount_reason?: string | null;
   days_remaining: number | null;
   debt: number | null;
-  plan_category?: PlanCategory | null; // κατηγορία πλάνου
-  profile?: Member | null;            // joined για εμφάνιση
+  plan_categories?: PlanCategory[]; // κατηγορίες πλάνου
+  profile?: Member | null;          // joined για εμφάνιση
 };
 
 export default function MembershipsPage() {
@@ -61,63 +63,73 @@ export default function MembershipsPage() {
     setLoading(true);
     setError(null);
 
-    // Join μέλος + κατηγορία πλάνου
+    // 1) memberships + plan + categories (via membership_plan_categories)
     const { data, error } = await supabase
       .from('memberships')
       .select(`
         id, tenant_id, user_id, plan_id, starts_at, ends_at, status, created_at,
         remaining_sessions, plan_kind, plan_name, plan_price,
+        custom_price, discount_reason,
         days_remaining, debt,
-        profiles!inner(id, full_name),
-        membership_plans(
-          class_categories(id, name, color)
+        membership_plans (
+          membership_plan_categories (
+            class_categories ( id, name, color )
+          )
         )
       `)
       .eq('tenant_id', profile.tenant_id)
       .order('created_at', { ascending: false });
 
     if (error) {
-      // fallback χωρίς joins
-      const { data: bare, error: e2 } = await supabase
-        .from('memberships')
-        .select(
-          'id, tenant_id, user_id, plan_id, starts_at, ends_at, status, created_at,' +
-          'remaining_sessions, plan_kind, plan_name, plan_price, days_remaining, debt'
-        )
-        .eq('tenant_id', profile.tenant_id)
-        .order('created_at', { ascending: false });
-
-      if (e2) setError(e2.message);
-      setRows(
-        (bare as any[] | null)?.map(r => ({
-          ...r,
-          profile: null,
-          plan_category: null,
-        })) ?? []
-      );
-    } else {
-      const withName = (data as any[]).map(r => {
-        const mp = r.membership_plans;
-        const cat: PlanCategory | null =
-          mp && mp.class_categories
-            ? {
-              id: mp.class_categories.id as string,
-              name: mp.class_categories.name as string,
-              color: mp.class_categories.color ?? null,
-            }
-            : null;
-
-        return {
-          ...r,
-          profile: r.profiles
-            ? { id: r.profiles.id, full_name: r.profiles.full_name }
-            : null,
-          plan_category: cat,
-        } as MembershipRow;
-      });
-      setRows(withName);
+      setError(error.message);
+      setRows([]);
+      setLoading(false);
+      return;
     }
 
+    // 2) Load member profiles for names
+    const { data: members, error: mErr } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('role', 'member');
+
+    if (mErr) {
+      console.error('load members error', mErr);
+    }
+
+    const memberMap = new Map<string, Member>();
+    (members as any[] | null)?.forEach((m) => {
+      memberMap.set(m.id, { id: m.id, full_name: m.full_name });
+    });
+
+    // 3) Normalize rows: attach profile + ALL categories from the plan
+    const normalized: MembershipRow[] = (data as any[]).map((r) => {
+      const plan = r.membership_plans;
+
+      let cats: PlanCategory[] = [];
+      if (plan && Array.isArray(plan.membership_plan_categories)) {
+        const links = plan.membership_plan_categories as any[];
+        cats = links
+          .map((link) => link.class_categories)
+          .filter((c: any) => !!c)
+          .map((c: any) => ({
+            id: c.id as string,
+            name: c.name as string,
+            color: c.color ?? null,
+          }));
+      }
+
+      const member = memberMap.get(r.user_id) ?? null;
+
+      return {
+        ...r,
+        profile: member,
+        plan_categories: cats,
+      } as MembershipRow;
+    });
+
+    setRows(normalized);
     setLoading(false);
   }
 
@@ -126,10 +138,12 @@ export default function MembershipsPage() {
   // options για τα dropdowns
   const categoryOptions = useMemo(() => {
     const map = new Map<string, string>();
-    rows.forEach(r => {
-      if (r.plan_category?.id) {
-        map.set(r.plan_category.id, r.plan_category.name);
-      }
+    rows.forEach((r) => {
+      (r.plan_categories ?? []).forEach((cat) => {
+        if (cat.id) {
+          map.set(cat.id, cat.name);
+        }
+      });
     });
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [rows]);
@@ -153,14 +167,18 @@ export default function MembershipsPage() {
       list = list.filter(r =>
         (r.profile?.full_name ?? '').toLowerCase().includes(needle) ||
         (r.plan_name ?? '').toLowerCase().includes(needle) ||
-        (r.plan_category?.name ?? '').toLowerCase().includes(needle) ||
+        (r.plan_categories ?? []).some((c) =>
+          (c.name ?? '').toLowerCase().includes(needle),
+        ) ||
         (r.status ?? '').toLowerCase().includes(needle)
       );
     }
 
     // by category
     if (filterCategory) {
-      list = list.filter(r => r.plan_category?.id === filterCategory);
+      list = list.filter((r) =>
+        (r.plan_categories ?? []).some((c) => c.id === filterCategory),
+      );
     }
 
     // by plan
@@ -273,6 +291,7 @@ export default function MembershipsPage() {
             <tr className="text-left">
               <Th>Μέλος</Th>
               <Th>Πλάνο</Th>
+              <Th>Τιμή</Th>
               <Th>Κατηγορία</Th>
               <Th>Έναρξη</Th>
               <Th>Λήξη</Th>
@@ -285,66 +304,100 @@ export default function MembershipsPage() {
           </thead>
           <tbody>
             {loading && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={10}>Loading…</td></tr>
+              <tr><td className="px-3 py-4 opacity-60" colSpan={11}>Loading…</td></tr>
             )}
             {!loading && filtered.length === 0 && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={10}>Καμία Συνδρομή</td></tr>
+              <tr><td className="px-3 py-4 opacity-60" colSpan={11}>Καμία Συνδρομή</td></tr>
             )}
-            {!loading && filtered.length > 0 && paginated.map(m => (
-              <tr key={m.id} className="border-t border-white/10 hover:bg-secondary/10">
-                <Td>{m.profile?.full_name ?? m.user_id}</Td>
-                <Td>{m.plan_name ?? '—'}</Td>
-                <Td>
-                  {m.plan_category ? (
-                    <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5">
-                      {m.plan_category.color && (
-                        <span
-                          className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
-                          style={{ backgroundColor: m.plan_category.color }}
-                        />
-                      )}
-                      <span>{m.plan_category.name}</span>
-                    </span>
-                  ) : (
-                    <span className="text-xs text-text-secondary">—</span>
-                  )}
-                </Td>
-                <Td>{formatDateDMY(m.starts_at)}</Td>
-                <Td>{formatDateDMY(m.ends_at)}</Td>
-                <Td>{m.days_remaining ?? '—'}</Td>
-                <Td>{m.remaining_sessions ?? '—'}</Td>
-                <Td>
-                  {m.debt != null && m.debt !== 0
-                    ? <span className="text-amber-300 font-medium">{formatMoney(m.debt)}</span>
-                    : <span className="text-emerald-300 text-xs uppercase tracking-wide">Εξοφλημένη</span>}
-                </Td>
-                <Td>
-                  {(() => {
-                    const { label, className } = getStatusDisplay(m.status);
-                    return (
-                      <span
-                        className={
-                          'inline-flex items-center px-2 py-0.5 text-xs rounded-full font-medium ' +
-                          className
-                        }
-                      >
-                        {label}
-                      </span>
-                    );
-                  })()}
-                </Td>
+            {!loading && filtered.length > 0 && paginated.map(m => {
+              const basePrice = m.plan_price ?? null;
+              const effectivePrice = m.custom_price ?? basePrice;
 
-                <Td className="text-right">
-                  <button
-                    className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
-                    onClick={() => setEditRow(m)}
-                  >
-                    Επεξεργασία
-                  </button>
-                  <DeleteButton id={m.id} onDeleted={load} />
-                </Td>
-              </tr>
-            ))}
+              return (
+                <tr key={m.id} className="border-t border-white/10 hover:bg-secondary/10">
+                  <Td>{m.profile?.full_name ?? m.user_id}</Td>
+                  <Td>{m.plan_name ?? '—'}</Td>
+
+                  {/* Τιμή με τυχόν έκπτωση */}
+                  <Td>
+                    {effectivePrice == null ? (
+                      <span className="text-xs text-text-secondary">—</span>
+                    ) : (
+                      <div className="flex flex-col text-xs">
+                        <span className="font-medium">
+                          {formatMoney(effectivePrice)}
+                        </span>
+                        {basePrice != null &&
+                          m.custom_price != null &&
+                          m.custom_price !== basePrice && (
+                            <span className="text-[11px] text-amber-300">
+                              κανονική: {formatMoney(basePrice)}
+                            </span>
+                          )}
+                      </div>
+                    )}
+                  </Td>
+
+                  <Td>
+                    {m.plan_categories && m.plan_categories.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {m.plan_categories.map((cat) => (
+                          <span
+                            key={cat.id}
+                            className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5"
+                          >
+                            {cat.color && (
+                              <span
+                                className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                                style={{ backgroundColor: cat.color }}
+                              />
+                            )}
+                            <span>{cat.name}</span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-text-secondary">—</span>
+                    )}
+                  </Td>
+
+                  <Td>{formatDateDMY(m.starts_at)}</Td>
+                  <Td>{formatDateDMY(m.ends_at)}</Td>
+                  <Td>{m.days_remaining ?? '—'}</Td>
+                  <Td>{m.remaining_sessions ?? '—'}</Td>
+                  <Td>
+                    {m.debt != null && m.debt !== 0
+                      ? <span className="text-amber-300 font-medium">{formatMoney(m.debt)}</span>
+                      : <span className="text-emerald-300 text-xs uppercase tracking-wide">Εξοφλημένη</span>}
+                  </Td>
+                  <Td>
+                    {(() => {
+                      const { label, className } = getStatusDisplay(m.status);
+                      return (
+                        <span
+                          className={
+                            'inline-flex items-center px-2 py-0.5 text-xs rounded-full font-medium ' +
+                            className
+                          }
+                        >
+                          {label}
+                        </span>
+                      );
+                    })()}
+                  </Td>
+
+                  <Td className="text-right">
+                    <button
+                      className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
+                      onClick={() => setEditRow(m)}
+                    >
+                      Επεξεργασία
+                    </button>
+                    <DeleteButton id={m.id} onDeleted={load} />
+                  </Td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
@@ -454,12 +507,6 @@ function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) 
   );
 }
 
-/* ── Create / Edit modals παραμένουν όπως πριν ──
-   (δεν χρειάζεται αλλαγή για την μορφή ημερομηνίας, γιατί τα <input type="date">
-   δουλεύουν με yyyy-mm-dd). 
-   Κράτα τα όπως τα έχεις ήδη στο project σου.
-*/
-
 function Modal({ title, children, onClose }: any) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
@@ -521,35 +568,137 @@ function getStatusDisplay(status?: string | null) {
   }
 }
 
-
-
 /* ── Create ───────────────────────────────────────────────────────────── */
 function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClose: () => void }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [userId, setUserId] = useState('');
   const [planId, setPlanId] = useState('');
-  const [startsAt, setStartsAt] = useState(() => new Date().toISOString().slice(0, 10)); // yyyy-mm-dd
+  const [startsAt, setStartsAt] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  ); // yyyy-mm-dd
   const [debt, setDebt] = useState<number>(0);
+  const [customPrice, setCustomPrice] = useState<number | null>(null);
+  const [discountReason, setDiscountReason] = useState<string>('');
   const [busy, setBusy] = useState(false);
+
+  // 🔍 MEMBER dropdown state
+  const [memberDropdownOpen, setMemberDropdownOpen] = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
+  const memberDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // 🔍 PLAN dropdown state
+  const [planDropdownOpen, setPlanDropdownOpen] = useState(false);
+  const [planSearch, setPlanSearch] = useState('');
+  const planDropdownRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     (async () => {
       const { data: m } = await supabase
         .from('profiles')
-        .select('id, full_name')
+        .select('id, full_name, email')
         .eq('tenant_id', tenantId)
         .eq('role', 'member')
         .order('full_name', { ascending: true });
+
       setMembers((m as any[]) ?? []);
+
       const { data: p } = await supabase
         .from('membership_plans')
-        .select('id, name, plan_kind, duration_days, session_credits, price')
+        .select(
+          'id, name, plan_kind, duration_days, session_credits, price',
+        )
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
+
       setPlans((p as any[]) ?? []);
     })();
   }, [tenantId]);
+
+  // 🔒 close member dropdown on outside click
+  useEffect(() => {
+    if (!memberDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!memberDropdownRef.current) return;
+      if (!memberDropdownRef.current.contains(e.target as Node)) {
+        setMemberDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handler);
+    return () => window.removeEventListener('mousedown', handler);
+  }, [memberDropdownOpen]);
+
+  // 🔒 close plan dropdown on outside click
+  useEffect(() => {
+    if (!planDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!planDropdownRef.current) return;
+      if (!planDropdownRef.current.contains(e.target as Node)) {
+        setPlanDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handler);
+    return () => window.removeEventListener('mousedown', handler);
+  }, [planDropdownOpen]);
+
+  // FILTERED MEMBERS
+  const filteredMembers = useMemo(() => {
+    const needle = memberSearch.toLowerCase();
+    if (!needle) return members;
+    return members.filter((m) => {
+      const name = (m.full_name ?? '').toLowerCase();
+      const id = m.id.toLowerCase();
+      const email = (m.email ?? '').toLowerCase();
+      return (
+        name.includes(needle) || id.includes(needle) || email.includes(needle)
+      );
+    });
+  }, [members, memberSearch]);
+
+  const selectedMember = members.find((m) => m.id === userId);
+
+  // FILTERED PLANS
+  const filteredPlans = useMemo(() => {
+    const needle = planSearch.toLowerCase();
+    if (!needle) return plans;
+
+    return plans.filter((p) => {
+      const name = p.name.toLowerCase();
+      const descParts: string[] = [];
+      if (p.duration_days) descParts.push(`${p.duration_days} μέρες`);
+      if (p.session_credits) descParts.push(`${p.session_credits} συνεδρίες`);
+      if (p.price != null) descParts.push(`${p.price}€`);
+      const desc = descParts.join(' · ').toLowerCase();
+
+      return name.includes(needle) || desc.includes(needle);
+    });
+  }, [plans, planSearch]);
+
+  const selectedPlan = useMemo(
+    () => plans.find((p) => p.id === planId) ?? null,
+    [plans, planId],
+  );
+
+  const basePrice = selectedPlan?.price ?? null;
+  const effectivePrice =
+    customPrice != null
+      ? customPrice
+      : basePrice != null
+        ? basePrice
+        : null;
+
+  const discount =
+    basePrice != null && effectivePrice != null
+      ? basePrice - effectivePrice
+      : null;
+
+  const planLabel = (p: Plan) => {
+    const parts: string[] = [];
+    if (p.duration_days) parts.push(`${p.duration_days} μέρες`);
+    if (p.session_credits) parts.push(`${p.session_credits} συνεδρίες`);
+    if (p.price != null) parts.push(formatMoney(p.price));
+    return `${p.name}${parts.length ? ' · ' + parts.join(' • ') : ''}`;
+  };
 
   const submit = async () => {
     if (!userId || !planId) return;
@@ -561,6 +710,8 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
         plan_id: planId,
         starts_at: startsAt,
         debt: Number.isFinite(debt) ? debt : 0,
+        custom_price: customPrice,
+        discount_reason: discountReason || null,
       },
     });
     setBusy(false);
@@ -573,25 +724,165 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
 
   return (
     <Modal onClose={onClose} title="Νέα Συνδρομή">
+      {/* 🔍 Searchable MEMBER dropdown */}
       <FormRow label="Μέλος *">
-        <select className="input" value={userId} onChange={(e) => setUserId(e.target.value)}>
-          <option value="">— επιλογή μέλους —</option>
-          {members.map(m => <option key={m.id} value={m.id}>{m.full_name ?? m.id}</option>)}
-        </select>
+        <div ref={memberDropdownRef} className="relative">
+          <button
+            type="button"
+            className="input flex items-center justify-between"
+            onClick={() => setMemberDropdownOpen((v) => !v)}
+          >
+            <span>
+              {selectedMember
+                ? selectedMember.full_name ?? selectedMember.id
+                : '— επιλογή μέλους —'}
+            </span>
+            <span className="ml-2 text-xs opacity-70">
+              {memberDropdownOpen ? '▲' : '▼'}
+            </span>
+          </button>
+
+          {memberDropdownOpen && (
+            <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
+              <div className="p-2 border-b border-white/10">
+                <input
+                  autoFocus
+                  className="input !h-9 !text-sm"
+                  placeholder="Αναζήτηση μέλους (όνομα, email)…"
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                />
+              </div>
+              <div className="max-h-60 overflow-y-auto">
+                {filteredMembers.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-text-secondary">
+                    Δεν βρέθηκαν μέλη
+                  </div>
+                )}
+                {filteredMembers.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${m.id === userId ? 'bg-white/10' : ''
+                      }`}
+                    onClick={() => {
+                      setUserId(m.id);
+                      setMemberDropdownOpen(false);
+                    }}
+                  >
+                    <div className="flex flex-col">
+                      <span>{m.full_name ?? m.id}</span>
+                      {m.email && (
+                        <span className="text-[11px] text-text-secondary">
+                          {m.email}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </FormRow>
+
+      {/* 🔍 Searchable PLAN dropdown */}
       <FormRow label="Πλάνο *">
-        <select className="input" value={planId} onChange={(e) => setPlanId(e.target.value)}>
-          <option value="">— επιλογή πλάνου —</option>
-          {plans.map(p => (
-            <option key={p.id} value={p.id}>
-              {p.name} · {[
-                p.duration_days ? `${p.duration_days}μ` : null,
-                p.session_credits ? `${p.session_credits} υπόλοιπο` : null,
-              ].filter(Boolean).join(' • ')} {p.price != null ? `· ${formatMoney(p.price)}` : ''}
-            </option>
-          ))}
-        </select>
+        <div ref={planDropdownRef} className="relative">
+          <button
+            type="button"
+            className="input flex items-center justify-between"
+            onClick={() => setPlanDropdownOpen((v) => !v)}
+          >
+            <span>
+              {selectedPlan ? planLabel(selectedPlan) : '— επιλογή πλάνου —'}
+            </span>
+            <span className="ml-2 text-xs opacity-70">
+              {planDropdownOpen ? '▲' : '▼'}
+            </span>
+          </button>
+
+          {planDropdownOpen && (
+            <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
+              <div className="p-2 border-b border-white/10">
+                <input
+                  autoFocus
+                  className="input !h-9 !text-sm"
+                  placeholder="Αναζήτηση πλάνου…"
+                  value={planSearch}
+                  onChange={(e) => setPlanSearch(e.target.value)}
+                />
+              </div>
+              <div className="max-h-60 overflow-y-auto">
+                {filteredPlans.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-text-secondary">
+                    Δεν βρέθηκαν πλάνα
+                  </div>
+                )}
+                {filteredPlans.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${p.id === planId ? 'bg-white/10' : ''
+                      }`}
+                    onClick={() => {
+                      setPlanId(p.id);
+                      setPlanDropdownOpen(false);
+                    }}
+                  >
+                    {planLabel(p)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </FormRow>
+
+      {basePrice != null && (
+        <FormRow label="Τελική τιμή για αυτό το μέλος (€)">
+          <div className="flex flex-col gap-1 text-sm">
+            <input
+              className="input max-w-[160px]"
+              type="number"
+              min={0}
+              step="0.50"
+              value={customPrice ?? ''}
+              placeholder={basePrice.toString()}
+              onChange={(e) =>
+                setCustomPrice(
+                  e.target.value === '' ? null : Number(e.target.value),
+                )
+              }
+            />
+            <div className="text-xs text-text-secondary">
+              Κανονική τιμή πλάνου: {formatMoney(basePrice)}
+              {effectivePrice != null && discount != null && discount !== 0 && (
+                <>
+                  {' · Τελική: '}
+                  <span className="text-emerald-300">
+                    {formatMoney(effectivePrice)}
+                  </span>
+                  {' · Έκπτωση: '}
+                  <span className="text-amber-300">
+                    {formatMoney(discount)}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        </FormRow>
+      )}
+
+      <FormRow label="Λόγος έκπτωσης (προαιρετικό)">
+        <input
+          className="input"
+          value={discountReason}
+          onChange={(e) => setDiscountReason(e.target.value)}
+          placeholder="π.χ. φίλος, παλιό μέλος, προσφορά κλπ."
+        />
+      </FormRow>
+
       <FormRow label="Έναρξη">
         <input
           className="input"
@@ -611,7 +902,9 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
       </FormRow>
 
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Κλείσιμο</button>
+        <button className="btn-secondary" onClick={onClose}>
+          Κλείσιμο
+        </button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
           {busy ? 'Δημιουργία...' : 'Δημιουργία'}
         </button>
@@ -628,6 +921,8 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
   const [remaining, setRemaining] = useState<number>(row.remaining_sessions ?? 0);
   const [planId, setPlanId] = useState<string>(row.plan_id ?? '');
   const [debt, setDebt] = useState<number>(row.debt ?? 0);
+  const [customPrice, setCustomPrice] = useState<number | null>(row.custom_price ?? null);
+  const [discountReason, setDiscountReason] = useState<string>(row.discount_reason ?? '');
   const [plans, setPlans] = useState<Plan[]>([]);
   const [busy, setBusy] = useState(false);
 
@@ -642,6 +937,28 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
     })();
   }, [row.tenant_id]);
 
+  const selectedPlan = useMemo(
+    () => plans.find((p) => p.id === planId) ?? null,
+    [plans, planId],
+  );
+
+  const basePrice =
+    selectedPlan?.price != null
+      ? selectedPlan.price
+      : row.plan_price ?? null;
+
+  const effectivePrice =
+    customPrice != null
+      ? customPrice
+      : basePrice != null
+        ? basePrice
+        : null;
+
+  const discount =
+    basePrice != null && effectivePrice != null
+      ? basePrice - effectivePrice
+      : null;
+
   const submit = async () => {
     setBusy(true);
     const res = await supabase.functions.invoke('membership-update', {
@@ -653,6 +970,8 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
         remaining_sessions: Number.isFinite(remaining) ? remaining : null,
         plan_id: planId || null, // server will resnapshot if plan changes
         debt: Number.isFinite(debt) ? debt : null,
+        custom_price: customPrice,
+        discount_reason: discountReason || null,
       },
     });
     setBusy(false);
@@ -678,6 +997,51 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
           ))}
         </select>
       </FormRow>
+
+      {basePrice != null && (
+        <FormRow label="Τελική τιμή για αυτό το μέλος (€)">
+          <div className="flex flex-col gap-1 text-sm">
+            <input
+              className="input max-w-[160px]"
+              type="number"
+              min={0}
+              step="0.50"
+              value={customPrice ?? ''}
+              placeholder={basePrice.toString()}
+              onChange={(e) =>
+                setCustomPrice(
+                  e.target.value === '' ? null : Number(e.target.value),
+                )
+              }
+            />
+            <div className="text-xs text-text-secondary">
+              Κανονική τιμή πλάνου: {formatMoney(basePrice)}
+              {effectivePrice != null && discount != null && discount !== 0 && (
+                <>
+                  {' · Τελική: '}
+                  <span className="text-emerald-300">
+                    {formatMoney(effectivePrice)}
+                  </span>
+                  {' · Έκπτωση: '}
+                  <span className="text-amber-300">
+                    {formatMoney(discount)}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        </FormRow>
+      )}
+
+      <FormRow label="Λόγος έκπτωσης (προαιρετικό)">
+        <input
+          className="input"
+          value={discountReason}
+          onChange={(e) => setDiscountReason(e.target.value)}
+          placeholder="π.χ. φίλος, παλιό μέλος, προσφορά κλπ."
+        />
+      </FormRow>
+
       <FormRow label="Κατάσταση">
         <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="active">ενεργή</option>
@@ -730,4 +1094,3 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
     </Modal>
   );
 }
-

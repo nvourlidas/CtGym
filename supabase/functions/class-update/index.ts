@@ -102,7 +102,7 @@ serve(async (req) => {
       ? category_id_raw.trim()
       : null;
 
-  // NEW: optional coach_id
+  // optional coach_id
   const coach_id_raw = body?.coach_id ?? null;
   const coach_id =
     typeof coach_id_raw === "string" && coach_id_raw.trim().length > 0
@@ -126,12 +126,31 @@ serve(async (req) => {
       }
       drop_in_price = parsed;
     } else {
-      // allow null if you want “drop-in enabled but price not set”
       drop_in_price = null;
     }
   } else {
-    // if drop-in is disabled, always clear price
     drop_in_price = null;
+  }
+
+  // NEW: member_drop_in_price
+  let member_drop_in_price: number | null = null;
+  if (drop_in_enabled) {
+    const rawMember = body?.member_drop_in_price;
+    if (rawMember !== null && rawMember !== undefined && rawMember !== "") {
+      const parsedMember = Number(rawMember);
+      if (Number.isNaN(parsedMember) || parsedMember < 0) {
+        return withCors(
+          JSON.stringify({ error: "invalid_member_drop_in_price" }),
+          { status: 400 },
+          req,
+        );
+      }
+      member_drop_in_price = parsedMember;
+    } else {
+      member_drop_in_price = null;
+    }
+  } else {
+    member_drop_in_price = null;
   }
 
   if (!id) {
@@ -149,7 +168,6 @@ serve(async (req) => {
     );
   }
 
-  // SERVICE client to bypass RLS, then enforce tenant in code
   const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
 
   // 1) Ensure class exists and belongs to this tenant
@@ -181,7 +199,7 @@ serve(async (req) => {
     );
   }
 
-  // 2) If category_id is provided, validate it belongs to same tenant
+  // 2) Validate category_id
   if (category_id) {
     const { data: cat, error: cErr } = await admin
       .from("class_categories")
@@ -205,7 +223,7 @@ serve(async (req) => {
     }
   }
 
-  // NEW 3) If coach_id is provided, validate it belongs to same tenant
+  // 3) Validate coach_id
   if (coach_id) {
     const { data: coach, error: coachErr } = await admin
       .from("coaches")
@@ -234,9 +252,10 @@ serve(async (req) => {
     title,
     description,
     category_id,
-    coach_id,           // NEW
+    coach_id,
     drop_in_enabled,
     drop_in_price,
+    member_drop_in_price, // 👈 NEW
   };
 
   const { data, error } = await admin
@@ -244,7 +263,7 @@ serve(async (req) => {
     .update(updateFields)
     .eq("id", id)
     .select(
-      "id, tenant_id, title, description, created_at, category_id, coach_id, drop_in_enabled, drop_in_price",
+      "id, tenant_id, title, description, created_at, category_id, coach_id, drop_in_enabled, drop_in_price, member_drop_in_price",
     )
     .single();
 

@@ -15,17 +15,13 @@ type Plan = {
   tenant_id: string;
   name: string;
   description: string | null;
-  price: number | null;           // if you store cents, adjust formatMoney()
+  price: number | null;
   plan_kind: PlanKind;
-  duration_days: number | null;   // days of access
-  session_credits: number | null; // number of sessions
+  duration_days: number | null;
+  session_credits: number | null;
   created_at: string;
-  category_id: string | null;
-  class_categories?: {
-    id: string;
-    name: string | null;
-    color: string | null;
-  } | null;
+  // NEW: multiple categories instead of single category_id + class_categories
+  categories: Category[];
 };
 
 export default function Plans() {
@@ -60,11 +56,13 @@ export default function Plans() {
         duration_days,
         session_credits,
         created_at,
-        category_id,
-        class_categories (
-          id,
-          name,
-          color
+        membership_plan_categories (
+          category_id,
+          class_categories (
+            id,
+            name,
+            color
+          )
         )
       `)
       .eq('tenant_id', profile.tenant_id)
@@ -77,18 +75,38 @@ export default function Plans() {
       return;
     }
 
-    const normalized: Plan[] = (data as any[] ?? []).map((row) => ({
-      ...row,
-      class_categories: Array.isArray(row.class_categories)
-        ? row.class_categories[0] ?? null
-        : row.class_categories ?? null,
-    }));
+    const normalized: Plan[] = (data as any[] ?? []).map((row) => {
+      const links = (row.membership_plan_categories ?? []) as any[];
+      const cats: Category[] = links
+        .map((l) => l.class_categories)
+        .filter((c: any) => !!c)
+        .map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          color: c.color,
+        }));
+
+      return {
+        id: row.id,
+        tenant_id: row.tenant_id,
+        name: row.name,
+        description: row.description,
+        price: row.price,
+        plan_kind: row.plan_kind,
+        duration_days: row.duration_days,
+        session_credits: row.session_credits,
+        created_at: row.created_at,
+        categories: cats,
+      };
+    });
 
     setRows(normalized);
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [profile?.tenant_id]);
+  useEffect(() => {
+    load();
+  }, [profile?.tenant_id]);
 
   // Load categories for this tenant
   useEffect(() => {
@@ -103,7 +121,7 @@ export default function Plans() {
         if (error) {
           console.error('load categories error', error);
         } else {
-          setCategories(data || []);
+          setCategories((data || []) as Category[]);
         }
       });
   }, [profile?.tenant_id]);
@@ -111,10 +129,10 @@ export default function Plans() {
   const filtered = useMemo(() => {
     if (!q) return rows;
     const needle = q.toLowerCase();
-    return rows.filter(r =>
+    return rows.filter((r) =>
       (r.name ?? '').toLowerCase().includes(needle) ||
       (r.description ?? '').toLowerCase().includes(needle) ||
-      (r.class_categories?.name ?? '').toLowerCase().includes(needle)
+      r.categories.some((c) => (c.name ?? '').toLowerCase().includes(needle))
     );
   }, [rows, q]);
 
@@ -162,7 +180,7 @@ export default function Plans() {
             <tr className="text-left">
               <Th>Ονομασία</Th>
               <Th>Περιγραφή</Th>
-              <Th>Κατηγορία</Th>
+              <Th>Κατηγορίες</Th>
               <Th>Τιμή</Th>
               <Th>Τύπος</Th>
               <Th>Οφέλη</Th>
@@ -172,50 +190,69 @@ export default function Plans() {
           </thead>
           <tbody>
             {loading && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={8}>Loading…</td></tr>
+              <tr>
+                <td className="px-3 py-4 opacity-60" colSpan={8}>
+                  Loading…
+                </td>
+              </tr>
             )}
             {!loading && filtered.length === 0 && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={8}>Κανένα Πλάνο</td></tr>
-            )}
-            {!loading && filtered.length > 0 && paginated.map(p => (
-              <tr key={p.id} className="border-t border-white/10 hover:bg-secondary/10">
-                <Td className="font-medium">{p.name}</Td>
-                <Td className="font-medium">{p.description}</Td>
-                <Td>
-                  {p.class_categories ? (
-                    <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5">
-                      {p.class_categories.color && (
-                        <span
-                          className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
-                          style={{ backgroundColor: p.class_categories.color }}
-                        />
-                      )}
-                      <span>{p.class_categories.name}</span>
-                    </span>
-                  ) : (
-                    <span className="text-xs text-text-secondary">—</span>
-                  )}
-                </Td>
-                <Td>{p.price != null ? formatMoney(p.price) : '—'}</Td>
-                <Td className="uppercase">{p.plan_kind}</Td>
-                <Td>
-                  {[
-                    p.duration_days ? `${p.duration_days} μέρες` : null,
-                    p.session_credits ? `${p.session_credits} συνεδρίες` : null,
-                  ].filter(Boolean).join(' • ') || '—'}
-                </Td>
-                <Td>{formatDateDMY(new Date(p.created_at).toLocaleString())}</Td>
-                <Td className="text-right">
-                  <button
-                    className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
-                    onClick={() => setEditRow(p)}
-                  >
-                    Επεξεργασία
-                  </button>
-                  <DeleteButton id={p.id} onDeleted={load} />
-                </Td>
+              <tr>
+                <td className="px-3 py-4 opacity-60" colSpan={8}>
+                  Κανένα Πλάνο
+                </td>
               </tr>
-            ))}
+            )}
+            {!loading &&
+              filtered.length > 0 &&
+              paginated.map((p) => (
+                <tr key={p.id} className="border-t border-white/10 hover:bg-secondary/10">
+                  <Td className="font-medium">{p.name}</Td>
+                  <Td className="font-medium">{p.description}</Td>
+                  <Td>
+                    {p.categories.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {p.categories.map((cat) => (
+                          <span
+                            key={cat.id}
+                            className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5"
+                          >
+                            {cat.color && (
+                              <span
+                                className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                                style={{ backgroundColor: cat.color }}
+                              />
+                            )}
+                            <span>{cat.name}</span>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-text-secondary">—</span>
+                    )}
+                  </Td>
+                  <Td>{p.price != null ? formatMoney(p.price) : '—'}</Td>
+                  <Td className="uppercase">{p.plan_kind}</Td>
+                  <Td>
+                    {[
+                      p.duration_days ? `${p.duration_days} μέρες` : null,
+                      p.session_credits ? `${p.session_credits} συνεδρίες` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' • ') || '—'}
+                  </Td>
+                  <Td>{formatDateDMY(p.created_at)}</Td>
+                  <Td className="text-right">
+                    <button
+                      className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
+                      onClick={() => setEditRow(p)}
+                    >
+                      Επεξεργασία
+                    </button>
+                    <DeleteButton id={p.id} onDeleted={load} />
+                  </Td>
+                </tr>
+              ))}
           </tbody>
         </table>
 
@@ -224,8 +261,12 @@ export default function Plans() {
           <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
             <div>
               Εμφάνιση <span className="font-semibold">{startIdx}</span>
-              {filtered.length > 0 && <>–<span className="font-semibold">{endIdx}</span></>} από{' '}
-              <span className="font-semibold">{filtered.length}</span>
+              {filtered.length > 0 && (
+                <>
+                  –<span className="font-semibold">{endIdx}</span>
+                </>
+              )}{' '}
+              από <span className="font-semibold">{filtered.length}</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1">
@@ -243,18 +284,18 @@ export default function Plans() {
               <div className="flex items-center gap-2">
                 <button
                   className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
                 >
                   Προηγ.
                 </button>
                 <span>
-                  Σελίδα <span className="font-semibold">{page}</span> of{' '}
+                  Σελίδα <span className="font-semibold">{page}</span> από{' '}
                   <span className="font-semibold">{pageCount}</span>
                 </span>
                 <button
                   className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
-                  onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                   disabled={page === pageCount}
                 >
                   Επόμενο
@@ -269,14 +310,20 @@ export default function Plans() {
         <CreatePlanModal
           tenantId={profile?.tenant_id!}
           categories={categories}
-          onClose={() => { setShowCreate(false); load(); }}
+          onClose={() => {
+            setShowCreate(false);
+            load();
+          }}
         />
       )}
       {editRow && (
         <EditPlanModal
           row={editRow}
           categories={categories}
-          onClose={() => { setEditRow(null); load(); }}
+          onClose={() => {
+            setEditRow(null);
+            load();
+          }}
         />
       )}
     </div>
@@ -330,8 +377,15 @@ function CreatePlanModal({
   const [durationDays, setDurationDays] = useState<number>(0);
   const [sessionCredits, setSessionCredits] = useState<number>(0);
   const [description, setDescription] = useState('');
-  const [categoryId, setCategoryId] = useState<string>('');
+  // NEW: multiple category ids
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+
+  const toggleCategory = (id: string) => {
+    setCategoryIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
 
   const submit = async () => {
     if (!name) return;
@@ -350,7 +404,8 @@ function CreatePlanModal({
         duration_days: durationDays || null,
         session_credits: sessionCredits || null,
         description,
-        category_id: categoryId || null,
+        // NEW: array of categories
+        category_ids: categoryIds,
       },
     });
     setBusy(false);
@@ -379,7 +434,7 @@ function CreatePlanModal({
         <select
           className="input"
           value={planKind}
-          onChange={(e)=>setPlanKind(e.target.value as PlanKind)}
+          onChange={(e) => setPlanKind(e.target.value as PlanKind)}
         >
           <option value="duration">Διάρκεια (Μέρες)</option>
           <option value="sessions">Αριθμός συνεδριών</option>
@@ -394,7 +449,7 @@ function CreatePlanModal({
             type="number"
             min={0}
             value={durationDays}
-            onChange={(e)=>setDurationDays(Number(e.target.value))}
+            onChange={(e) => setDurationDays(Number(e.target.value))}
           />
         </FormRow>
       )}
@@ -406,24 +461,41 @@ function CreatePlanModal({
             type="number"
             min={0}
             value={sessionCredits}
-            onChange={(e)=>setSessionCredits(Number(e.target.value))}
+            onChange={(e) => setSessionCredits(Number(e.target.value))}
           />
         </FormRow>
       )}
 
-      <FormRow label="Κατηγορία">
-        <select
-          className="input"
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-        >
-          <option value="">Χωρίς κατηγορία</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+      {/* NEW: multi-select categories */}
+      <FormRow label="Κατηγορίες">
+        <div className="flex flex-wrap gap-2">
+          {categories.length === 0 && (
+            <span className="text-xs text-text-secondary">Καμία κατηγορία διαθέσιμη.</span>
+          )}
+          {categories.map((c) => {
+            const checked = categoryIds.includes(c.id);
+            return (
+              <label
+                key={c.id}
+                className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  className="accent-primary"
+                  checked={checked}
+                  onChange={() => toggleCategory(c.id)}
+                />
+                {c.color && (
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                    style={{ backgroundColor: c.color }}
+                  />
+                )}
+                <span>{c.name}</span>
+              </label>
+            );
+          })}
+        </div>
       </FormRow>
 
       <FormRow label="Περιγραφή">
@@ -435,7 +507,9 @@ function CreatePlanModal({
       </FormRow>
 
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Κλείσιμο</button>
+        <button className="btn-secondary" onClick={onClose}>
+          Κλείσιμο
+        </button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
           {busy ? 'Δημιουργία...' : 'Δημιουργία'}
         </button>
@@ -460,8 +534,17 @@ function EditPlanModal({
   const [durationDays, setDurationDays] = useState<number>(row.duration_days ?? 0);
   const [sessionCredits, setSessionCredits] = useState<number>(row.session_credits ?? 0);
   const [description, setDescription] = useState(row.description ?? '');
-  const [categoryId, setCategoryId] = useState<string>(row.category_id ?? '');
+  // NEW: multiple categories, prefilled from row
+  const [categoryIds, setCategoryIds] = useState<string[]>(
+    (row.categories ?? []).map((c) => c.id),
+  );
   const [busy, setBusy] = useState(false);
+
+  const toggleCategory = (id: string) => {
+    setCategoryIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
 
   const submit = async () => {
     if (!name) return;
@@ -476,10 +559,11 @@ function EditPlanModal({
         name,
         price,
         plan_kind: planKind,
-        duration_days: durationDays,
-        session_credits: sessionCredits,
+        duration_days: durationDays || null,
+        session_credits: sessionCredits || null,
         description,
-        category_id: categoryId || null,
+        // NEW: array of categories
+        category_ids: categoryIds,
       },
     });
     setBusy(false);
@@ -508,7 +592,7 @@ function EditPlanModal({
         <select
           className="input"
           value={planKind}
-          onChange={(e)=>setPlanKind(e.target.value as PlanKind)}
+          onChange={(e) => setPlanKind(e.target.value as PlanKind)}
         >
           <option value="duration">Διάρκεια (Μέρες)</option>
           <option value="sessions">Αριθμός Συνεδριών</option>
@@ -523,7 +607,7 @@ function EditPlanModal({
             type="number"
             min={0}
             value={durationDays}
-            onChange={(e)=>setDurationDays(Number(e.target.value))}
+            onChange={(e) => setDurationDays(Number(e.target.value))}
           />
         </FormRow>
       )}
@@ -535,24 +619,41 @@ function EditPlanModal({
             type="number"
             min={0}
             value={sessionCredits}
-            onChange={(e)=>setSessionCredits(Number(e.target.value))}
+            onChange={(e) => setSessionCredits(Number(e.target.value))}
           />
         </FormRow>
       )}
 
-      <FormRow label="Κατηγορία">
-        <select
-          className="input"
-          value={categoryId}
-          onChange={(e) => setCategoryId(e.target.value)}
-        >
-          <option value="">Χωρίς κατηγορία</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+      {/* NEW: multi-select categories */}
+      <FormRow label="Κατηγορίες">
+        <div className="flex flex-wrap gap-2">
+          {categories.length === 0 && (
+            <span className="text-xs text-text-secondary">Καμία κατηγορία διαθέσιμη.</span>
+          )}
+          {categories.map((c) => {
+            const checked = categoryIds.includes(c.id);
+            return (
+              <label
+                key={c.id}
+                className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  className="accent-primary"
+                  checked={checked}
+                  onChange={() => toggleCategory(c.id)}
+                />
+                {c.color && (
+                  <span
+                    className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                    style={{ backgroundColor: c.color }}
+                  />
+                )}
+                <span>{c.name}</span>
+              </label>
+            );
+          })}
+        </div>
       </FormRow>
 
       <FormRow label="Περιγραφή">
@@ -564,7 +665,9 @@ function EditPlanModal({
       </FormRow>
 
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Κλείσιμο</button>
+        <button className="btn-secondary" onClick={onClose}>
+          Κλείσιμο
+        </button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
           {busy ? 'Αποθήκευση...' : 'Αποθήκευση'}
         </button>
@@ -580,7 +683,9 @@ function Modal({ title, children, onClose }: any) {
       <div className="w-full max-w-lg rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl">
         <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
           <div className="font-semibold">{title}</div>
-          <button onClick={onClose} className="rounded px-2 py-1 hover:bg-white/5">✕</button>
+          <button onClick={onClose} className="rounded px-2 py-1 hover:bg-white/5">
+            ✕
+          </button>
         </div>
         <div className="p-4">{children}</div>
       </div>

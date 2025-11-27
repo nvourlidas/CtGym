@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import SessionAttendanceModal from '../../components/Programs/SessionAttendanceModal';
@@ -620,6 +620,29 @@ function CreateSessionModal({
   const [cancelBeforeHours, setCancelBeforeHours] = useState<string>(''); // 👈 NEW
   const [busy, setBusy] = useState(false);
 
+  // 🔍 Searchable dropdown state
+  const [classDropdownOpen, setClassDropdownOpen] = useState(false);
+  const [classSearch, setClassSearch] = useState('');
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!classDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!dropdownRef.current) return;
+      if (!dropdownRef.current.contains(e.target as Node)) {
+        setClassDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handler);
+    return () => window.removeEventListener('mousedown', handler);
+  }, [classDropdownOpen]);
+
+  const filteredClasses = classes.filter((c) =>
+    c.title.toLowerCase().includes(classSearch.toLowerCase())
+  );
+  const selectedClass = classes.find((c) => c.id === classId);
+
   const submit = async () => {
     if (!classId || !date || !startTime || !endTime) {
       alert('Συμπληρώστε τμήμα, ημερομηνία, ώρα έναρξης και ώρα λήξης.');
@@ -658,17 +681,55 @@ function CreateSessionModal({
   return (
     <Modal onClose={onClose} title="Νέα Συνεδρία">
       <FormRow label="Τμήμα *">
-        <select
-          className="input"
-          value={classId}
-          onChange={(e) => setClassId(e.target.value)}
-        >
-          {classes.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.title}
-            </option>
-          ))}
-        </select>
+        <div ref={dropdownRef} className="relative">
+          <button
+            type="button"
+            className="input flex items-center justify-between"
+            onClick={() => setClassDropdownOpen((v) => !v)}
+          >
+            <span>
+              {selectedClass ? selectedClass.title : 'Επιλέξτε τμήμα…'}
+            </span>
+            <span className="ml-2 text-xs opacity-70">
+              {classDropdownOpen ? '▲' : '▼'}
+            </span>
+          </button>
+
+          {classDropdownOpen && (
+            <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
+              <div className="p-2 border-b border-white/10">
+                <input
+                  autoFocus
+                  className="input !h-9 !text-sm"
+                  placeholder="Αναζήτηση τμήματος..."
+                  value={classSearch}
+                  onChange={(e) => setClassSearch(e.target.value)}
+                />
+              </div>
+              <div className="max-h-60 overflow-y-auto">
+                {filteredClasses.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-text-secondary">
+                    Δεν βρέθηκαν τμήματα
+                  </div>
+                )}
+                {filteredClasses.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${c.id === classId ? 'bg-white/10' : ''
+                      }`}
+                    onClick={() => {
+                      setClassId(c.id);
+                      setClassDropdownOpen(false);
+                    }}
+                  >
+                    {c.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </FormRow>
 
       <FormRow label="Ημερομηνία *">
@@ -731,6 +792,7 @@ function CreateSessionModal({
   );
 }
 
+
 function EditSessionModal({
   row,
   classes,
@@ -755,6 +817,28 @@ function EditSessionModal({
     row.cancel_before_hours != null ? String(row.cancel_before_hours) : ''
   ); // 👈 NEW
   const [busy, setBusy] = useState(false);
+
+  // 🔍 Searchable dropdown state
+  const [classDropdownOpen, setClassDropdownOpen] = useState(false);
+  const [classSearch, setClassSearch] = useState('');
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!classDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!dropdownRef.current) return;
+      if (!dropdownRef.current.contains(e.target as Node)) {
+        setClassDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handler);
+    return () => window.removeEventListener('mousedown', handler);
+  }, [classDropdownOpen]);
+
+  const filteredClasses = classes.filter((c) =>
+    c.title.toLowerCase().includes(classSearch.toLowerCase())
+  );
+  const selectedClass = classes.find((c) => c.id === classId);
 
   const submit = async () => {
     if (!classId || !date || !startTime || !endTime) {
@@ -794,17 +878,55 @@ function EditSessionModal({
   return (
     <Modal onClose={onClose} title="Επεξεργασία Συνεδρίας">
       <FormRow label="Τμήμα *">
-        <select
-          className="input"
-          value={classId}
-          onChange={(e) => setClassId(e.target.value)}
-        >
-          {classes.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.title}
-            </option>
-          ))}
-        </select>
+        <div ref={dropdownRef} className="relative">
+          <button
+            type="button"
+            className="input flex items-center justify-between"
+            onClick={() => setClassDropdownOpen((v) => !v)}
+          >
+            <span>
+              {selectedClass ? selectedClass.title : 'Επιλέξτε τμήμα…'}
+            </span>
+            <span className="ml-2 text-xs opacity-70">
+              {classDropdownOpen ? '▲' : '▼'}
+            </span>
+          </button>
+
+          {classDropdownOpen && (
+            <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
+              <div className="p-2 border-b border-white/10">
+                <input
+                  autoFocus
+                  className="input !h-9 !text-sm"
+                  placeholder="Αναζήτηση τμήματος..."
+                  value={classSearch}
+                  onChange={(e) => setClassSearch(e.target.value)}
+                />
+              </div>
+              <div className="max-h-60 overflow-y-auto">
+                {filteredClasses.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-text-secondary">
+                    Δεν βρέθηκαν τμήματα
+                  </div>
+                )}
+                {filteredClasses.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${c.id === classId ? 'bg-white/10' : ''
+                      }`}
+                    onClick={() => {
+                      setClassId(c.id);
+                      setClassDropdownOpen(false);
+                    }}
+                  >
+                    {c.title}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </FormRow>
 
       <FormRow label="Ημερομηνία *">
@@ -866,6 +988,7 @@ function EditSessionModal({
     </Modal>
   );
 }
+
 
 /* helpers */
 

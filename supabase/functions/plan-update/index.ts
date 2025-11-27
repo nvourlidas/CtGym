@@ -12,6 +12,7 @@ const ALLOWED = new Set([
   "https://mycreatorapp.cloudtec.gr",
   "https://ctgym.cloudtec.gr",
 ]);
+
 function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";
   const allowOrigin = ALLOWED.has(origin) ? origin : "";
@@ -25,6 +26,7 @@ function buildCors(req: Request) {
     "Access-Control-Max-Age": "86400",
   };
 }
+
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
   return new Response(body, {
     ...init,
@@ -63,9 +65,7 @@ serve(async (req) => {
   if ((auth as any).error) {
     return withCors(
       JSON.stringify({ error: (auth as any).error }),
-      {
-        status: 401,
-      },
+      { status: 401 },
       req,
     );
   }
@@ -108,9 +108,7 @@ serve(async (req) => {
     if (!["duration", "sessions", "hybrid"].includes(k)) {
       return withCors(
         JSON.stringify({ error: "invalid_plan_kind" }),
-        {
-          status: 400,
-        },
+        { status: 400 },
         req,
       );
     }
@@ -131,14 +129,25 @@ serve(async (req) => {
   if (updates.duration_days === 0) updates.duration_days = null;
   if (updates.session_credits === 0) updates.session_credits = null;
 
-  // NEW: optional category_id (we only touch it if it was provided)
-  let category_id: string | null | undefined = undefined;
-  if ("category_id" in body) {
-    const raw = body.category_id;
-    if (typeof raw === "string" && raw.trim().length > 0) {
-      category_id = raw.trim();
+  // NEW: category_ids – if present we will fully replace existing mappings
+  let categoryIdsToSet: string[] | undefined = undefined;
+  if ("category_ids" in body) {
+    const rawCategoryIds = body.category_ids;
+    if (Array.isArray(rawCategoryIds)) {
+      categoryIdsToSet = Array.from(
+        new Set(
+          rawCategoryIds
+            .filter((x: any) => typeof x === "string")
+            .map((s: string) => s.trim())
+            .filter((s: string) => s.length > 0),
+        ),
+      );
+    } else if (rawCategoryIds == null) {
+      // explicit clear
+      categoryIdsToSet = [];
     } else {
-      category_id = null; // explicit clear
+      // malformed → treat as clear
+      categoryIdsToSet = [];
     }
   }
 
@@ -146,10 +155,10 @@ serve(async (req) => {
     auth: { persistSession: false },
   });
 
-  // verify tenant ownership
+  // verify tenant & get existing benefit values
   const { data: existing, error: findErr } = await admin
     .from("membership_plans")
-    .select("id, tenant_id")
+    .select("id, tenant_id, duration_days, session_credits")
     .eq("id", id)
     .maybeSingle();
 
@@ -171,46 +180,74 @@ serve(async (req) => {
   if (existing.tenant_id !== tenantId) {
     return withCors(
       JSON.stringify({ error: "tenant_mismatch" }),
-      {
-        status: 403,
-      },
+      { status: 403 },
       req,
     );
   }
 
-  // If category_id was included, validate and add to updates
-  if (category_id !== undefined) {
-    if (category_id) {
-      const { data: cat, error: cErr } = await admin
-        .from("class_categories")
-        .select("id, tenant_id")
-        .eq("id", category_id)
-        .maybeSingle();
+  // Ensure plan still has at least one benefit (days or credits)
+  const newDuration =
+    "duration_days" in updates ? updates.duration_days : existing.duration_days;
+  const newCredits =
+    "session_credits" in updates
+      ? updates.session_credits
+      : existing.session_credits;
 
-      if (cErr || !cat) {
-        return withCors(
-          JSON.stringify({ error: "invalid_category" }),
-          { status: 400 },
-          req,
-        );
-      }
-      if (cat.tenant_id !== tenantId) {
-        return withCors(
-          JSON.stringify({ error: "category_tenant_mismatch" }),
-          { status: 403 },
-          req,
-        );
-      }
-    }
-    updates.category_id = category_id; // can be string or null
+  const dVal = newDuration ?? 0;
+  const cVal = newCredits ?? 0;
+  if (dVal === 0 && cVal === 0) {
+    return withCors(
+      JSON.stringify({ error: "plan_must_have_days_or_credits" }),
+      { status: 400 },
+      req,
+    );
   }
 
+  // If categories are being set/changed, validate them
+  if (categoryIdsToSet !== undefined && categoryIdsToSet.length > 0) {
+    const { data: cats, error: catErr } = await admin
+      .from("class_categories")
+      .select("id, tenant_id")
+      .in("id", categoryIdsToSet);
+
+    if (catErr) {
+      return withCors(
+        JSON.stringify({
+          error: "invalid_category_ids",
+          details: catErr.message,
+        }),
+        { status: 400 },
+        req,
+      );
+    }
+
+    if (!cats || cats.length !== categoryIdsToSet.length) {
+      return withCors(
+        JSON.stringify({ error: "some_categories_not_found" }),
+        { status: 400 },
+        req,
+      );
+    }
+
+    const tenantMismatch = (cats as any[]).some(
+      (c) => c.tenant_id !== tenantId,
+    );
+    if (tenantMismatch) {
+      return withCors(
+        JSON.stringify({ error: "category_tenant_mismatch" }),
+        { status: 403 },
+        req,
+      );
+    }
+  }
+
+  // Update membership_plans
   const { data, error } = await admin
     .from("membership_plans")
     .update(updates)
     .eq("id", id)
     .select(
-      "id, tenant_id, name, price, description, duration_days, session_credits, plan_kind, created_at, category_id",
+      "id, tenant_id, name, price, description, duration_days, session_credits, plan_kind, created_at",
     )
     .single();
 
@@ -220,6 +257,49 @@ serve(async (req) => {
       { status: 400 },
       req,
     );
+  }
+
+  // Replace membership_plan_categories if categoryIdsToSet is provided
+  if (categoryIdsToSet !== undefined) {
+    // delete existing mappings
+    const { error: delErr } = await admin
+      .from("membership_plan_categories")
+      .delete()
+      .eq("membership_plan_id", id);
+
+    if (delErr) {
+      return withCors(
+        JSON.stringify({
+          error: "failed_to_clear_categories",
+          details: delErr.message,
+        }),
+        { status: 500 },
+        req,
+      );
+    }
+
+    if (categoryIdsToSet.length > 0) {
+      const links = categoryIdsToSet.map((cid) => ({
+        tenant_id: tenantId,
+        membership_plan_id: id,
+        category_id: cid,
+      }));
+
+      const { error: linkErr } = await admin
+        .from("membership_plan_categories")
+        .insert(links);
+
+      if (linkErr) {
+        return withCors(
+          JSON.stringify({
+            error: "failed_to_set_categories",
+            details: linkErr.message,
+          }),
+          { status: 500 },
+          req,
+        );
+      }
+    }
   }
 
   return withCors(

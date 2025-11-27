@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 
-
 type CoachRef = {
   id: string;
   full_name: string;
@@ -17,6 +16,7 @@ type GymClass = {
   category_id: string | null;
   drop_in_enabled: boolean;
   drop_in_price: number | null;
+  member_drop_in_price: number | null; // 👈 NEW
   coach_id: string | null;
   class_categories?: {
     id: string;
@@ -67,6 +67,7 @@ export default function ClassesPage() {
         category_id,
         drop_in_enabled,
         drop_in_price,
+        member_drop_in_price,  
         coach_id,
         class_categories (
           id,
@@ -83,7 +84,6 @@ export default function ClassesPage() {
       .order('created_at', { ascending: false });
 
     if (!error && data) {
-      // supabase returns class_categories as array -> keep only first item
       const normalized: GymClass[] = (data as any[]).map((row) => ({
         ...row,
         class_categories: Array.isArray(row.class_categories)
@@ -121,7 +121,6 @@ export default function ClassesPage() {
       });
   }, [profile?.tenant_id]);
 
-
   // Load coaches for this tenant
   useEffect(() => {
     if (!profile?.tenant_id) return;
@@ -141,7 +140,6 @@ export default function ClassesPage() {
       });
   }, [profile?.tenant_id]);
 
-
   const filtered = useMemo(() => {
     if (!q) return rows;
     const needle = q.toLowerCase();
@@ -153,7 +151,6 @@ export default function ClassesPage() {
     );
   }, [rows, q]);
 
-  // Reset to first page when filter or page size changes
   useEffect(() => {
     setPage(1);
   }, [q, pageSize]);
@@ -257,6 +254,13 @@ export default function ClassesPage() {
                             ({c.drop_in_price.toFixed(2)}€)
                           </span>
                         )}
+                        {c.member_drop_in_price != null && (
+                          <span className="opacity-80">
+                            {' '}
+                            · Μέλος:{' '}
+                            {c.member_drop_in_price.toFixed(2)}€
+                          </span>
+                        )}
                       </span>
                     ) : (
                       <span className="text-xs text-text-secondary">Όχι</span>
@@ -276,7 +280,6 @@ export default function ClassesPage() {
           </tbody>
         </table>
 
-        {/* Pagination footer */}
         {!loading && filtered.length > 0 && (
           <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
             <div>
@@ -403,6 +406,8 @@ function CreateClassModal({
   const [coachId, setCoachId] = useState<string>('');
   const [dropInEnabled, setDropInEnabled] = useState(false);
   const [dropInPrice, setDropInPrice] = useState<number | null>(null);
+  const [memberDropInPrice, setMemberDropInPrice] = useState<number | null>(null); // 👈 NEW
+  const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     if (!title.trim()) return;
@@ -416,13 +421,12 @@ function CreateClassModal({
         coach_id: coachId || null,
         drop_in_enabled: dropInEnabled,
         drop_in_price: dropInEnabled ? dropInPrice : null,
+        member_drop_in_price: dropInEnabled ? memberDropInPrice : null, // 👈 NEW
       },
     });
     setBusy(false);
     onClose();
   };
-
-  const [busy, setBusy] = useState(false);
 
   return (
     <Modal onClose={onClose} title="Νέο Τμήμα">
@@ -481,21 +485,42 @@ function CreateClassModal({
             <span>Επιτρέπεται drop-in για αυτό το τμήμα</span>
           </label>
           {dropInEnabled && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm opacity-80">Τιμή ανά συμμετοχή (€):</span>
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                className="input max-w-[120px]"
-                value={dropInPrice ?? ''}
-                onChange={(e) =>
-                  setDropInPrice(
-                    e.target.value === '' ? null : Number(e.target.value)
-                  )
-                }
-              />
-            </div>
+            <>
+              <div className="flex items-center gap-2">
+                <span className="text-sm opacity-80">
+                  Τιμή ανά συμμετοχή (€):
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  className="input max-w-[120px]"
+                  value={dropInPrice ?? ''}
+                  onChange={(e) =>
+                    setDropInPrice(
+                      e.target.value === '' ? null : Number(e.target.value)
+                    )
+                  }
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm opacity-80">
+                  Τιμή drop-in για μέλη (€):
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  className="input max-w-[120px]"
+                  value={memberDropInPrice ?? ''}
+                  onChange={(e) =>
+                    setMemberDropInPrice(
+                      e.target.value === '' ? null : Number(e.target.value)
+                    )
+                  }
+                />
+              </div>
+            </>
           )}
         </div>
       </FormRow>
@@ -529,12 +554,14 @@ function EditClassModal({
     row.category_id ?? ''
   );
   const [coachId, setCoachId] = useState<string>(row.coach_id ?? '');
-  // NEW: init from row
   const [dropInEnabled, setDropInEnabled] = useState<boolean>(
     row.drop_in_enabled ?? false
   );
   const [dropInPrice, setDropInPrice] = useState<number | null>(
     row.drop_in_price ?? null
+  );
+  const [memberDropInPrice, setMemberDropInPrice] = useState<number | null>(   // 👈 NEW
+    row.member_drop_in_price ?? null
   );
   const [busy, setBusy] = useState(false);
 
@@ -550,6 +577,7 @@ function EditClassModal({
         coach_id: coachId || null,
         drop_in_enabled: dropInEnabled,
         drop_in_price: dropInEnabled ? dropInPrice : null,
+        member_drop_in_price: dropInEnabled ? memberDropInPrice : null, // 👈 NEW
       },
     });
     if (res.error) {
@@ -618,21 +646,42 @@ function EditClassModal({
             <span>Επιτρέπεται drop-in για αυτό το τμήμα</span>
           </label>
           {dropInEnabled && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm opacity-80">Τιμή ανά συμμετοχή (€):</span>
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                className="input max-w-[120px]"
-                value={dropInPrice ?? ''}
-                onChange={(e) =>
-                  setDropInPrice(
-                    e.target.value === '' ? null : Number(e.target.value)
-                  )
-                }
-              />
-            </div>
+            <>
+              <div className="flex items-center gap-2">
+                <span className="text-sm opacity-80">
+                  Τιμή ανά συμμετοχή (€):
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  className="input max-w-[120px]"
+                  value={dropInPrice ?? ''}
+                  onChange={(e) =>
+                    setDropInPrice(
+                      e.target.value === '' ? null : Number(e.target.value)
+                    )
+                  }
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm opacity-80">
+                  Τιμή drop-in για μέλη (€):
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  className="input max-w-[120px]"
+                  value={memberDropInPrice ?? ''}
+                  onChange={(e) =>
+                    setMemberDropInPrice(
+                      e.target.value === '' ? null : Number(e.target.value)
+                    )
+                  }
+                />
+              </div>
+            </>
           )}
         </div>
       </FormRow>

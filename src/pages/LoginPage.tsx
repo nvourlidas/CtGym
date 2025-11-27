@@ -2,6 +2,8 @@
 import { supabase } from '../lib/supabase';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import logo from '../assets/CTGYM.YELLOW 1080x1080.svg';
+
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -57,12 +59,13 @@ export default function LoginPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-background bg-gradient-to-br from-background via-background/80 to-slate-950 text-slate-100 px-4">
       {/* BIG LOGO OUTSIDE CARD */}
       <div className="flex flex-col items-center mb-8 text-center space-y-3">
-          {/* Change src to your logo path */}
-          <img
-            src="/CTGYM.YELLOW 1080x1080.svg"
-            alt="Cloudtec Gym"
-            className="h-100 w-80 object-contain"
-          />
+        {/* Change src to your logo path */}
+        <img
+          src={logo}
+          alt="Cloudtec Gym"
+          className="h-40 w-40 object-contain"
+        />
+
         <div className="space-y-1 -mt-22">
           <h1 className="text-2xl font-semibold tracking-tight">
             Cloudtec Gym Admin

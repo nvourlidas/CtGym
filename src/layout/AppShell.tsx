@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
 import { NAV, type NavEntry } from '../_nav';
 import type { LucideIcon } from 'lucide-react';
+import logo from '../assets/CTGYM.YELLOW 1080x1080.svg';
 
 
 type Tenant = { name: string };
@@ -61,7 +62,7 @@ export default function AppShell() {
                   <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
               </button>
-              <div className="font-semibold flex justify-center gap-1"><img src='/CTGYM.YELLOW 1080x1080.svg' className='w-35'></img></div>
+              <div className="font-semibold flex justify-center gap-1"><img src={logo} className='w-35'></img></div>
               <div className="hidden sm:block text-sm opacity-60">
                 {tenant?.name ? `• ${tenant.name}` : '• —'}
               </div>

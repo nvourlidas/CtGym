@@ -1,5 +1,5 @@
 // src/pages/BookingsPage.tsx
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 
@@ -38,10 +38,10 @@ type Booking = {
 type StatusCode = 'booked' | 'checked_in' | 'canceled' | 'no_show';
 
 const STATUS_OPTIONS: { value: StatusCode; label: string }[] = [
-  { value: 'booked',     label: 'Κρατήθηκε' },
+  { value: 'booked', label: 'Κρατήθηκε' },
   { value: 'checked_in', label: 'Παρουσία' },
-  { value: 'canceled',   label: 'Ακυρώθηκε' },
-  { value: 'no_show',    label: 'Δεν προσήλθε' },
+  { value: 'canceled', label: 'Ακυρώθηκε' },
+  { value: 'no_show', label: 'Δεν προσήλθε' },
 ];
 
 type DateFilterMode = 'all' | 'today' | 'custom';
@@ -121,18 +121,18 @@ export default function BookingsPage() {
           : null,
         session: b.class_sessions
           ? {
-              id: b.class_sessions.id,
-              starts_at: b.class_sessions.starts_at,
-              ends_at: b.class_sessions.ends_at,
-              capacity: b.class_sessions.capacity,
-              classes: b.class_sessions.classes
-                ? {
-                    id: b.class_sessions.classes.id,
-                    title: b.class_sessions.classes.title,
-                    class_categories: b.class_sessions.classes.class_categories ?? null,
-                  }
-                : null,
-            }
+            id: b.class_sessions.id,
+            starts_at: b.class_sessions.starts_at,
+            ends_at: b.class_sessions.ends_at,
+            capacity: b.class_sessions.capacity,
+            classes: b.class_sessions.classes
+              ? {
+                id: b.class_sessions.classes.id,
+                title: b.class_sessions.classes.title,
+                class_categories: b.class_sessions.classes.class_categories ?? null,
+              }
+              : null,
+          }
           : null,
       }));
       setRows(mapped);
@@ -507,6 +507,17 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
   const [bookingType, setBookingType] = useState<'membership' | 'drop_in'>('membership');
   const [busy, setBusy] = useState(false);
 
+  // 🔍 MEMBER dropdown state
+  const [memberDropdownOpen, setMemberDropdownOpen] = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
+  const memberDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // 🔍 SESSION dropdown state (with date filter)
+  const [sessionDropdownOpen, setSessionDropdownOpen] = useState(false);
+  const [sessionSearch, setSessionSearch] = useState('');
+  const [sessionDate, setSessionDate] = useState(''); // yyyy-mm-dd
+  const sessionDropdownRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     (async () => {
       const { data: m } = await supabase
@@ -519,12 +530,78 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
 
       const { data: s } = await supabase
         .from('class_sessions')
-        .select('id, starts_at, ends_at, capacity, classes(id, title, class_categories(name, color))')
+        .select(
+          'id, starts_at, ends_at, capacity, classes(id, title, class_categories(name, color))'
+        )
         .eq('tenant_id', tenantId)
         .order('starts_at', { ascending: true });
       setSessions((s as any[]) ?? []);
     })();
   }, [tenantId]);
+
+  // Close MEMBER dropdown on outside click
+  useEffect(() => {
+    if (!memberDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!memberDropdownRef.current) return;
+      if (!memberDropdownRef.current.contains(e.target as Node)) {
+        setMemberDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handler);
+    return () => window.removeEventListener('mousedown', handler);
+  }, [memberDropdownOpen]);
+
+  // Close SESSION dropdown on outside click
+  useEffect(() => {
+    if (!sessionDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!sessionDropdownRef.current) return;
+      if (!sessionDropdownRef.current.contains(e.target as Node)) {
+        setSessionDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handler);
+    return () => window.removeEventListener('mousedown', handler);
+  }, [sessionDropdownOpen]);
+
+  // FILTERED MEMBERS
+  const filteredMembers = members.filter((m) => {
+    const needle = memberSearch.toLowerCase();
+    if (!needle) return true;
+    return (m.full_name ?? '').toLowerCase().includes(needle) || m.id.toLowerCase().includes(needle);
+  });
+  const selectedMember = members.find((m) => m.id === userId);
+
+  // FILTERED SESSIONS (by text + date)
+  const filteredSessions = sessions.filter((s) => {
+    const needle = sessionSearch.toLowerCase();
+
+    // text search in class title + formatted datetime
+    const title = (s.classes?.title ?? '').toLowerCase();
+    const dateLabel = formatDateTime(s.starts_at).toLowerCase();
+    const matchesText = !needle || title.includes(needle) || dateLabel.includes(needle);
+
+    // date filter: compare yyyy-mm-dd of starts_at
+    if (sessionDate) {
+      const d = new Date(s.starts_at);
+      if (Number.isNaN(d.getTime())) return false;
+      const iso = d.toISOString().slice(0, 10); // yyyy-mm-dd
+      if (iso !== sessionDate) return false;
+    }
+
+    return matchesText;
+  });
+  const selectedSession = sessions.find((s) => s.id === sessionId);
+
+  const sessionLabel = (s: SessionRow) => {
+    const base = `${s.classes?.title ?? '—'} · ${formatDateTime(s.starts_at)}`;
+    const cat = s.classes?.class_categories?.name
+      ? ` · ${s.classes.class_categories.name}`
+      : '';
+    const cap = s.capacity != null ? ` (cap ${s.capacity})` : '';
+    return base + cat + cap;
+  };
 
   const submit = async () => {
     if (!userId || !sessionId) return;
@@ -548,43 +625,151 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
 
   return (
     <Modal onClose={onClose} title="Νέα κράτηση">
+      {/* 🔍 Searchable MEMBER dropdown */}
       <FormRow label="Μέλος *">
-        <select className="input" value={userId} onChange={(e) => setUserId(e.target.value)}>
-          <option value="">— επίλεξε μέλος —</option>
-          {members.map(m => (
-            <option key={m.id} value={m.id}>
-              {m.full_name ?? m.id}
-            </option>
-          ))}
-        </select>
+        <div ref={memberDropdownRef} className="relative">
+          <button
+            type="button"
+            className="input flex items-center justify-between"
+            onClick={() => setMemberDropdownOpen((v) => !v)}
+          >
+            <span>
+              {selectedMember
+                ? selectedMember.full_name ?? selectedMember.id
+                : '— επίλεξε μέλος —'}
+            </span>
+            <span className="ml-2 text-xs opacity-70">
+              {memberDropdownOpen ? '▲' : '▼'}
+            </span>
+          </button>
+
+          {memberDropdownOpen && (
+            <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
+              <div className="p-2 border-b border-white/10">
+                <input
+                  autoFocus
+                  className="input !h-9 !text-sm"
+                  placeholder="Αναζήτηση μέλους..."
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                />
+              </div>
+              <div className="max-h-60 overflow-y-auto">
+                {filteredMembers.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-text-secondary">
+                    Δεν βρέθηκαν μέλη
+                  </div>
+                )}
+                {filteredMembers.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${m.id === userId ? 'bg-white/10' : ''
+                      }`}
+                    onClick={() => {
+                      setUserId(m.id);
+                      setMemberDropdownOpen(false);
+                    }}
+                  >
+                    {m.full_name ?? m.id}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </FormRow>
+
+      {/* 🔍 Searchable SESSION dropdown + date filter */}
       <FormRow label="Συνεδρία *">
-        <select className="input" value={sessionId} onChange={(e) => setSessionId(e.target.value)}>
-          <option value="">— επίλεξε συνεδρία —</option>
-          {sessions.map(s => (
-            <option key={s.id} value={s.id}>
-              {(s.classes?.title ?? '—')} · {formatDateTime(s.starts_at)}
-              {s.classes?.class_categories
-                ? ` · ${s.classes.class_categories.name ?? ''}`
-                : ''}
-              {s.capacity != null ? ` (cap ${s.capacity})` : ''}
-            </option>
-          ))}
-        </select>
+        <div ref={sessionDropdownRef} className="relative">
+          <button
+            type="button"
+            className="input flex items-center justify-between"
+            onClick={() => setSessionDropdownOpen((v) => !v)}
+          >
+            <span>
+              {selectedSession ? sessionLabel(selectedSession) : '— επίλεξε συνεδρία —'}
+            </span>
+            <span className="ml-2 text-xs opacity-70">
+              {sessionDropdownOpen ? '▲' : '▼'}
+            </span>
+          </button>
+
+          {sessionDropdownOpen && (
+            <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
+              {/* Search + Date filter row */}
+              <div className="p-2 border-b border-white/10 space-y-2">
+                <input
+                  className="input !h-9 !text-sm"
+                  placeholder="Αναζήτηση (τίτλος, ώρα)..."
+                  value={sessionSearch}
+                  onChange={(e) => setSessionSearch(e.target.value)}
+                />
+                <div className="flex items-center gap-2 text-xs text-text-secondary">
+                  <span>Φίλτρο ημερομηνίας:</span>
+                  <input
+                    type="date"
+                    className="input !h-8 !text-xs"
+                    value={sessionDate}
+                    onChange={(e) => setSessionDate(e.target.value)}
+                  />
+                  {sessionDate && (
+                    <button
+                      type="button"
+                      className="px-2 py-1 rounded border border-white/20 hover:bg-white/5"
+                      onClick={() => setSessionDate('')}
+                    >
+                      Καθαρισμός
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto">
+                {filteredSessions.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-text-secondary">
+                    Δεν βρέθηκαν συνεδρίες
+                  </div>
+                )}
+                {filteredSessions.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`w-full px-3 py-2 text-left text-xs md:text-sm hover:bg-white/5 ${s.id === sessionId ? 'bg-white/10' : ''
+                      }`}
+                    onClick={() => {
+                      setSessionId(s.id);
+                      setSessionDropdownOpen(false);
+                    }}
+                  >
+                    {sessionLabel(s)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </FormRow>
-      {/* NEW: booking type select */}
+
+      {/* Τύπος κράτησης */}
       <FormRow label="Τύπος κράτησης">
         <select
           className="input"
           value={bookingType}
-          onChange={(e) => setBookingType(e.target.value as 'membership' | 'drop_in')}
+          onChange={(e) =>
+            setBookingType(e.target.value as 'membership' | 'drop_in')
+          }
         >
           <option value="membership">Μέλος (συνδρομή)</option>
           <option value="drop_in">Drop-in (μεμονωμένη)</option>
         </select>
       </FormRow>
+
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Ακύρωση</button>
+        <button className="btn-secondary" onClick={onClose}>
+          Ακύρωση
+        </button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
           {busy ? 'Δημιουργία...' : 'Δημιουργία'}
         </button>
@@ -592,6 +777,7 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
     </Modal>
   );
 }
+
 
 function EditBookingModal({ row, onClose }: { row: Booking; onClose: () => void }) {
   const [status, setStatus] = useState<StatusCode>((row.status as StatusCode) ?? 'booked');

@@ -16,7 +16,7 @@ function buildCors(req: Request) {
   const reqHdrs = req.headers.get("access-control-request-headers") ?? "";
   return {
     "Access-Control-Allow-Origin": allowOrigin,
-    "Vary": "Origin",
+    Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     "Access-Control-Allow-Headers":
       reqHdrs || "authorization, x-client-info, apikey, content-type",
@@ -91,10 +91,33 @@ serve(async (req) => {
   const user_id = String(body?.user_id ?? "");
   const plan_id = String(body?.plan_id ?? "");
   const starts_at = body?.starts_at ? new Date(body.starts_at) : new Date();
+
+  // debt (όπως πριν)
   const debt =
-    Number.isFinite(body?.debt) && typeof body.debt === "number"
+    typeof body?.debt === "number" && Number.isFinite(body.debt)
       ? Math.max(0, body.debt)
       : 0;
+
+  // NEW: custom_price (optional)
+  let custom_price: number | null = null;
+  if (body?.custom_price !== undefined && body.custom_price !== null && body.custom_price !== "") {
+    const parsed = Number(body.custom_price);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return withCors(
+        JSON.stringify({ error: "invalid_custom_price" }),
+        { status: 400 },
+        req,
+      );
+    }
+    custom_price = parsed;
+  }
+
+  // NEW: discount_reason (optional)
+  const discount_reason_raw = body?.discount_reason;
+  const discount_reason =
+    typeof discount_reason_raw === "string" && discount_reason_raw.trim().length > 0
+      ? discount_reason_raw.trim()
+      : null;
 
   if (!tenant_id || !user_id || !plan_id) {
     return withCors(JSON.stringify({ error: "missing_fields" }), {
@@ -164,7 +187,7 @@ serve(async (req) => {
     days_remaining = diffDays > 0 ? diffDays : 0;
   }
 
-  // Insert membership with snapshots
+  // Insert membership with snapshots + discount fields
   const { data: created, error: insErr } = await admin
     .from("memberships")
     .insert({
@@ -177,7 +200,9 @@ serve(async (req) => {
       remaining_sessions,
       plan_kind: plan.plan_kind,
       plan_name: plan.name,
-      plan_price: plan.price,
+      plan_price: plan.price,    // κανονική τιμή πλάνου
+      custom_price,              // τελική τιμή για αυτό το μέλος (αν υπάρχει)
+      discount_reason,
       days_remaining,
       debt,
     })
