@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import SessionAttendanceModal from '../../components/Programs/SessionAttendanceModal';
-import { QrCode } from 'lucide-react';
 import { SessionQrModal } from '../../components/SessionQrModal';
-
+import { QrCode, Eye, Pencil, Trash2, Loader2, Clock } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 type GymClass = {
   id: string;
@@ -21,11 +21,11 @@ type SessionRow = {
   tenant_id: string;
   class_id: string;
   starts_at: string; // ISO
-  ends_at: string;   // ISO
+  ends_at: string; // ISO
   capacity: number | null;
   checkin_token: string | null;
   created_at: string;
-  cancel_before_hours?: number | null; // 👈 NEW FIELD
+  cancel_before_hours?: number | null;
 };
 
 type DateFilter = '' | 'today' | 'week' | 'month';
@@ -41,8 +41,6 @@ export default function ClassSessionsPage() {
   const [editRow, setEditRow] = useState<SessionRow | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-
-
   // pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -50,7 +48,7 @@ export default function ClassSessionsPage() {
   // attendance history modal state
   const [attendanceSession, setAttendanceSession] = useState<SessionRow | null>(null);
 
-  // NEW: QR modal state
+  // QR modal state
   const [qrSession, setQrSession] = useState<SessionRow | null>(null);
 
   // multi-select state
@@ -65,7 +63,8 @@ export default function ClassSessionsPage() {
     const [cls, sess] = await Promise.all([
       supabase
         .from('classes')
-        .select(`
+        .select(
+          `
           id,
           title,
           class_categories (
@@ -73,20 +72,21 @@ export default function ClassSessionsPage() {
             name,
             color
           )
-        `)
+        `,
+        )
         .eq('tenant_id', profile.tenant_id)
         .order('title'),
       supabase
         .from('class_sessions')
         .select(
-          'id, tenant_id, class_id, starts_at, ends_at, capacity, created_at, cancel_before_hours, checkin_token'
+          'id, tenant_id, class_id, starts_at, ends_at, capacity, created_at, cancel_before_hours, checkin_token',
         )
         .eq('tenant_id', profile.tenant_id)
-        .order('starts_at', { ascending: false }), // latest first
+        .order('starts_at', { ascending: false }),
     ]);
 
     if (!cls.error) {
-      const list: GymClass[] = (cls.data as any[] ?? []).map((row) => ({
+      const list: GymClass[] = ((cls.data as any[]) ?? []).map((row) => ({
         id: row.id,
         title: row.title,
         class_categories: Array.isArray(row.class_categories)
@@ -102,7 +102,6 @@ export default function ClassSessionsPage() {
       setError(cls.error?.message ?? sess.error?.message ?? null);
     }
 
-    // clear selection after reload
     setSelectedIds([]);
     setLoading(false);
   }
@@ -128,7 +127,7 @@ export default function ClassSessionsPage() {
         end = new Date(start);
         end.setDate(end.getDate() + 1);
       } else if (dateFilter === 'week') {
-        start = startOfWeek(now); // Monday–Sunday
+        start = startOfWeek(now);
         end = new Date(start);
         end.setDate(end.getDate() + 7);
       } else if (dateFilter === 'month') {
@@ -148,7 +147,6 @@ export default function ClassSessionsPage() {
     return list;
   }, [rows, qClass, dateFilter]);
 
-  // reset page when filters / page size change
   useEffect(() => {
     setPage(1);
   }, [qClass, dateFilter, pageSize]);
@@ -169,12 +167,11 @@ export default function ClassSessionsPage() {
   const allPageSelected =
     pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
 
-  // bulk delete selected sessions
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
     if (
       !confirm(
-        `Διαγραφή ${selectedIds.length} συνεδριών; Αυτή η ενέργεια δεν μπορεί να ακυρωθεί.`
+        `Διαγραφή ${selectedIds.length} συνεδριών; Αυτή η ενέργεια δεν μπορεί να ακυρωθεί.`,
       )
     )
       return;
@@ -184,17 +181,15 @@ export default function ClassSessionsPage() {
     try {
       const results = await Promise.all(
         selectedIds.map((id) =>
-          supabase.functions.invoke('session-delete', { body: { id } })
-        )
+          supabase.functions.invoke('session-delete', { body: { id } }),
+        ),
       );
-      const firstError = results.find(
-        (r) => r.error || (r.data as any)?.error
-      );
+      const firstError = results.find((r) => r.error || (r.data as any)?.error);
       if (firstError) {
         setError(
           firstError.error?.message ??
-          (firstError.data as any)?.error ??
-          'Η ομαδική διαγραφή είχε σφάλματα.'
+            (firstError.data as any)?.error ??
+            'Η ομαδική διαγραφή είχε σφάλματα.',
         );
       } else {
         setError(null);
@@ -221,7 +216,6 @@ export default function ClassSessionsPage() {
           ))}
         </select>
 
-        {/* Date preset filters */}
         <div className="flex flex-wrap items-center gap-2">
           <FilterChip
             active={dateFilter === ''}
@@ -270,161 +264,248 @@ export default function ClassSessionsPage() {
       )}
 
       <div className="rounded-md border border-white/10 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-secondary-background/60">
-            <tr className="text-left">
-              <Th className="w-8">
-                <input
-                  type="checkbox"
-                  className="
-                    h-4 w-4
-                    rounded-sm
-                    border border-white/30
-                    bg-transparent
-                    accent-primary
-                    transition
-                    focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-0
-                    hover:border-primary/70
-                    cursor-pointer
-                  "
-                  checked={allPageSelected && pageIds.length > 0}
-                  onChange={() => {
-                    setSelectedIds((prev) => {
-                      const allSelectedOnPage =
-                        pageIds.length > 0 &&
-                        pageIds.every((id) => prev.includes(id));
-                      if (allSelectedOnPage) {
-                        // unselect page
-                        return prev.filter((id) => !pageIds.includes(id));
-                      }
-                      // select all on page
-                      const next = new Set(prev);
-                      pageIds.forEach((id) => next.add(id));
-                      return Array.from(next);
-                    });
-                  }}
-                />
-              </Th>
-              <Th>Τμήμα</Th>
-              <Th>Έναρξη</Th>
-              <Th>Λήξη</Th>
-              <Th>Χωρητικότητα</Th>
-              <Th>Ακύρωση έως (ώρες)</Th> {/* NEW column */}
-              <Th className="text-right pr-3">Ενέργειες</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td className="px-3 py-4 opacity-60" colSpan={7}>
-                  Loading…
-                </td>
-              </tr>
-            )}
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td className="px-3 py-4 opacity-60" colSpan={7}>
-                  No sessions
-                </td>
-              </tr>
-            )}
-            {!loading &&
-              filtered.length > 0 &&
-              paginated.map((s) => {
-                const cls = getClass(s.class_id);
-                return (
-                  <tr
-                    key={s.id}
-                    className="border-t border-white/10 hover:bg-secondary/10"
-                  >
-                    <Td className="w-8">
+        {/* DESKTOP / TABLE VIEW */}
+        <div className="hidden md:block">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-sm">
+              <thead className="bg-secondary-background/60">
+                <tr className="text-left">
+                  <Th className="w-8">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded-sm border border-white/30 bg-transparent accent-primary hover:border-primary/70 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/60"
+                      checked={allPageSelected && pageIds.length > 0}
+                      onChange={() => {
+                        setSelectedIds((prev) => {
+                          const allSelectedOnPage =
+                            pageIds.length > 0 &&
+                            pageIds.every((id) => prev.includes(id));
+                          if (allSelectedOnPage) {
+                            return prev.filter((id) => !pageIds.includes(id));
+                          }
+                          const next = new Set(prev);
+                          pageIds.forEach((id) => next.add(id));
+                          return Array.from(next);
+                        });
+                      }}
+                    />
+                  </Th>
+                  <Th>Τμήμα</Th>
+                  <Th>Έναρξη</Th>
+                  <Th>Λήξη</Th>
+                  <Th>Χωρητικότητα</Th>
+                  <Th>Ακύρωση έως (ώρες)</Th>
+                  <Th className="text-right pr-3">Ενέργειες</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && (
+                  <tr>
+                    <td className="px-3 py-4 opacity-60" colSpan={7}>
+                      Loading…
+                    </td>
+                  </tr>
+                )}
+                {!loading && filtered.length === 0 && (
+                  <tr>
+                    <td className="px-3 py-4 opacity-60" colSpan={7}>
+                      No sessions
+                    </td>
+                  </tr>
+                )}
+                {!loading &&
+                  filtered.length > 0 &&
+                  paginated.map((s) => {
+                    const cls = getClass(s.class_id);
+                    const hasQr = Boolean(s.checkin_token);
+
+                    return (
+                      <tr
+                        key={s.id}
+                        className="border-t border-white/10 hover:bg-secondary/10"
+                      >
+                        <Td className="w-8">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded-sm border border-white/30 bg-transparent accent-primary hover:border-primary/70 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/60"
+                            checked={selectedIds.includes(s.id)}
+                            onChange={() =>
+                              setSelectedIds((prev) =>
+                                prev.includes(s.id)
+                                  ? prev.filter((id) => id !== s.id)
+                                  : [...prev, s.id],
+                              )
+                            }
+                          />
+                        </Td>
+                        <Td className="font-medium">
+                          <div className="flex flex-col gap-1">
+                            <span>{cls?.title ?? '—'}</span>
+                            <span>
+                              {cls?.class_categories ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/5">
+                                  {cls.class_categories.color && (
+                                    <span
+                                      className="inline-block h-2 w-2 rounded-full border border-white/20"
+                                      style={{
+                                        backgroundColor:
+                                          cls.class_categories.color,
+                                      }}
+                                    />
+                                  )}
+                                  <span>{cls.class_categories.name}</span>
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-text-secondary">
+                                  —
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        </Td>
+                        <Td>{formatDateTime(s.starts_at)}</Td>
+                        <Td>{s.ends_at ? formatDateTime(s.ends_at) : '—'}</Td>
+                        <Td>{s.capacity ?? '—'}</Td>
+                        <Td>
+                          {s.cancel_before_hours != null
+                            ? s.cancel_before_hours
+                            : '—'}
+                        </Td>
+                        <Td className="text-right space-x-1 pr-3">
+                          <IconButton
+                            icon={QrCode}
+                            label="QR check-in"
+                            onClick={() => setQrSession(s)}
+                            disabled={!hasQr}
+                          />
+                          <IconButton
+                            icon={Clock}
+                            label="Ιστορικό"
+                            onClick={() => setAttendanceSession(s)}
+                          />
+                          <IconButton
+                            icon={Pencil}
+                            label="Επεξεργασία"
+                            onClick={() => setEditRow(s)}
+                          />
+                          <DeleteButton
+                            id={s.id}
+                            onDeleted={load}
+                            setError={setError}
+                          />
+                        </Td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* MOBILE / CARD VIEW */}
+        <div className="md:hidden">
+          {loading && (
+            <div className="px-3 py-4 text-sm opacity-60">Loading…</div>
+          )}
+          {!loading && filtered.length === 0 && (
+            <div className="px-3 py-4 text-sm opacity-60">No sessions</div>
+          )}
+          {!loading &&
+            filtered.length > 0 &&
+            paginated.map((s) => {
+              const cls = getClass(s.class_id);
+              const hasQr = Boolean(s.checkin_token);
+
+              return (
+                <div
+                  key={s.id}
+                  className="border-t border-white/10 bg-secondary/5 px-3 py-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium text-sm">
+                        {cls?.title ?? '—'}
+                      </div>
+                      {cls?.class_categories && (
+                        <div className="mt-1">
+                          <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/5">
+                            {cls.class_categories.color && (
+                              <span
+                                className="inline-block h-2 w-2 rounded-full border border-white/20"
+                                style={{
+                                  backgroundColor: cls.class_categories.color,
+                                }}
+                              />
+                            )}
+                            <span>{cls.class_categories.name}</span>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        className="
-                          h-4 w-4
-                          rounded-sm
-                          border border-white/30
-                          bg-transparent
-                          accent-primary
-                          transition
-                          focus:outline-none focus:ring-2 focus:ring-primary/60 focus:ring-offset-0
-                          hover:border-primary/70
-                          cursor-pointer
-                        "
+                        className="h-4 w-4 rounded-sm border border-white/30 bg-transparent accent-primary hover:border-primary/70 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/60"
                         checked={selectedIds.includes(s.id)}
                         onChange={() =>
                           setSelectedIds((prev) =>
                             prev.includes(s.id)
                               ? prev.filter((id) => id !== s.id)
-                              : [...prev, s.id]
+                              : [...prev, s.id],
                           )
                         }
                       />
-                    </Td>
-                    <Td className="font-medium">
-                      <div className="flex flex-col gap-1">
-                        <span>{cls?.title ?? '—'}</span>
-                        <span>
-                          {cls?.class_categories ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/5">
-                              {cls.class_categories.color && (
-                                <span
-                                  className="inline-block h-2 w-2 rounded-full border border-white/20"
-                                  style={{
-                                    backgroundColor: cls.class_categories.color,
-                                  }}
-                                />
-                              )}
-                              <span>{cls.class_categories.name}</span>
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-text-secondary">
-                              —
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    </Td>
-                    <Td>{formatDateTime(s.starts_at)}</Td>
-                    <Td>{s.ends_at ? formatDateTime(s.ends_at) : '—'}</Td>
-                    <Td>{s.capacity ?? '—'}</Td>
-                    <Td>
-                      {s.cancel_before_hours != null
-                        ? s.cancel_before_hours
-                        : '—'}
-                    </Td>
-                    <Td className="text-right space-x-1">
-                      <button
-                        className="px-2 py-1 text-xs rounded border border-white/10 hover:bg-secondary/10"
+                      <IconButton
+                        icon={QrCode}
+                        label="QR check-in"
                         onClick={() => setQrSession(s)}
-                        disabled={!s.checkin_token}
-                        title="QR check-in"
-                      >
-                        <QrCode className="inline-block w-6 h-5" />
-                      </button>
-                      <button
-                        className="px-2 py-1 text-xs rounded border border-white/10 hover:bg-secondary/10"
+                        disabled={!hasQr}
+                      />
+                      <IconButton
+                        icon={Clock}
+                        label="Ιστορικό"
                         onClick={() => setAttendanceSession(s)}
-                      >
-                        Ιστορικό
-                      </button>
-                      <button
-                        className="px-2 py-1 text-xs rounded hover:bg-secondary/10"
+                      />
+                      <IconButton
+                        icon={Pencil}
+                        label="Επεξεργασία"
                         onClick={() => setEditRow(s)}
-                      >
-                        Επεξεργασία
-                      </button>
+                      />
                       <DeleteButton
                         id={s.id}
                         onDeleted={load}
                         setError={setError}
                       />
-                    </Td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 space-y-1 text-xs">
+                    <div>
+                      <span className="opacity-70">Έναρξη: </span>
+                      {formatDateTime(s.starts_at)}
+                    </div>
+                    <div>
+                      <span className="opacity-70">Λήξη: </span>
+                      {s.ends_at ? formatDateTime(s.ends_at) : '—'}
+                    </div>
+                    <div>
+                      <span className="opacity-70">Χωρητικότητα: </span>
+                      {s.capacity ?? '—'}
+                    </div>
+                    <div>
+                      <span className="opacity-70">
+                        Ακύρωση έως (ώρες πριν):{' '}
+                      </span>
+                      {s.cancel_before_hours != null
+                        ? s.cancel_before_hours
+                        : '—'}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
 
         {/* Pagination footer */}
         {!loading && filtered.length > 0 && (
@@ -476,7 +557,7 @@ export default function ClassSessionsPage() {
         )}
       </div>
 
-      {/* Create / Edit / Attendance modals */}
+      {/* Create / Edit / Attendance / QR modals */}
       {showCreate && (
         <CreateSessionModal
           classes={classes}
@@ -488,6 +569,7 @@ export default function ClassSessionsPage() {
           setError={setError}
         />
       )}
+
       {editRow && (
         <EditSessionModal
           row={editRow}
@@ -499,22 +581,23 @@ export default function ClassSessionsPage() {
           setError={setError}
         />
       )}
+
       {attendanceSession && profile?.tenant_id && (
         <SessionAttendanceModal
           tenantId={profile.tenant_id}
           sessionId={attendanceSession.id}
           sessionTitle={getClass(attendanceSession.class_id)?.title ?? '—'}
-          sessionTime={`${formatDate(attendanceSession.starts_at)} • ${formatTime(
-            attendanceSession.starts_at
-          )}${attendanceSession.ends_at
-            ? '–' + formatTime(attendanceSession.ends_at)
-            : ''
-            }`}
+          sessionTime={`${formatDate(
+            attendanceSession.starts_at,
+          )} • ${formatTime(attendanceSession.starts_at)}${
+            attendanceSession.ends_at
+              ? '–' + formatTime(attendanceSession.ends_at)
+              : ''
+          }`}
           onClose={() => setAttendanceSession(null)}
         />
       )}
 
-      {/* NEW: QR modal */}
       {qrSession && profile?.tenant_id && (
         <SessionQrModal
           open={true}
@@ -549,12 +632,11 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 h-8 rounded-full text-xs font-medium transition
-        border
-        ${active
+      className={`px-3 h-8 rounded-full text-xs font-medium transition border ${
+        active
           ? 'bg-accent text-black border-black'
           : 'bg-secondary-background text-text-secondary border-white/10 hover:border-white/30'
-        }`}
+      }`}
     >
       {label}
     </button>
@@ -571,13 +653,18 @@ function DeleteButton({
   setError: (s: string | null) => void;
 }) {
   const [busy, setBusy] = useState(false);
+
   const onClick = async () => {
     if (
-      !confirm('Διαγραφή αυτής της συνεδρίας; Αυτή η ενέργεια δεν μπορεί να ακυρωθεί.')
+      !confirm(
+        'Διαγραφή αυτής της συνεδρίας; Αυτή η ενέργεια δεν μπορεί να ακυρωθεί.',
+      )
     )
       return;
     setBusy(true);
-    const res = await supabase.functions.invoke('session-delete', { body: { id } });
+    const res = await supabase.functions.invoke('session-delete', {
+      body: { id },
+    });
     setBusy(false);
     if (res.error) {
       setError(res.error.message ?? 'Η διαγραφή απέτυχε');
@@ -588,18 +675,27 @@ function DeleteButton({
       onDeleted();
     }
   };
+
   return (
     <button
-      className="ml-2 px-2 py-1 text-sm rounded text-danger hover:bg-danger/10 disabled:opacity-50"
+      type="button"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-400/60 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
       onClick={onClick}
       disabled={busy}
+      aria-label="Διαγραφή συνεδρίας"
+      title="Διαγραφή συνεδρίας"
     >
-      {busy ? 'Διαγραφή...' : 'Διαγραφή'}
+      {busy ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Trash2 className="h-4 w-4" />
+      )}
+      <span className="sr-only">Διαγραφή</span>
     </button>
   );
 }
 
-/* Create / Edit modals + helpers */
+/* Create / Edit modals */
 
 function CreateSessionModal({
   classes,
@@ -613,19 +709,17 @@ function CreateSessionModal({
   setError: (s: string | null) => void;
 }) {
   const [classId, setClassId] = useState(classes[0]?.id ?? '');
-  const [date, setDate] = useState<string>(''); // yyyy-mm-dd
-  const [startTime, setStartTime] = useState<string>(''); // HH:MM
-  const [endTime, setEndTime] = useState<string>(''); // HH:MM
+  const [date, setDate] = useState<string>('');
+  const [startTime, setStartTime] = useState<string>('');
+  const [endTime, setEndTime] = useState<string>('');
   const [capacity, setCapacity] = useState<number>(20);
-  const [cancelBeforeHours, setCancelBeforeHours] = useState<string>(''); // 👈 NEW
+  const [cancelBeforeHours, setCancelBeforeHours] = useState<string>('');
   const [busy, setBusy] = useState(false);
 
-  // 🔍 Searchable dropdown state
   const [classDropdownOpen, setClassDropdownOpen] = useState(false);
   const [classSearch, setClassSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
-  // Close dropdown on outside click
   useEffect(() => {
     if (!classDropdownOpen) return;
     const handler = (e: MouseEvent) => {
@@ -639,7 +733,7 @@ function CreateSessionModal({
   }, [classDropdownOpen]);
 
   const filteredClasses = classes.filter((c) =>
-    c.title.toLowerCase().includes(classSearch.toLowerCase())
+    c.title.toLowerCase().includes(classSearch.toLowerCase()),
   );
   const selectedClass = classes.find((c) => c.id === classId);
 
@@ -666,10 +760,11 @@ function CreateSessionModal({
         ends_at: endsIso,
         capacity,
         cancel_before_hours:
-          cancelBeforeHours !== '' ? Number(cancelBeforeHours) : null, // 👈 pass to function
+          cancelBeforeHours !== '' ? Number(cancelBeforeHours) : null,
       },
     });
     setBusy(false);
+
     if (res.error || (res.data as any)?.error) {
       setError(res.error?.message ?? (res.data as any)?.error ?? 'Create failed');
       return;
@@ -687,9 +782,7 @@ function CreateSessionModal({
             className="input flex items-center justify-between"
             onClick={() => setClassDropdownOpen((v) => !v)}
           >
-            <span>
-              {selectedClass ? selectedClass.title : 'Επιλέξτε τμήμα…'}
-            </span>
+            <span>{selectedClass ? selectedClass.title : 'Επιλέξτε τμήμα…'}</span>
             <span className="ml-2 text-xs opacity-70">
               {classDropdownOpen ? '▲' : '▼'}
             </span>
@@ -716,8 +809,9 @@ function CreateSessionModal({
                   <button
                     key={c.id}
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${c.id === classId ? 'bg-white/10' : ''
-                      }`}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
+                      c.id === classId ? 'bg-white/10' : ''
+                    }`}
                     onClick={() => {
                       setClassId(c.id);
                       setClassDropdownOpen(false);
@@ -792,7 +886,6 @@ function CreateSessionModal({
   );
 }
 
-
 function EditSessionModal({
   row,
   classes,
@@ -807,18 +900,17 @@ function EditSessionModal({
   const [classId, setClassId] = useState(row.class_id);
   const [date, setDate] = useState<string>(() => isoToDateInput(row.starts_at));
   const [startTime, setStartTime] = useState<string>(() =>
-    isoToTimeInput(row.starts_at)
+    isoToTimeInput(row.starts_at),
   );
   const [endTime, setEndTime] = useState<string>(() =>
-    isoToTimeInput(row.ends_at)
+    isoToTimeInput(row.ends_at),
   );
   const [capacity, setCapacity] = useState<number>(row.capacity ?? 20);
   const [cancelBeforeHours, setCancelBeforeHours] = useState<string>(
-    row.cancel_before_hours != null ? String(row.cancel_before_hours) : ''
-  ); // 👈 NEW
+    row.cancel_before_hours != null ? String(row.cancel_before_hours) : '',
+  );
   const [busy, setBusy] = useState(false);
 
-  // 🔍 Searchable dropdown state
   const [classDropdownOpen, setClassDropdownOpen] = useState(false);
   const [classSearch, setClassSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -836,7 +928,7 @@ function EditSessionModal({
   }, [classDropdownOpen]);
 
   const filteredClasses = classes.filter((c) =>
-    c.title.toLowerCase().includes(classSearch.toLowerCase())
+    c.title.toLowerCase().includes(classSearch.toLowerCase()),
   );
   const selectedClass = classes.find((c) => c.id === classId);
 
@@ -863,10 +955,11 @@ function EditSessionModal({
         ends_at: endsIso,
         capacity,
         cancel_before_hours:
-          cancelBeforeHours !== '' ? Number(cancelBeforeHours) : null, // 👈 pass to function
+          cancelBeforeHours !== '' ? Number(cancelBeforeHours) : null,
       },
     });
     setBusy(false);
+
     if (res.error || (res.data as any)?.error) {
       setError(res.error?.message ?? (res.data as any)?.error ?? 'Save failed');
       return;
@@ -884,9 +977,7 @@ function EditSessionModal({
             className="input flex items-center justify-between"
             onClick={() => setClassDropdownOpen((v) => !v)}
           >
-            <span>
-              {selectedClass ? selectedClass.title : 'Επιλέξτε τμήμα…'}
-            </span>
+            <span>{selectedClass ? selectedClass.title : 'Επιλέξτε τμήμα…'}</span>
             <span className="ml-2 text-xs opacity-70">
               {classDropdownOpen ? '▲' : '▼'}
             </span>
@@ -913,8 +1004,9 @@ function EditSessionModal({
                   <button
                     key={c.id}
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${c.id === classId ? 'bg-white/10' : ''
-                      }`}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
+                      c.id === classId ? 'bg-white/10' : ''
+                    }`}
                     onClick={() => {
                       setClassId(c.id);
                       setClassDropdownOpen(false);
@@ -989,7 +1081,6 @@ function EditSessionModal({
   );
 }
 
-
 /* helpers */
 
 function isoToDateInput(iso: string) {
@@ -1044,10 +1135,9 @@ function startOfDay(d: Date) {
 }
 
 function startOfWeek(d: Date) {
-  // Monday as first day of week
   const x = startOfDay(d);
   const day = x.getDay(); // 0=Sun,1=Mon,...6=Sat
-  const diff = (day + 6) % 7; // 0 for Mon, 1 for Tue, ...
+  const diff = (day + 6) % 7;
   x.setDate(x.getDate() - diff);
   return x;
 }
@@ -1058,14 +1148,18 @@ function startOfMonth(d: Date) {
   return x;
 }
 
-/* small UI helpers */
+/* shared UI helpers */
+
 function Modal({ title, children, onClose }: any) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
       <div className="w-full max-w-lg rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl">
         <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
           <div className="font-semibold">{title}</div>
-          <button onClick={onClose} className="rounded px-2 py-1 hover:bg-white/5">
+          <button
+            onClick={onClose}
+            className="rounded px-2 py-1 hover:bg-white/5"
+          >
             ✕
           </button>
         </div>
@@ -1074,11 +1168,38 @@ function Modal({ title, children, onClose }: any) {
     </div>
   );
 }
+
 function FormRow({ label, children }: any) {
   return (
     <label className="block mb-3">
       <div className="mb-1 text-sm opacity-80">{label}</div>
       {children}
     </label>
+  );
+}
+
+function IconButton({
+  icon: Icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 hover:bg-secondary/20 disabled:opacity-40"
+      aria-label={label}
+      title={label}
+    >
+      <Icon className="h-4 w-4" />
+      <span className="sr-only">{label}</span>
+    </button>
   );
 }

@@ -4,6 +4,9 @@ import { useAuth } from '../auth';
 import { CalendarMonth } from '../components/CalendarMonth';
 import { useState } from 'react';
 import SessionAttendanceModal from "../components/Programs/SessionAttendanceModal";
+import TodayBookingsPieWidget from '../components/dashboard/TodayMetricsPie';
+import { MembershipsLineChart } from '../components/dashboard/MembershipsLineChart';
+import { BookingsLineChart } from '../components/dashboard/BookingsLineChart';
 
 
 
@@ -68,7 +71,7 @@ export default function Dashboard() {
       {/* KPI widgets */}
       {/* Row 1 — Totals / Core */}
       <Section title="Σύνολα & Δραστηριότητα">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4">
           <MetricWidget
             title="Συνολικά Μέλη"
             tenantId={tenantId}
@@ -81,43 +84,19 @@ export default function Dashboard() {
             variant="memberships"
             query={JSON.stringify({ source: "public.memberships", date_field: "starts_at", range: "this_month" })}
           />
-          <MetricWidget
-            title="Συνδρίες Σήμερα"
-            tenantId={tenantId}
-            variant="sessions"
-            query={JSON.stringify({ source: "public.class_sessions", date_field: "starts_at", range: "today" })}
-          />
-          <MetricWidget
-            title="Κρατήσεις Σήμερα"
-            tenantId={tenantId}
-            variant="bookings"
-            query={JSON.stringify({ source: "public.bookings", date_field: "created_at", range: "today" })}
-          />
         </div>
       </Section>
       {/* Row 2 — Attendance/Bookings Status Today */}
-      <Section title="Παρουσίες / Κρατήσεις Σήμερα">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          <MetricWidget
-            title="Check-ins Σήμερα"
-            tenantId={tenantId}
-            variant="sessions"
-            query={JSON.stringify({ kind: "status_today", status: "checked_in" })}
-          />
-          <MetricWidget
-            title="Ακυρώσεις Σήμερα"
-            tenantId={tenantId}
-            variant="bookings"
-            query={JSON.stringify({ kind: "status_today", status: "canceled" })}
-          />
-          <MetricWidget
-            title="No-shows Σήμερα"
-            tenantId={tenantId}
-            variant="bookings"
-            query={JSON.stringify({ kind: "status_today", status: "no_show" })}
-          />
-        </div>
-      </Section>
+     
+        
+          <Section title="Παρουσίες / Κρατήσεις Σήμερα">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            <TodayBookingsPieWidget tenantId={tenantId} />
+            <MembershipsLineChart />
+            <BookingsLineChart />
+            </div>
+          </Section>
+      
       {/* Row 3 — Revenue */}
       <Section title="Έσοδα">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

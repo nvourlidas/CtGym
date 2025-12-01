@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
+import type { LucideIcon } from 'lucide-react';
+import { Pencil, Trash2, Loader2 } from 'lucide-react';
 
 type CoachRef = {
   id: string;
@@ -16,13 +18,15 @@ type GymClass = {
   category_id: string | null;
   drop_in_enabled: boolean;
   drop_in_price: number | null;
-  member_drop_in_price: number | null; // 👈 NEW
+  member_drop_in_price: number | null;
   coach_id: string | null;
-  class_categories?: {
-    id: string;
-    name: string;
-    color: string | null;
-  } | null;
+  class_categories?:
+    | {
+        id: string;
+        name: string;
+        color: string | null;
+      }
+    | null;
   coach?: CoachRef | null;
 };
 
@@ -47,7 +51,7 @@ export default function ClassesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [coaches, setCoaches] = useState<Coach[]>([]);
 
-  // NEW: pagination state
+  // pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -67,7 +71,7 @@ export default function ClassesPage() {
         category_id,
         drop_in_enabled,
         drop_in_price,
-        member_drop_in_price,  
+        member_drop_in_price,
         coach_id,
         class_categories (
           id,
@@ -143,11 +147,12 @@ export default function ClassesPage() {
   const filtered = useMemo(() => {
     if (!q) return rows;
     const needle = q.toLowerCase();
-    return rows.filter((r) =>
-      (r.title ?? '').toLowerCase().includes(needle) ||
-      (r.description ?? '').toLowerCase().includes(needle) ||
-      r.id.toLowerCase().includes(needle) ||
-      (r.class_categories?.name ?? '').toLowerCase().includes(needle)
+    return rows.filter(
+      (r) =>
+        (r.title ?? '').toLowerCase().includes(needle) ||
+        (r.description ?? '').toLowerCase().includes(needle) ||
+        r.id.toLowerCase().includes(needle) ||
+        (r.class_categories?.name ?? '').toLowerCase().includes(needle),
     );
   }, [rows, q]);
 
@@ -183,70 +188,165 @@ export default function ClassesPage() {
       </div>
 
       <div className="rounded-md border border-white/10 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-secondary-background/60">
-            <tr className="text-left">
-              <Th>Τίτλος</Th>
-              <Th>Περιγραφή</Th>
-              <Th>Κατηγορία</Th>
-              <Th>Προπονητής</Th>
-              <Th>Drop-in</Th>
-              <Th className="text-right pr-3">Ενέργειες</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td className="px-3 py-4 opacity-60" colSpan={6}>
-                  Loading…
-                </td>
-              </tr>
-            )}
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td className="px-3 py-4 opacity-60" colSpan={6}>
-                  Δεν υπάρχουν τμήματα
-                </td>
-              </tr>
-            )}
-            {!loading &&
-              filtered.length > 0 &&
-              paginated.map((c) => (
-                <tr
-                  key={c.id}
-                  className="border-t border-white/10 hover:bg-secondary/10"
-                >
-                  <Td className="font-medium">{c.title}</Td>
-                  <Td className="text-text-secondary">
-                    {c.description ?? '—'}
-                  </Td>
-                  <Td>
-                    {c.class_categories ? (
-                      <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5">
-                        {c.class_categories.color && (
-                          <span
-                            className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
-                            style={{
-                              backgroundColor: c.class_categories.color,
-                            }}
-                          />
+        {/* DESKTOP / TABLE VIEW */}
+        <div className="hidden md:block">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="bg-secondary-background/60">
+                <tr className="text-left">
+                  <Th>Τίτλος</Th>
+                  <Th>Περιγραφή</Th>
+                  <Th>Κατηγορία</Th>
+                  <Th>Προπονητής</Th>
+                  <Th>Drop-in</Th>
+                  <Th className="text-right pr-3">Ενέργειες</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && (
+                  <tr>
+                    <td className="px-3 py-4 opacity-60" colSpan={6}>
+                      Loading…
+                    </td>
+                  </tr>
+                )}
+                {!loading && filtered.length === 0 && (
+                  <tr>
+                    <td className="px-3 py-4 opacity-60" colSpan={6}>
+                      Δεν υπάρχουν τμήματα
+                    </td>
+                  </tr>
+                )}
+                {!loading &&
+                  filtered.length > 0 &&
+                  paginated.map((c) => (
+                    <tr
+                      key={c.id}
+                      className="border-t border-white/10 hover:bg-secondary/10"
+                    >
+                      <Td className="font-medium">{c.title}</Td>
+                      <Td className="text-text-secondary align-top">
+                        <div className="max-w-xs whitespace-normal break-words text-xs leading-snug">
+                          {c.description ?? '—'}
+                        </div>
+                      </Td>
+                      <Td>
+                        {c.class_categories ? (
+                          <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5">
+                            {c.class_categories.color && (
+                              <span
+                                className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                                style={{
+                                  backgroundColor: c.class_categories.color,
+                                }}
+                              />
+                            )}
+                            <span>{c.class_categories.name}</span>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-text-secondary">—</span>
                         )}
-                        <span>{c.class_categories.name}</span>
-                      </span>
-                    ) : (
-                      <span className="text-xs text-text-secondary">—</span>
-                    )}
-                  </Td>
-                  <Td>
-                    {c.coach ? (
-                      <span className="text-xs">{c.coach.full_name}</span>
-                    ) : (
-                      <span className="text-xs text-text-secondary">—</span>
-                    )}
-                  </Td>
-                  <Td>
+                      </Td>
+                      <Td>
+                        {c.coach ? (
+                          <span className="text-xs">{c.coach.full_name}</span>
+                        ) : (
+                          <span className="text-xs text-text-secondary">—</span>
+                        )}
+                      </Td>
+                      <Td>
+                        {c.drop_in_enabled ? (
+                          <span className="text-xs">
+                            Ναι
+                            {c.drop_in_price != null && (
+                              <span className="opacity-80">
+                                {' '}
+                                ({c.drop_in_price.toFixed(2)}€)
+                              </span>
+                            )}
+                            {c.member_drop_in_price != null && (
+                              <span className="opacity-80">
+                                {' '}
+                                · Μέλος: {c.member_drop_in_price.toFixed(2)}€
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-text-secondary">Όχι</span>
+                        )}
+                      </Td>
+                      <Td className="text-right space-x-1 pr-3">
+                        <IconButton
+                          icon={Pencil}
+                          label="Επεξεργασία"
+                          onClick={() => setEditRow(c)}
+                        />
+                        <DeleteButton id={c.id} onDeleted={load} />
+                      </Td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* MOBILE / CARD VIEW */}
+        <div className="md:hidden">
+          {loading && (
+            <div className="px-3 py-4 text-sm opacity-60">Loading…</div>
+          )}
+
+          {!loading && filtered.length === 0 && (
+            <div className="px-3 py-4 text-sm opacity-60">
+              Δεν υπάρχουν τμήματα
+            </div>
+          )}
+
+          {!loading &&
+            filtered.length > 0 &&
+            paginated.map((c) => (
+              <div
+                key={c.id}
+                className="border-t border-white/10 bg-secondary/5 px-3 py-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium text-sm">{c.title}</div>
+                    <div className="mt-0.5 text-xs text-text-secondary">
+                      {c.coach
+                        ? `Προπονητής: ${c.coach.full_name}`
+                        : 'Χωρίς προπονητή'}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <IconButton
+                      icon={Pencil}
+                      label="Επεξεργασία"
+                      onClick={() => setEditRow(c)}
+                    />
+                    <DeleteButton id={c.id} onDeleted={load} />
+                  </div>
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  {c.class_categories && (
+                    <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-white/5">
+                      {c.class_categories.color && (
+                        <span
+                          className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                          style={{
+                            backgroundColor: c.class_categories.color,
+                          }}
+                        />
+                      )}
+                      <span>{c.class_categories.name}</span>
+                    </span>
+                  )}
+                  <span className="opacity-80">
+                    Drop-in:{' '}
                     {c.drop_in_enabled ? (
-                      <span className="text-xs">
+                      <>
                         Ναι
                         {c.drop_in_price != null && (
                           <span className="opacity-80">
@@ -257,29 +357,24 @@ export default function ClassesPage() {
                         {c.member_drop_in_price != null && (
                           <span className="opacity-80">
                             {' '}
-                            · Μέλος:{' '}
-                            {c.member_drop_in_price.toFixed(2)}€
+                            · Μέλος: {c.member_drop_in_price.toFixed(2)}€
                           </span>
                         )}
-                      </span>
+                      </>
                     ) : (
-                      <span className="text-xs text-text-secondary">Όχι</span>
+                      <span className="text-text-secondary">Όχι</span>
                     )}
-                  </Td>
-                  <Td className="text-right">
-                    <button
-                      className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
-                      onClick={() => setEditRow(c)}
-                    >
-                      Επεξεργασία
-                    </button>
-                    <DeleteButton id={c.id} onDeleted={load} />
-                  </Td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+                  </span>
+                </div>
 
+                <div className="mt-2 text-xs text-text-secondary whitespace-normal break-words leading-snug">
+                  {c.description ?? '—'}
+                </div>
+              </div>
+            ))}
+        </div>
+
+        {/* Shared pagination footer */}
         {!loading && filtered.length > 0 && (
           <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
             <div>
@@ -370,6 +465,7 @@ function DeleteButton({
   onDeleted: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+
   const onClick = async () => {
     if (!confirm('Διαγραφή αυτού του τμήματος; Αυτό δεν μπορεί να αναιρεθεί.'))
       return;
@@ -378,13 +474,22 @@ function DeleteButton({
     setBusy(false);
     onDeleted();
   };
+
   return (
     <button
-      className="ml-2 px-2 py-1 text-sm rounded text-danger hover:bg-danger/10 disabled:opacity-50"
+      type="button"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-400/60 text-red-400 hover:bg-red-500/10 disabled:opacity-50 ml-1"
       onClick={onClick}
       disabled={busy}
+      aria-label="Διαγραφή τμήματος"
+      title="Διαγραφή τμήματος"
     >
-      {busy ? 'Διαγραφή…' : 'Διαγραφή'}
+      {busy ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Trash2 className="h-4 w-4" />
+      )}
+      <span className="sr-only">Διαγραφή</span>
     </button>
   );
 }
@@ -406,7 +511,9 @@ function CreateClassModal({
   const [coachId, setCoachId] = useState<string>('');
   const [dropInEnabled, setDropInEnabled] = useState(false);
   const [dropInPrice, setDropInPrice] = useState<number | null>(null);
-  const [memberDropInPrice, setMemberDropInPrice] = useState<number | null>(null); // 👈 NEW
+  const [memberDropInPrice, setMemberDropInPrice] = useState<number | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -421,7 +528,7 @@ function CreateClassModal({
         coach_id: coachId || null,
         drop_in_enabled: dropInEnabled,
         drop_in_price: dropInEnabled ? dropInPrice : null,
-        member_drop_in_price: dropInEnabled ? memberDropInPrice : null, // 👈 NEW
+        member_drop_in_price: dropInEnabled ? memberDropInPrice : null,
       },
     });
     setBusy(false);
@@ -498,7 +605,7 @@ function CreateClassModal({
                   value={dropInPrice ?? ''}
                   onChange={(e) =>
                     setDropInPrice(
-                      e.target.value === '' ? null : Number(e.target.value)
+                      e.target.value === '' ? null : Number(e.target.value),
                     )
                   }
                 />
@@ -515,7 +622,7 @@ function CreateClassModal({
                   value={memberDropInPrice ?? ''}
                   onChange={(e) =>
                     setMemberDropInPrice(
-                      e.target.value === '' ? null : Number(e.target.value)
+                      e.target.value === '' ? null : Number(e.target.value),
                     )
                   }
                 />
@@ -550,18 +657,16 @@ function EditClassModal({
 }) {
   const [title, setTitle] = useState(row.title ?? '');
   const [description, setDescription] = useState(row.description ?? '');
-  const [categoryId, setCategoryId] = useState<string>(
-    row.category_id ?? ''
-  );
+  const [categoryId, setCategoryId] = useState<string>(row.category_id ?? '');
   const [coachId, setCoachId] = useState<string>(row.coach_id ?? '');
   const [dropInEnabled, setDropInEnabled] = useState<boolean>(
-    row.drop_in_enabled ?? false
+    row.drop_in_enabled ?? false,
   );
   const [dropInPrice, setDropInPrice] = useState<number | null>(
-    row.drop_in_price ?? null
+    row.drop_in_price ?? null,
   );
-  const [memberDropInPrice, setMemberDropInPrice] = useState<number | null>(   // 👈 NEW
-    row.member_drop_in_price ?? null
+  const [memberDropInPrice, setMemberDropInPrice] = useState<number | null>(
+    row.member_drop_in_price ?? null,
   );
   const [busy, setBusy] = useState(false);
 
@@ -577,7 +682,7 @@ function EditClassModal({
         coach_id: coachId || null,
         drop_in_enabled: dropInEnabled,
         drop_in_price: dropInEnabled ? dropInPrice : null,
-        member_drop_in_price: dropInEnabled ? memberDropInPrice : null, // 👈 NEW
+        member_drop_in_price: dropInEnabled ? memberDropInPrice : null,
       },
     });
     if (res.error) {
@@ -659,7 +764,7 @@ function EditClassModal({
                   value={dropInPrice ?? ''}
                   onChange={(e) =>
                     setDropInPrice(
-                      e.target.value === '' ? null : Number(e.target.value)
+                      e.target.value === '' ? null : Number(e.target.value),
                     )
                   }
                 />
@@ -676,7 +781,7 @@ function EditClassModal({
                   value={memberDropInPrice ?? ''}
                   onChange={(e) =>
                     setMemberDropInPrice(
-                      e.target.value === '' ? null : Number(e.target.value)
+                      e.target.value === '' ? null : Number(e.target.value),
                     )
                   }
                 />
@@ -723,5 +828,28 @@ function FormRow({ label, children }: any) {
       <div className="mb-1 text-sm opacity-80">{label}</div>
       {children}
     </label>
+  );
+}
+
+function IconButton({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 hover:bg-secondary/20"
+      aria-label={label}
+      title={label}
+    >
+      <Icon className="h-4 w-4" />
+      <span className="sr-only">{label}</span>
+    </button>
   );
 }

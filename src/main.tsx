@@ -22,6 +22,7 @@ import Categories from './pages/CategoriesPage';
 import ThemeSettings from './pages/ThemeSettingsPage';
 import Coaches from './pages/CoachesPage';
 import GymInfo from './pages/GymInfoPage';
+import BulkBookings from './pages/Classes/AdminBulkBookingsPage';
 
 
 //test program
@@ -49,6 +50,7 @@ const router = createBrowserRouter([
       { path: 'themesettings', element: <ThemeSettings /> },
       { path: 'coaches', element: <Coaches /> },
       { path: 'gyminfo', element: <GymInfo /> },
+      { path: 'bulkbookings', element: <BulkBookings /> },
     ],
   },
 ]);

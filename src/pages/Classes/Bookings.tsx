@@ -1,4 +1,3 @@
-// src/pages/BookingsPage.tsx
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
@@ -27,10 +26,8 @@ type Booking = {
   user_id: string;
   status: string | null;
   created_at: string;
-  // NEW: drop-in info
   booking_type?: 'membership' | 'drop_in' | string | null;
   drop_in_price?: number | null;
-  // joined (for display)
   profile?: Member | null;
   session?: SessionRow | null;
 };
@@ -46,6 +43,29 @@ const STATUS_OPTIONS: { value: StatusCode; label: string }[] = [
 
 type DateFilterMode = 'all' | 'today' | 'custom';
 
+/* ---- Friendly error translator --------------------------------------- */
+function translateErrorMessage(raw: string): string {
+  if (!raw) return 'Κάτι πήγε στραβά. Δοκιμάστε ξανά.';
+
+  // Αν έρθει καθαρά ο κωδικός από backend
+  if (raw.includes('no_eligible_membership_for_booking')) {
+    return 'Δεν έχει το κατάλληλο πλάνο για αυτό το μάθημα.';
+  }
+
+  // Αν ΔΕΝ μας ήρθε ο κωδικός, αλλά μόνο το generic μήνυμα της Edge Function
+  if (raw.includes('Edge Function returned a non-2xx status code')) {
+    return 'Δεν έχει το κατάλληλο πλάνο για αυτό το μάθημα.';
+  }
+
+  if (raw.includes('drop_in_debt_limit_exceeded')) {
+    return 'Το μέλος έχει ξεπεράσει το επιτρεπτό όριο οφειλής για drop-in.';
+  }
+
+  // fallback
+  return raw;
+}
+
+
 export default function BookingsPage() {
   const { profile } = useAuth();
   const [rows, setRows] = useState<Booking[]>([]);
@@ -55,15 +75,20 @@ export default function BookingsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editRow, setEditRow] = useState<Booking | null>(null);
 
+  // new: global error modal
+  const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null);
+  const handleError = (title: string, message: string) => {
+    setErrorModal({ title, message: translateErrorMessage(message) });
+  };
+
   // filters
   const [classFilter, setClassFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('today');
   const [customDate, setCustomDate] = useState<string>(''); // yyyy-mm-dd
-  // NEW: booking type filter
   const [bookingTypeFilter, setBookingTypeFilter] = useState<string>('');
 
-  // pagination state
+  // pagination
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -72,7 +97,6 @@ export default function BookingsPage() {
     setLoading(true);
     setError(null);
 
-    // Try a joined query (profiles + sessions + classes + categories)
     const { data, error } = await supabase
       .from('bookings')
       .select(`
@@ -93,14 +117,16 @@ export default function BookingsPage() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      // fallback if join not allowed by RLS
       const { data: bare, error: e2 } = await supabase
         .from('bookings')
         .select('id, tenant_id, session_id, user_id, status, created_at, booking_type, drop_in_price')
         .eq('tenant_id', profile.tenant_id)
         .order('created_at', { ascending: false });
 
-      if (e2) setError(e2.message);
+      if (e2) {
+        setError(e2.message);
+        handleError('Σφάλμα φόρτωσης κρατήσεων', e2.message);
+      }
       setRows(((bare as any[]) ?? []).map(b => ({
         ...b,
         profile: null,
@@ -143,7 +169,6 @@ export default function BookingsPage() {
 
   useEffect(() => { load(); }, [profile?.tenant_id]);
 
-  // Unique class list for filter dropdown
   const classOptions = useMemo(() => {
     const map = new Map<string, string>();
     rows.forEach(r => {
@@ -160,22 +185,18 @@ export default function BookingsPage() {
   const filtered = useMemo(() => {
     let list = [...rows];
 
-    // Filter by class (based on classes.id)
     if (classFilter) {
       list = list.filter(r => r.session?.classes?.id === classFilter);
     }
 
-    // Filter by status
     if (statusFilter) {
       list = list.filter(r => (r.status ?? 'booked') === statusFilter);
     }
 
-    // NEW: Filter by booking type (membership / drop_in)
     if (bookingTypeFilter) {
       list = list.filter(r => (r.booking_type ?? 'membership') === bookingTypeFilter);
     }
 
-    // Filter by date (session start date if exists, otherwise created_at)
     if (dateFilterMode === 'today' || (dateFilterMode === 'custom' && customDate)) {
       const start = new Date();
       if (dateFilterMode === 'today') {
@@ -196,7 +217,6 @@ export default function BookingsPage() {
       });
     }
 
-    // Text search
     if (q) {
       const needle = q.toLowerCase();
       list = list.filter(r =>
@@ -209,7 +229,6 @@ export default function BookingsPage() {
     return list;
   }, [rows, q, classFilter, statusFilter, bookingTypeFilter, dateFilterMode, customDate]);
 
-  // Reset to first page when filters / page size change
   useEffect(() => {
     setPage(1);
   }, [q, pageSize, classFilter, statusFilter, bookingTypeFilter, dateFilterMode, customDate]);
@@ -227,7 +246,6 @@ export default function BookingsPage() {
   return (
     <div className="p-6">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        {/* Search */}
         <input
           className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
           placeholder="Αναζήτηση κρατήσεων…"
@@ -235,7 +253,6 @@ export default function BookingsPage() {
           onChange={(e) => setQ(e.target.value)}
         />
 
-        {/* Filter by class */}
         <select
           className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
           value={classFilter}
@@ -249,7 +266,6 @@ export default function BookingsPage() {
           ))}
         </select>
 
-        {/* Filter by status */}
         <select
           className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
           value={statusFilter}
@@ -263,7 +279,6 @@ export default function BookingsPage() {
           ))}
         </select>
 
-        {/* NEW: Filter by booking type */}
         <select
           className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
           value={bookingTypeFilter}
@@ -274,7 +289,6 @@ export default function BookingsPage() {
           <option value="drop_in">Drop-in</option>
         </select>
 
-        {/* Date filters */}
         <div className="flex items-center gap-2">
           <select
             className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
@@ -395,7 +409,7 @@ export default function BookingsPage() {
                     >
                       Επεξεργασία
                     </button>
-                    <DeleteButton id={b.id} onDeleted={load} />
+                    <DeleteButton id={b.id} onDeleted={load} onError={handleError} />
                   </Td>
                 </tr>
               );
@@ -403,7 +417,6 @@ export default function BookingsPage() {
           </tbody>
         </table>
 
-        {/* Pagination footer */}
         {!loading && filtered.length > 0 && (
           <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
             <div>
@@ -453,13 +466,33 @@ export default function BookingsPage() {
         <CreateBookingModal
           tenantId={profile?.tenant_id!}
           onClose={() => { setShowCreate(false); load(); }}
+          onError={handleError}
         />
       )}
       {editRow && (
         <EditBookingModal
           row={editRow}
           onClose={() => { setEditRow(null); load(); }}
+          onError={handleError}
         />
+      )}
+
+      {/* Global error modal */}
+      {errorModal && (
+        <Modal
+          title={errorModal.title}
+          onClose={() => setErrorModal(null)}
+        >
+          <p className="text-sm whitespace-pre-line">{errorModal.message}</p>
+          <div className="mt-4 flex justify-end">
+            <button
+              className="btn-primary"
+              onClick={() => setErrorModal(null)}
+            >
+              ΟΚ
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );
@@ -472,15 +505,26 @@ function Td({ children, className = '' }: any) {
   return <td className={`px-3 py-2 ${className}`}>{children}</td>;
 }
 
-function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
+/* Delete button now uses onError instead of alert */
+function DeleteButton({
+  id,
+  onDeleted,
+  onError,
+}: {
+  id: string;
+  onDeleted: () => void;
+  onError: (title: string, message: string) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const onClick = async () => {
     if (!confirm('Διαγραφή αυτής της κράτησης; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.')) return;
     setBusy(true);
     const res = await supabase.functions.invoke('booking-delete', { body: { id } });
     setBusy(false);
+    const errMsg =
+      (res.data as any)?.error ?? res.error?.message ?? '';
     if (res.error || (res.data as any)?.error) {
-      alert(res.error?.message ?? (res.data as any)?.error ?? 'Delete failed');
+      onError('Σφάλμα διαγραφής κράτησης', errMsg || 'Η διαγραφή απέτυχε.');
     } else {
       onDeleted();
     }
@@ -498,21 +542,26 @@ function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) 
 
 /* Create / Edit modals */
 
-function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: () => void }) {
+function CreateBookingModal({
+  tenantId,
+  onClose,
+  onError,
+}: {
+  tenantId: string;
+  onClose: () => void;
+  onError: (title: string, message: string) => void;
+}) {
   const [members, setMembers] = useState<Member[]>([]);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [userId, setUserId] = useState('');
   const [sessionId, setSessionId] = useState('');
-  // NEW: booking type
   const [bookingType, setBookingType] = useState<'membership' | 'drop_in'>('membership');
   const [busy, setBusy] = useState(false);
 
-  // 🔍 MEMBER dropdown state
   const [memberDropdownOpen, setMemberDropdownOpen] = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
   const memberDropdownRef = useRef<HTMLDivElement | null>(null);
 
-  // 🔍 SESSION dropdown state (with date filter)
   const [sessionDropdownOpen, setSessionDropdownOpen] = useState(false);
   const [sessionSearch, setSessionSearch] = useState('');
   const [sessionDate, setSessionDate] = useState(''); // yyyy-mm-dd
@@ -520,24 +569,32 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
 
   useEffect(() => {
     (async () => {
-      const { data: m } = await supabase
+      const { data: m, error: mErr } = await supabase
         .from('profiles')
         .select('id, full_name')
         .eq('tenant_id', tenantId)
         .eq('role', 'member')
         .order('full_name', { ascending: true });
+
+      if (mErr) {
+        onError('Σφάλμα φόρτωσης μελών', mErr.message);
+      }
       setMembers((m as any[]) ?? []);
 
-      const { data: s } = await supabase
+      const { data: s, error: sErr } = await supabase
         .from('class_sessions')
         .select(
           'id, starts_at, ends_at, capacity, classes(id, title, class_categories(name, color))'
         )
         .eq('tenant_id', tenantId)
         .order('starts_at', { ascending: true });
+
+      if (sErr) {
+        onError('Σφάλμα φόρτωσης συνεδριών', sErr.message);
+      }
       setSessions((s as any[]) ?? []);
     })();
-  }, [tenantId]);
+  }, [tenantId, onError]);
 
   // Close MEMBER dropdown on outside click
   useEffect(() => {
@@ -565,7 +622,6 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
     return () => window.removeEventListener('mousedown', handler);
   }, [sessionDropdownOpen]);
 
-  // FILTERED MEMBERS
   const filteredMembers = members.filter((m) => {
     const needle = memberSearch.toLowerCase();
     if (!needle) return true;
@@ -573,20 +629,16 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
   });
   const selectedMember = members.find((m) => m.id === userId);
 
-  // FILTERED SESSIONS (by text + date)
   const filteredSessions = sessions.filter((s) => {
     const needle = sessionSearch.toLowerCase();
-
-    // text search in class title + formatted datetime
     const title = (s.classes?.title ?? '').toLowerCase();
     const dateLabel = formatDateTime(s.starts_at).toLowerCase();
     const matchesText = !needle || title.includes(needle) || dateLabel.includes(needle);
 
-    // date filter: compare yyyy-mm-dd of starts_at
     if (sessionDate) {
       const d = new Date(s.starts_at);
       if (Number.isNaN(d.getTime())) return false;
-      const iso = d.toISOString().slice(0, 10); // yyyy-mm-dd
+      const iso = d.toISOString().slice(0, 10);
       if (iso !== sessionDate) return false;
     }
 
@@ -604,20 +656,24 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
   };
 
   const submit = async () => {
-    if (!userId || !sessionId) return;
+    if (!userId || !sessionId) {
+      onError('Ελλιπή στοιχεία', 'Πρέπει να επιλέξετε μέλος και συνεδρία.');
+      return;
+    }
     setBusy(true);
     const res = await supabase.functions.invoke('booking-create', {
       body: {
         tenant_id: tenantId,
         user_id: userId,
         session_id: sessionId,
-        // NEW: send type (backend can ignore until you update it)
         booking_type: bookingType,
       },
     });
     setBusy(false);
+    const errMsg =
+      (res.data as any)?.error ?? res.error?.message ?? '';
     if (res.error || (res.data as any)?.error) {
-      alert(res.error?.message ?? (res.data as any)?.error ?? 'Create failed');
+      onError('Σφάλμα δημιουργίας κράτησης', errMsg || 'Η δημιουργία απέτυχε.');
       return;
     }
     onClose();
@@ -625,7 +681,6 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
 
   return (
     <Modal onClose={onClose} title="Νέα κράτηση">
-      {/* 🔍 Searchable MEMBER dropdown */}
       <FormRow label="Μέλος *">
         <div ref={memberDropdownRef} className="relative">
           <button
@@ -680,7 +735,6 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
         </div>
       </FormRow>
 
-      {/* 🔍 Searchable SESSION dropdown + date filter */}
       <FormRow label="Συνεδρία *">
         <div ref={sessionDropdownRef} className="relative">
           <button
@@ -698,7 +752,6 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
 
           {sessionDropdownOpen && (
             <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
-              {/* Search + Date filter row */}
               <div className="p-2 border-b border-white/10 space-y-2">
                 <input
                   className="input !h-9 !text-sm"
@@ -752,7 +805,6 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
         </div>
       </FormRow>
 
-      {/* Τύπος κράτησης */}
       <FormRow label="Τύπος κράτησης">
         <select
           className="input"
@@ -778,8 +830,15 @@ function CreateBookingModal({ tenantId, onClose }: { tenantId: string; onClose: 
   );
 }
 
-
-function EditBookingModal({ row, onClose }: { row: Booking; onClose: () => void }) {
+function EditBookingModal({
+  row,
+  onClose,
+  onError,
+}: {
+  row: Booking;
+  onClose: () => void;
+  onError: (title: string, message: string) => void;
+}) {
   const [status, setStatus] = useState<StatusCode>((row.status as StatusCode) ?? 'booked');
   const [busy, setBusy] = useState(false);
 
@@ -789,8 +848,10 @@ function EditBookingModal({ row, onClose }: { row: Booking; onClose: () => void 
       body: { id: row.id, status },
     });
     setBusy(false);
+    const errMsg =
+      (res.data as any)?.error ?? res.error?.message ?? '';
     if (res.error || (res.data as any)?.error) {
-      alert(res.error?.message ?? (res.data as any)?.error ?? 'Save failed');
+      onError('Σφάλμα ενημέρωσης κράτησης', errMsg || 'Η αποθήκευση απέτυχε.');
       return;
     }
     onClose();

@@ -6,7 +6,9 @@ import {
   Settings,
   Palette,
   ContactRound,
-  Info
+  Info,
+  Grid2X2Check,
+  ClockCheck
 } from 'lucide-react';
 
 export type NavEntry =
@@ -39,8 +41,17 @@ export const NAV: NavEntry[] = [
     icon: CalendarClock,
     children: [
       { label: 'Συνεδρίες', to: '/sessions', icon: Layers },
-      { label: 'Κρατήσεις', to: '/bookings', icon: BookmarkCheck },
       { label: 'Προγράμματα', to: '/programs', icon: CalendarPlus },
+    ],
+  },
+
+  {
+    type: 'group',
+    label: 'Κρατήσεις',
+    icon: Grid2X2Check,
+    children: [
+      { label: 'Κρατήσεις', to: '/bookings', icon: BookmarkCheck },
+      { label: 'Προγραμματισμός Κρατήσεων', to: '/bulkbookings', icon: ClockCheck },
     ],
   },
 
@@ -53,6 +64,8 @@ export const NAV: NavEntry[] = [
       { label: 'Συνδρομές', to: '/memberships', icon: BookmarkCheck },
     ],
   },
+
+    { type: 'section', title: 'ριθμισεισ' },
   
   {
     type: 'group',

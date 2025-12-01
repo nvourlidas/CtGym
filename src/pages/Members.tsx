@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
 import MemberDetailsModal from '../components/Members/MemberDetailsModal';
+import type { LucideIcon } from 'lucide-react';
+import { Eye, Pencil, Trash2, Loader2 } from 'lucide-react';
 
 type Member = {
   id: string;
@@ -33,7 +35,9 @@ export default function MembersPage() {
   const [detailsMember, setDetailsMember] = useState<Member | null>(null);
 
   // debts per member
-  const [membershipDebts, setMembershipDebts] = useState<Record<string, number>>({});
+  const [membershipDebts, setMembershipDebts] = useState<Record<string, number>>(
+    {},
+  );
   const [dropinDebts, setDropinDebts] = useState<Record<string, number>>({});
 
   const formatMoney = (value: number) => `${value.toFixed(2)} €`;
@@ -46,7 +50,7 @@ export default function MembersPage() {
     const { data, error } = await supabase
       .from('profiles')
       .select(
-        'id, full_name, phone, tenant_id, role, created_at, birth_date, address, afm, max_dropin_debt, email'
+        'id, full_name, phone, tenant_id, role, created_at, birth_date, address, afm, max_dropin_debt, email',
       )
       .eq('tenant_id', profile.tenant_id)
       .eq('role', 'member')
@@ -120,10 +124,11 @@ export default function MembersPage() {
   const filtered = useMemo(() => {
     if (!q) return rows;
     const needle = q.toLowerCase();
-    return rows.filter((r) =>
-      (r.full_name ?? '').toLowerCase().includes(needle) ||
-      (r.phone ?? '').toLowerCase().includes(needle) ||
-      r.id.toLowerCase().includes(needle)
+    return rows.filter(
+      (r) =>
+        (r.full_name ?? '').toLowerCase().includes(needle) ||
+        (r.phone ?? '').toLowerCase().includes(needle) ||
+        r.id.toLowerCase().includes(needle),
     );
   }, [rows, q]);
 
@@ -160,78 +165,164 @@ export default function MembersPage() {
       </div>
 
       <div className="rounded-md border border-white/10 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-secondary-background/60">
-            <tr className="text-left">
-              <Th>Όνομα</Th>
-              <Th>Τηλέφωνο</Th>
-              <Th>Συνολική Οφειλή</Th>
-              <Th>Max Drop-in Οφειλή</Th>
-              <Th>Ημ. Δημιουργίας</Th>
-              <Th className="text-right pr-3">Ενέργειες</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr>
-                <td className="px-3 py-4 opacity-60" colSpan={6}>
-                  Loading…
-                </td>
-              </tr>
-            )}
-            {!loading && filtered.length === 0 && (
-              <tr>
-                <td className="px-3 py-4 opacity-60" colSpan={6}>
-                  No members
-                </td>
-              </tr>
-            )}
-            {!loading &&
-              filtered.length > 0 &&
-              paginated.map((m) => {
-                const membershipDebt = membershipDebts[m.id] ?? 0;
-                const dropinDebt = dropinDebts[m.id] ?? 0;
-                const totalDebt = membershipDebt + dropinDebt;
+        {/* DESKTOP / TABLE VIEW */}
+        <div className="hidden md:block">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="bg-secondary-background/60">
+                <tr className="text-left">
+                  <Th>Όνομα</Th>
+                  <Th>Τηλέφωνο</Th>
+                  <Th>Συνολική Οφειλή</Th>
+                  <Th>Max Drop-in Οφειλή</Th>
+                  <Th>Ημ. Δημιουργίας</Th>
+                  <Th className="text-right pr-3">Ενέργειες</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading && (
+                  <tr>
+                    <td className="px-3 py-4 opacity-60" colSpan={6}>
+                      Loading…
+                    </td>
+                  </tr>
+                )}
+                {!loading && filtered.length === 0 && (
+                  <tr>
+                    <td className="px-3 py-4 opacity-60" colSpan={6}>
+                      No members
+                    </td>
+                  </tr>
+                )}
+                {!loading &&
+                  filtered.length > 0 &&
+                  paginated.map((m) => {
+                    const membershipDebt = membershipDebts[m.id] ?? 0;
+                    const dropinDebt = dropinDebts[m.id] ?? 0;
+                    const totalDebt = membershipDebt + dropinDebt;
 
-                return (
-                  <tr
-                    key={m.id}
-                    className="border-t border-white/10 hover:bg-secondary/10"
-                  >
-                    <Td>{m.full_name ?? '—'}</Td>
-                    <Td>{m.phone ?? '—'}</Td>
-                    <Td>
-                      
-                                        {totalDebt != null && totalDebt !== 0
-                    ? <span className="text-amber-300 font-medium">{formatMoney(totalDebt)}</span>
-                    : <span className="text-emerald-300 text-xs uppercase tracking-wide"> 0 </span>}
-                    </Td>
-                    <Td>
+                    return (
+                      <tr
+                        key={m.id}
+                        className="border-t border-white/10 hover:bg-secondary/10"
+                      >
+                        <Td>{m.full_name ?? '—'}</Td>
+                        <Td>{m.phone ?? '—'}</Td>
+                        <Td>
+                          {totalDebt !== 0 ? (
+                            <span className="text-amber-300 font-medium">
+                              {formatMoney(totalDebt)}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-300 text-xs uppercase tracking-wide">
+                              0
+                            </span>
+                          )}
+                        </Td>
+                        <Td>
+                          {m.max_dropin_debt != null
+                            ? formatMoney(Number(m.max_dropin_debt))
+                            : '—'}
+                        </Td>
+                        <Td>
+                          {new Date(m.created_at).toLocaleDateString('el-GR')}
+                        </Td>
+                        <Td className="text-right space-x-1 pr-3">
+                          <IconButton
+                            icon={Eye}
+                            label="Λεπτομέρειες"
+                            onClick={() => setDetailsMember(m)}
+                          />
+                          <IconButton
+                            icon={Pencil}
+                            label="Επεξεργασία"
+                            onClick={() => setEditRow(m)}
+                          />
+                          <DeleteButton id={m.id} onDeleted={load} />
+                        </Td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* MOBILE / CARD VIEW */}
+        <div className="md:hidden">
+          {loading && (
+            <div className="px-3 py-4 text-sm opacity-60">Loading…</div>
+          )}
+
+          {!loading && filtered.length === 0 && (
+            <div className="px-3 py-4 text-sm opacity-60">No members</div>
+          )}
+
+          {!loading &&
+            filtered.length > 0 &&
+            paginated.map((m) => {
+              const membershipDebt = membershipDebts[m.id] ?? 0;
+              const dropinDebt = dropinDebts[m.id] ?? 0;
+              const totalDebt = membershipDebt + dropinDebt;
+
+              return (
+                <div
+                  key={m.id}
+                  className="border-t border-white/10 bg-secondary/5 px-3 py-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-medium text-sm">
+                        {m.full_name ?? '—'}
+                      </div>
+                      <div className="text-xs text-text-secondary">
+                        {m.phone ?? '—'}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <IconButton
+                        icon={Eye}
+                        label="Λεπτομέρειες"
+                        onClick={() => setDetailsMember(m)}
+                      />
+                      <IconButton
+                        icon={Pencil}
+                        label="Επεξεργασία"
+                        onClick={() => setEditRow(m)}
+                      />
+                      <DeleteButton id={m.id} onDeleted={load} />
+                    </div>
+                  </div>
+
+                  <div className="mt-2 space-y-1 text-xs">
+                    <div>
+                      <span className="opacity-70">Συνολική Οφειλή: </span>
+                      {totalDebt !== 0 ? (
+                        <span className="text-amber-300 font-medium">
+                          {formatMoney(totalDebt)}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-300 uppercase tracking-wide">
+                          0
+                        </span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="opacity-70">Max Drop-in Οφειλή: </span>
                       {m.max_dropin_debt != null
                         ? formatMoney(Number(m.max_dropin_debt))
                         : '—'}
-                    </Td>
-                    <Td>{new Date(m.created_at).toLocaleString()}</Td>
-                    <Td className="text-right space-x-1">
-                      <button
-                        className="px-2 py-1 text-xs rounded border border-white/10 hover:bg-secondary/10"
-                        onClick={() => setDetailsMember(m)}
-                      >
-                        Λεπτομέρειες
-                      </button>
-                      <button
-                        className="px-2 py-1 text-xs rounded hover:bg-secondary/10"
-                        onClick={() => setEditRow(m)}
-                      >
-                        Επεξεργασία
-                      </button>
-                      <DeleteButton id={m.id} onDeleted={load} />
-                    </Td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
+                    </div>
+                    <div className="opacity-70">
+                      Δημιουργήθηκε:{' '}
+                      {new Date(m.created_at).toLocaleDateString('el-GR')}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
 
         {/* Pagination footer */}
         {!loading && filtered.length > 0 && (
@@ -321,12 +412,19 @@ function Td({ children, className = '' }: any) {
   return <td className={`px-3 py-2 ${className}`}>{children}</td>;
 }
 
-function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
+function DeleteButton({
+  id,
+  onDeleted,
+}: {
+  id: string;
+  onDeleted: () => void;
+}) {
   const [busy, setBusy] = useState(false);
+
   const onClick = async () => {
     if (
       !confirm(
-        'Διαγραφή αυτού του μέλους; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.'
+        'Διαγραφή αυτού του μέλους; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.',
       )
     )
       return;
@@ -335,13 +433,22 @@ function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) 
     setBusy(false);
     onDeleted();
   };
+
   return (
     <button
-      className="ml-2 px-2 py-1 text-sm rounded text-danger hover:bg-danger/10 disabled:opacity-50"
+      type="button"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-400/60 text-red-400 hover:bg-red-500/10 disabled:opacity-50 ml-1"
       onClick={onClick}
       disabled={busy}
+      aria-label="Διαγραφή μέλους"
+      title="Διαγραφή μέλους"
     >
-      {busy ? 'Διαγραφή…' : 'Διαγραφή'}
+      {busy ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Trash2 className="h-4 w-4" />
+      )}
+      <span className="sr-only">Διαγραφή</span>
     </button>
   );
 }
@@ -473,7 +580,7 @@ function EditMemberModal({
   const [address, setAddress] = useState(row.address ?? '');
   const [afm, setAfm] = useState(row.afm ?? '');
   const [maxDropinDebt, setMaxDropinDebt] = useState(
-    row.max_dropin_debt != null ? String(row.max_dropin_debt) : ''
+    row.max_dropin_debt != null ? String(row.max_dropin_debt) : '',
   );
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -590,5 +697,28 @@ function FormRow({ label, children }: any) {
       <div className="mb-1 text-sm opacity-80">{label}</div>
       {children}
     </label>
+  );
+}
+
+function IconButton({
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 hover:bg-secondary/20"
+      aria-label={label}
+      title={label}
+    >
+      <Icon className="h-4 w-4" />
+      <span className="sr-only">{label}</span>
+    </button>
   );
 }

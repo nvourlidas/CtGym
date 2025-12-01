@@ -58,15 +58,15 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background bg-gradient-to-br from-background via-background/80 to-slate-950 text-slate-100 px-4">
       {/* BIG LOGO OUTSIDE CARD */}
-      <div className="flex flex-col items-center mb-8 text-center space-y-3">
+      <div className="flex flex-col items-center mb-8 text-center">
         {/* Change src to your logo path */}
         <img
           src={logo}
           alt="Cloudtec Gym"
-          className="h-40 w-40 object-contain"
+          className="h-100 w-100 object-cover"
         />
 
-        <div className="space-y-1 -mt-22">
+        <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">
             Cloudtec Gym Admin
           </h1>
