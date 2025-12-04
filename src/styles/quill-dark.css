@@ -1,0 +1,75 @@
+/* Scope everything to the wrapper so Quill in other parts isn't affected */
+.ct-quill .ql-toolbar.ql-snow {
+  background-color: #111827;          /* dark bg */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: none;
+  color: #e5e7eb;                     /* light text */
+}
+
+.ct-quill .ql-container.ql-snow {
+  background-color: #0d1229;          /* editor bg */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e5e7eb;
+}
+
+/* Buttons / icons */
+.ct-quill .ql-toolbar button {
+  color: #e5e7eb;
+}
+
+.ct-quill .ql-toolbar button:hover,
+.ct-quill .ql-toolbar button:focus {
+  background-color: rgba(148, 163, 184, 0.15); /* hover */
+}
+
+.ct-quill .ql-toolbar button.ql-active {
+  background-color: rgba(37, 99, 235, 0.18);   /* active bg */
+}
+
+/* Icon strokes/fills */
+.ct-quill .ql-stroke {
+  stroke: #e5e7eb;
+}
+
+.ct-quill .ql-fill {
+  fill: #e5e7eb;
+}
+
+/* Pickers (font size, header, etc.) */
+.ct-quill .ql-picker {
+  color: #e5e7eb;
+}
+
+.ct-quill .ql-picker-label {
+  border: none;
+}
+
+.ct-quill .ql-picker-label:hover,
+.ct-quill .ql-picker-label.ql-active {
+  background-color: rgba(148, 163, 184, 0.15);
+}
+
+.ct-quill .ql-picker-options {
+  background-color: #020617;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.ct-quill .ql-picker-item:hover,
+.ct-quill .ql-picker-item.ql-selected {
+  color: #60a5fa; /* primary blue-ish */
+}
+
+/* Editor text / placeholder */
+.ct-quill .ql-editor {
+  min-height: 200px;
+  color: #e5e7eb;
+}
+
+.ct-quill .ql-editor.ql-blank::before {
+  color: rgba(148, 163, 184, 0.7);
+}
+
+/* Links color */
+.ct-quill .ql-editor a {
+  color: #ffc947;
+}

@@ -72,34 +72,38 @@ export default function Dashboard() {
       {/* Row 1 — Totals / Core */}
       <Section title="Σύνολα & Δραστηριότητα">
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4">
-          <MetricWidget
-            title="Συνολικά Μέλη"
-            tenantId={tenantId}
-            variant="members"
-            query={JSON.stringify({ source: "public.profiles", date_field: "created_at", range: "this_year" })}
-          />
-          <MetricWidget
-            title="Ενεργές Συνδρομές"
-            tenantId={tenantId}
-            variant="memberships"
-            query={JSON.stringify({ source: "public.memberships", date_field: "starts_at", range: "this_month" })}
-          />
+          <MembershipsLineChart />
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-4" >
+            <MetricWidget
+              title="Συνολικά Μέλη"
+              tenantId={tenantId}
+              variant="members"
+              query={JSON.stringify({ source: "public.profiles", date_field: "created_at", range: "this_year" })}
+            />
+            <MetricWidget
+              title="Ενεργές Συνδρομές"
+              tenantId={tenantId}
+              variant="inventory"
+              query={JSON.stringify({
+                kind: "active_memberships",
+              })}
+            />
+          </div>
         </div>
       </Section>
       {/* Row 2 — Attendance/Bookings Status Today */}
-     
-        
-          <Section title="Παρουσίες / Κρατήσεις Σήμερα">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            <TodayBookingsPieWidget tenantId={tenantId} />
-            <MembershipsLineChart />
-            <BookingsLineChart />
-            </div>
-          </Section>
-      
+
+
+      <Section title="Παρουσίες / Κρατήσεις">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4">
+          <TodayBookingsPieWidget tenantId={tenantId} />
+          <BookingsLineChart />
+        </div>
+      </Section>
+
       {/* Row 3 — Revenue */}
       <Section title="Έσοδα">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           <MetricWidget
             title="Έσοδα Σήμερα"
             tenantId={tenantId}
@@ -113,6 +117,12 @@ export default function Dashboard() {
             query={JSON.stringify({ kind: "revenue_cash_range", range: "this_month" })}
           />
           <MetricWidget
+            title="Έσοδα Τρέχον Χρόνος"
+            tenantId={tenantId}
+            variant="revenue"
+            query={JSON.stringify({ kind: "revenue_cash_range", range: "this_year" })}
+          />
+          {/* <MetricWidget
             title="MRR"
             tenantId={tenantId}
             variant="revenue"
@@ -123,7 +133,7 @@ export default function Dashboard() {
             tenantId={tenantId}
             variant="revenue"
             query={JSON.stringify({ kind: "arr" })}
-          />
+          /> */}
         </div>
       </Section>
       {/* Calendar under all widgets (full width) */}

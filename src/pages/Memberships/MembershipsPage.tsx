@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
+import { Pencil, Trash2, Loader2 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 type Member = { id: string; full_name: string | null; email?: string | null };
 type Plan = {
@@ -217,18 +219,18 @@ export default function MembershipsPage() {
   const endIdx = Math.min(filtered.length, page * pageSize);
 
   return (
-    <div className="p-6">
+    <div className="p-4 md:p-6">
       {/* search + filters */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
-          className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
+          className="h-9 w-full sm:w-64 rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
           placeholder="Αναζήτηση συνδρομών…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
 
         <select
-          className="h-9 rounded-md border border-white/10 bg-secondary-background px-2 text-sm"
+          className="h-9 w-full sm:w-auto rounded-md border border-white/10 bg-secondary-background px-2 text-sm"
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
         >
@@ -239,7 +241,7 @@ export default function MembershipsPage() {
         </select>
 
         <select
-          className="h-9 rounded-md border border-white/10 bg-secondary-background px-2 text-sm"
+          className="h-9 w-full sm:w-auto rounded-md border border-white/10 bg-secondary-background px-2 text-sm"
           value={filterPlan}
           onChange={(e) => setFilterPlan(e.target.value)}
         >
@@ -250,7 +252,7 @@ export default function MembershipsPage() {
         </select>
 
         <select
-          className="h-9 rounded-md border border-white/10 bg-secondary-background px-2 text-sm"
+          className="h-9 w-full sm:w-auto rounded-md border border-white/10 bg-secondary-background px-2 text-sm"
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
         >
@@ -262,7 +264,7 @@ export default function MembershipsPage() {
         </select>
 
         <select
-          className="h-9 rounded-md border border-white/10 bg-secondary-background px-2 text-sm"
+          className="h-9 w-full sm:w-auto rounded-md border border-white/10 bg-secondary-background px-2 text-sm"
           value={filterDebt}
           onChange={(e) => setFilterDebt(e.target.value as any)}
         >
@@ -272,7 +274,7 @@ export default function MembershipsPage() {
         </select>
 
         <button
-          className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white ml-auto"
+          className="h-9 w-full sm:w-auto rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white sm:ml-auto"
           onClick={() => setShowCreate(true)}
         >
           Νέα Συνδρομή
@@ -286,164 +288,327 @@ export default function MembershipsPage() {
       )}
 
       <div className="rounded-md border border-white/10 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-secondary-background/60">
-            <tr className="text-left">
-              <Th>Μέλος</Th>
-              <Th>Πλάνο</Th>
-              <Th>Τιμή</Th>
-              <Th>Κατηγορία</Th>
-              <Th>Έναρξη</Th>
-              <Th>Λήξη</Th>
-              <Th>Μέρες Υπολοίπου</Th>
-              <Th>Υπολ. Συνεδριών</Th>
-              <Th>Οφειλή</Th>
-              <Th>Κατάσταση</Th>
-              <Th className="text-right pr-3">Ενέργειες</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={11}>Loading…</td></tr>
-            )}
-            {!loading && filtered.length === 0 && (
-              <tr><td className="px-3 py-4 opacity-60" colSpan={11}>Καμία Συνδρομή</td></tr>
-            )}
-            {!loading && filtered.length > 0 && paginated.map(m => {
-              const basePrice = m.plan_price ?? null;
-              const effectivePrice = m.custom_price ?? basePrice;
+        {/* Loading / empty */}
+        {loading && (
+          <div className="px-3 py-4 text-sm opacity-60">Loading…</div>
+        )}
+        {!loading && filtered.length === 0 && (
+          <div className="px-3 py-4 text-sm opacity-60">Καμία Συνδρομή</div>
+        )}
 
-              return (
-                <tr key={m.id} className="border-t border-white/10 hover:bg-secondary/10">
-                  <Td>{m.profile?.full_name ?? m.user_id}</Td>
-                  <Td>{m.plan_name ?? '—'}</Td>
-
-                  {/* Τιμή με τυχόν έκπτωση */}
-                  <Td>
-                    {effectivePrice == null ? (
-                      <span className="text-xs text-text-secondary">—</span>
-                    ) : (
-                      <div className="flex flex-col text-xs">
-                        <span className="font-medium">
-                          {formatMoney(effectivePrice)}
-                        </span>
-                        {basePrice != null &&
-                          m.custom_price != null &&
-                          m.custom_price !== basePrice && (
-                            <span className="text-[11px] text-amber-300">
-                              κανονική: {formatMoney(basePrice)}
-                            </span>
-                          )}
-                      </div>
-                    )}
-                  </Td>
-
-                  <Td>
-                    {m.plan_categories && m.plan_categories.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {m.plan_categories.map((cat) => (
-                          <span
-                            key={cat.id}
-                            className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5"
-                          >
-                            {cat.color && (
-                              <span
-                                className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
-                                style={{ backgroundColor: cat.color }}
-                              />
-                            )}
-                            <span>{cat.name}</span>
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-text-secondary">—</span>
-                    )}
-                  </Td>
-
-                  <Td>{formatDateDMY(m.starts_at)}</Td>
-                  <Td>{formatDateDMY(m.ends_at)}</Td>
-                  <Td>{m.days_remaining ?? '—'}</Td>
-                  <Td>{m.remaining_sessions ?? '—'}</Td>
-                  <Td>
-                    {m.debt != null && m.debt !== 0
-                      ? <span className="text-amber-300 font-medium">{formatMoney(m.debt)}</span>
-                      : <span className="text-emerald-300 text-xs uppercase tracking-wide">Εξοφλημένη</span>}
-                  </Td>
-                  <Td>
-                    {(() => {
-                      const { label, className } = getStatusDisplay(m.status);
-                      return (
-                        <span
-                          className={
-                            'inline-flex items-center px-2 py-0.5 text-xs rounded-full font-medium ' +
-                            className
-                          }
-                        >
-                          {label}
-                        </span>
-                      );
-                    })()}
-                  </Td>
-
-                  <Td className="text-right">
-                    <button
-                      className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
-                      onClick={() => setEditRow(m)}
-                    >
-                      Επεξεργασία
-                    </button>
-                    <DeleteButton id={m.id} onDeleted={load} />
-                  </Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {/* Pagination footer */}
+        {/* Content when we have rows */}
         {!loading && filtered.length > 0 && (
-          <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
-            <div>
-              Εμφάνιση <span className="font-semibold">{startIdx}</span>
-              {filtered.length > 0 && <>–<span className="font-semibold">{endIdx}</span></>} από{' '}
-              <span className="font-semibold">{filtered.length}</span>
+          <>
+            {/* Mobile cards */}
+            <div className="md:hidden divide-y divide-white/10">
+              {paginated.map((m) => {
+                const basePrice = m.plan_price ?? null;
+                const effectivePrice =
+                  m.custom_price != null
+                    ? m.custom_price
+                    : basePrice != null
+                      ? basePrice
+                      : null;
+
+                const { label: statusLabel, className: statusClass } =
+                  getStatusDisplay(m.status);
+
+                return (
+                  <div key={m.id} className="p-3 bg-secondary-background/60">
+                    {/* Top: member + status */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-semibold">
+                          {m.profile?.full_name ?? m.user_id}
+                        </div>
+                        <div className="mt-1 text-[12px] text-text-secondary">
+                          {m.plan_name ?? 'Χωρίς πλάνο'}
+                        </div>
+                      </div>
+                      <span
+                        className={
+                          'inline-flex items-center px-2 py-0.5 text-[11px] rounded-full font-medium ' +
+                          statusClass
+                        }
+                      >
+                        {statusLabel}
+                      </span>
+                    </div>
+
+                    {/* Price */}
+                    <div className="mt-2 text-[12px]">
+                      {effectivePrice == null ? (
+                        <span className="text-text-secondary">Τιμή: —</span>
+                      ) : (
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-medium">
+                            Τιμή: {formatMoney(effectivePrice)}
+                          </span>
+                          {basePrice != null &&
+                            m.custom_price != null &&
+                            m.custom_price !== basePrice && (
+                              <span className="text-[11px] text-amber-300">
+                                κανονική: {formatMoney(basePrice)}
+                              </span>
+                            )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Categories */}
+                    <div className="mt-2">
+                      {m.plan_categories && m.plan_categories.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {m.plan_categories.map((cat) => (
+                            <span
+                              key={cat.id}
+                              className="inline-flex items-center gap-2 text-[11px] px-2 py-1 rounded-full bg-white/5"
+                            >
+                              {cat.color && (
+                                <span
+                                  className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                                  style={{ backgroundColor: cat.color }}
+                                />
+                              )}
+                              <span>{cat.name}</span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[11px] text-text-secondary">
+                          Χωρίς κατηγορία
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Dates & remaining */}
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-text-secondary">
+                      <div className="flex flex-col gap-0.5">
+                        <span>Έναρξη</span>
+                        <span className="text-text-primary">
+                          {formatDateDMY(m.starts_at)}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span>Λήξη</span>
+                        <span className="text-text-primary">
+                          {formatDateDMY(m.ends_at)}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span>Μέρες υπολοίπου</span>
+                        <span className="text-text-primary">
+                          {m.days_remaining ?? '—'}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <span>Υπολ. συνεδριών</span>
+                        <span className="text-text-primary">
+                          {m.remaining_sessions ?? '—'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Debt */}
+                    <div className="mt-2 text-[11px]">
+                      {m.debt != null && m.debt !== 0 ? (
+                        <span className="text-amber-300 font-medium">
+                          Οφειλή: {formatMoney(m.debt)}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-300 uppercase tracking-wide">
+                          Εξοφλημένη
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="mt-3 flex justify-end gap-2">
+                      <IconButton
+                        icon={Pencil}
+                        label="Επεξεργασία πλάνου"
+                        onClick={() => setEditRow(m)}
+                      />
+                      <DeleteButton id={m.id} onDeleted={load} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1">
-                <span>Γραμμές ανά Σελίδα:</span>
-                <select
-                  className="bg-transparent border border-white/10 rounded px-1 py-0.5"
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
-                >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                </select>
+
+            {/* Desktop table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-secondary-background/60">
+                  <tr className="text-left">
+                    <Th>Μέλος</Th>
+                    <Th>Πλάνο</Th>
+                    <Th>Τιμή</Th>
+                    <Th>Κατηγορία</Th>
+                    <Th>Έναρξη</Th>
+                    <Th>Λήξη</Th>
+                    <Th>Μέρες Υπολοίπου</Th>
+                    <Th>Υπολ. Συνεδριών</Th>
+                    <Th>Οφειλή</Th>
+                    <Th>Κατάσταση</Th>
+                    <Th className="text-right pr-3">Ενέργειες</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginated.map(m => {
+                    const basePrice = m.plan_price ?? null;
+                    const effectivePrice =
+                      m.custom_price != null
+                        ? m.custom_price
+                        : basePrice != null
+                          ? basePrice
+                          : null;
+
+                    return (
+                      <tr
+                        key={m.id}
+                        className="border-t border-white/10 hover:bg-secondary/10"
+                      >
+                        <Td>{m.profile?.full_name ?? m.user_id}</Td>
+                        <Td>{m.plan_name ?? '—'}</Td>
+
+                        {/* Τιμή με τυχόν έκπτωση */}
+                        <Td>
+                          {effectivePrice == null ? (
+                            <span className="text-xs text-text-secondary">—</span>
+                          ) : (
+                            <div className="flex flex-col text-xs">
+                              <span className="font-medium">
+                                {formatMoney(effectivePrice)}
+                              </span>
+                              {basePrice != null &&
+                                m.custom_price != null &&
+                                m.custom_price !== basePrice && (
+                                  <span className="text-[11px] text-amber-300">
+                                    κανονική: {formatMoney(basePrice)}
+                                  </span>
+                                )}
+                            </div>
+                          )}
+                        </Td>
+
+                        <Td>
+                          {m.plan_categories && m.plan_categories.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {m.plan_categories.map((cat) => (
+                                <span
+                                  key={cat.id}
+                                  className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5"
+                                >
+                                  {cat.color && (
+                                    <span
+                                      className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                                      style={{ backgroundColor: cat.color }}
+                                    />
+                                  )}
+                                  <span>{cat.name}</span>
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-text-secondary">—</span>
+                          )}
+                        </Td>
+
+                        <Td>{formatDateDMY(m.starts_at)}</Td>
+                        <Td>{formatDateDMY(m.ends_at)}</Td>
+                        <Td>{m.days_remaining ?? '—'}</Td>
+                        <Td>{m.remaining_sessions ?? '—'}</Td>
+                        <Td>
+                          {m.debt != null && m.debt !== 0
+                            ? (
+                              <span className="text-amber-300 font-medium">
+                                {formatMoney(m.debt)}
+                              </span>
+                            ) : (
+                              <span className="text-emerald-300 text-xs uppercase tracking-wide">
+                                Εξοφλημένη
+                              </span>
+                            )}
+                        </Td>
+                        <Td>
+                          {(() => {
+                            const { label, className } = getStatusDisplay(m.status);
+                            return (
+                              <span
+                                className={
+                                  'inline-flex items-center px-2 py-0.5 text-xs rounded-full font-medium ' +
+                                  className
+                                }
+                              >
+                                {label}
+                              </span>
+                            );
+                          })()}
+                        </Td>
+
+                      <Td className="text-right space-x-1 pr-3">
+                        <IconButton
+                          icon={Pencil}
+                          label="Επεξεργασία πλάνου"
+                          onClick={() => setEditRow(m)}
+                        />
+                        <DeleteButton id={m.id} onDeleted={load} />
+                      </Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination footer */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
+              <div>
+                Εμφάνιση <span className="font-semibold">{startIdx}</span>
+                {filtered.length > 0 && (
+                  <>
+                    –<span className="font-semibold">{endIdx}</span>
+                  </>
+                )}{' '}
+                από <span className="font-semibold">{filtered.length}</span>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                >
-                  Προηγ.
-                </button>
-                <span>
-                  Σελίδα <span className="font-semibold">{page}</span> of{' '}
-                  <span className="font-semibold">{pageCount}</span>
-                </span>
-                <button
-                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
-                  onClick={() => setPage(p => Math.min(pageCount, p + 1))}
-                  disabled={page === pageCount}
-                >
-                  Επόμενο
-                </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1">
+                  <span>Γραμμές ανά Σελίδα:</span>
+                  <select
+                    className="bg-transparent border border-white/10 rounded px-1 py-0.5"
+                    value={pageSize}
+                    onChange={(e) => setPageSize(Number(e.target.value))}
+                  >
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                  >
+                    Προηγ.
+                  </button>
+                  <span>
+                    Σελίδα <span className="font-semibold">{page}</span> από{' '}
+                    <span className="font-semibold">{pageCount}</span>
+                  </span>
+                  <button
+                    className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                    onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+                    disabled={page === pageCount}
+                  >
+                    Επόμενο
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          </>
         )}
       </div>
 
@@ -482,9 +647,37 @@ function formatDateDMY(iso?: string | null) {
   return `${dd}-${mm}-${yyyy}`;
 }
 
+
+function IconButton({
+  icon: Icon,
+  label,
+  onClick,
+  disabled,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 hover:bg-secondary/20 disabled:opacity-50"
+      aria-label={label}
+      title={label}
+    >
+      <Icon className="h-4 w-4" />
+      <span className="sr-only">{label}</span>
+    </button>
+  );
+}
+
 /* Delete button stays ίδιο */
 function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false);
+
   const onClick = async () => {
     if (!confirm('Ειστε σίγουρος για τη διαγραφή συνδρομής;')) return;
     setBusy(true);
@@ -496,13 +689,22 @@ function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) 
       onDeleted();
     }
   };
+
   return (
     <button
-      className="ml-2 px-2 py-1 text-sm rounded text-danger hover:bg-danger/10 disabled:opacity-50"
+      type="button"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-red-400/60 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
       onClick={onClick}
       disabled={busy}
+      aria-label="Διαγραφή πλάνου"
+      title="Διαγραφή πλάνου"
     >
-      {busy ? 'Διαγραφή...' : 'Διαγραφή'}
+      {busy ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <Trash2 className="h-4 w-4" />
+      )}
+      <span className="sr-only">Διαγραφή</span>
     </button>
   );
 }

@@ -2,8 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
 import MemberDetailsModal from '../components/Members/MemberDetailsModal';
+import SendMemberEmailModal from '../components/Members/SendMemberEmailModal';
 import type { LucideIcon } from 'lucide-react';
 import { Eye, Pencil, Trash2, Loader2 } from 'lucide-react';
+import '../styles/quill-dark.css';
+import DatePicker from 'react-datepicker';
+import { el } from 'date-fns/locale';
 
 type Member = {
   id: string;
@@ -19,8 +23,43 @@ type Member = {
   max_dropin_debt?: number | null;
 };
 
+
+type TenantRow = {
+  name: string;
+};
+
+function formatDateDMY(value: string | null | undefined): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function dateToISODate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`; // "YYYY-MM-DD"
+}
+
+function parseISODateToLocal(dateStr: string | null | undefined): Date | null {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.slice(0, 10).split('-');
+  const year = Number(y);
+  const month = Number(m);
+  const day = Number(d);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+
+
 export default function MembersPage() {
   const { profile } = useAuth();
+  const [tenant, setTenant] = useState<TenantRow | null>(null);
   const [rows, setRows] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -40,7 +79,25 @@ export default function MembersPage() {
   );
   const [dropinDebts, setDropinDebts] = useState<Record<string, number>>({});
 
+  // email selection + modal
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+
+  const selectedMembers = useMemo(
+    () => rows.filter((m) => selectedIds.includes(m.id)),
+    [rows, selectedIds],
+  );
+
+
   const formatMoney = (value: number) => `${value.toFixed(2)} €`;
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  const clearSelection = () => setSelectedIds([]);
 
   async function load() {
     if (!profile?.tenant_id) return;
@@ -61,12 +118,14 @@ export default function MembersPage() {
       setRows([]);
       setMembershipDebts({});
       setDropinDebts({});
+      setSelectedIds([]);
       setLoading(false);
       return;
     }
 
     const members = (data as Member[]) ?? [];
     setRows(members);
+    setSelectedIds([]); // καθάρισμα επιλογών σε κάθε φόρτωμα
 
     const memberIds = members.map((m) => m.id);
     if (memberIds.length === 0) {
@@ -147,9 +206,50 @@ export default function MembersPage() {
   const startIdx = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const endIdx = Math.min(filtered.length, page * pageSize);
 
+  const pageIds = paginated.map((m) => m.id);
+  const allPageSelected =
+    pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+
+  const toggleSelectPage = () => {
+    setSelectedIds((prev) => {
+      if (allPageSelected) {
+        // ξε-επιλογή όλων στη σελίδα
+        return prev.filter((id) => !pageIds.includes(id));
+      }
+      // πρόσθεση όσων δεν υπάρχουν ήδη
+      return [...prev, ...pageIds.filter((id) => !prev.includes(id))];
+    });
+  };
+
+  useEffect(() => {
+    (async () => {
+      if (!profile?.tenant_id) {
+        setTenant(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('name')
+        .eq('id', profile.tenant_id)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Failed to load tenant:', error);
+        setTenant(null);
+      } else {
+        setTenant(data as TenantRow | null);
+      }
+    })();
+  }, [profile?.tenant_id]);
+
+
+  const tenantNameFromProfile = tenant?.name ?? 'Cloudtec Gym';
+
+
   return (
     <div className="p-6">
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
           className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
           placeholder="Αναζήτηση μελών…"
@@ -162,6 +262,26 @@ export default function MembersPage() {
         >
           Νέο Μέλος
         </button>
+        <button
+          className="h-9 rounded-md px-3 text-sm border border-white/15 text-text-primary hover:bg-secondary/30 disabled:opacity-40"
+          onClick={() => setShowEmailModal(true)}
+          disabled={rows.length === 0}
+        >
+          Αποστολή Email
+        </button>
+        {selectedIds.length > 0 && (
+          <div className="text-xs text-text-secondary">
+            Επιλεγμένα μέλη:{' '}
+            <span className="font-semibold">{selectedIds.length}</span>{' '}
+            <button
+              type="button"
+              className="underline ml-1"
+              onClick={clearSelection}
+            >
+              (καθαρισμός)
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="rounded-md border border-white/10 overflow-hidden">
@@ -171,6 +291,14 @@ export default function MembersPage() {
             <table className="w-full min-w-[720px] text-sm">
               <thead className="bg-secondary-background/60">
                 <tr className="text-left">
+                  <Th className="w-10">
+                    <input
+                      type="checkbox"
+                      className="accent-primary"
+                      checked={allPageSelected}
+                      onChange={toggleSelectPage}
+                    />
+                  </Th>
                   <Th>Όνομα</Th>
                   <Th>Τηλέφωνο</Th>
                   <Th>Συνολική Οφειλή</Th>
@@ -182,14 +310,14 @@ export default function MembersPage() {
               <tbody>
                 {loading && (
                   <tr>
-                    <td className="px-3 py-4 opacity-60" colSpan={6}>
+                    <td className="px-3 py-4 opacity-60" colSpan={7}>
                       Loading…
                     </td>
                   </tr>
                 )}
                 {!loading && filtered.length === 0 && (
                   <tr>
-                    <td className="px-3 py-4 opacity-60" colSpan={6}>
+                    <td className="px-3 py-4 opacity-60" colSpan={7}>
                       No members
                     </td>
                   </tr>
@@ -206,6 +334,14 @@ export default function MembersPage() {
                         key={m.id}
                         className="border-t border-white/10 hover:bg-secondary/10"
                       >
+                        <Td>
+                          <input
+                            type="checkbox"
+                            className="accent-primary"
+                            checked={selectedIds.includes(m.id)}
+                            onChange={() => toggleSelect(m.id)}
+                          />
+                        </Td>
                         <Td>{m.full_name ?? '—'}</Td>
                         <Td>{m.phone ?? '—'}</Td>
                         <Td>
@@ -225,7 +361,7 @@ export default function MembersPage() {
                             : '—'}
                         </Td>
                         <Td>
-                          {new Date(m.created_at).toLocaleDateString('el-GR')}
+                          <Td>{formatDateDMY(m.created_at)}</Td>
                         </Td>
                         <Td className="text-right space-x-1 pr-3">
                           <IconButton
@@ -271,12 +407,20 @@ export default function MembersPage() {
                   className="border-t border-white/10 bg-secondary/5 px-3 py-3"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-medium text-sm">
-                        {m.full_name ?? '—'}
-                      </div>
-                      <div className="text-xs text-text-secondary">
-                        {m.phone ?? '—'}
+                    <div className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-1 accent-primary"
+                        checked={selectedIds.includes(m.id)}
+                        onChange={() => toggleSelect(m.id)}
+                      />
+                      <div>
+                        <div className="font-medium text-sm">
+                          {m.full_name ?? '—'}
+                        </div>
+                        <div className="text-xs text-text-secondary">
+                          {m.phone ?? '—'}
+                        </div>
                       </div>
                     </div>
 
@@ -315,9 +459,9 @@ export default function MembersPage() {
                         : '—'}
                     </div>
                     <div className="opacity-70">
-                      Δημιουργήθηκε:{' '}
-                      {new Date(m.created_at).toLocaleDateString('el-GR')}
+                      Δημιουργήθηκε: {formatDateDMY(m.created_at)}
                     </div>
+
                   </div>
                 </div>
               );
@@ -401,6 +545,23 @@ export default function MembersPage() {
           onClose={() => setDetailsMember(null)}
         />
       )}
+
+      {/* Send Email modal (separate component file) */}
+      {showEmailModal && (
+        <SendMemberEmailModal
+          isOpen={showEmailModal}
+          onClose={() => setShowEmailModal(false)}
+          tenantName={tenantNameFromProfile}
+          tenantId={profile?.tenant_id ?? null}
+          memberIds={selectedIds}
+          selectedMembers={selectedMembers.map((m) => ({
+            id: m.id,
+            full_name: m.full_name,
+            email: m.email,
+          }))}
+        />
+      )}
+
     </div>
   );
 }
@@ -464,7 +625,7 @@ function CreateMemberModal({
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [birthDate, setBirthDate] = useState('');
+  const [birthDate, setBirthDate] = useState<Date | null>(null);
   const [address, setAddress] = useState('');
   const [afm, setAfm] = useState('');
   const [maxDropinDebt, setMaxDropinDebt] = useState('');
@@ -481,7 +642,7 @@ function CreateMemberModal({
         full_name: fullName,
         phone,
         tenant_id: tenantId,
-        birth_date: birthDate || null,
+        birth_date: birthDate ? dateToISODate(birthDate) : null,
         address: address || null,
         afm: afm || null,
         max_dropin_debt: maxDropinDebt ? Number(maxDropinDebt) : null,
@@ -516,11 +677,19 @@ function CreateMemberModal({
         />
       </FormRow>
       <FormRow label="Ημ. γέννησης">
-        <input
+        <DatePicker
+          selected={birthDate}
+          onChange={(date) => setBirthDate(date)}
+          dateFormat="dd/MM/yyyy"
+          locale={el}
+          placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
           className="input"
-          type="date"
-          value={birthDate}
-          onChange={(e) => setBirthDate(e.target.value)}
+          wrapperClassName="w-full"
+          showMonthDropdown
+          showYearDropdown
+          dropdownMode="select"         // dropdown αντί για scroll
+          scrollableYearDropdown        // (προαιρετικό) κάνει το year list scrollable
+          yearDropdownItemNumber={80}   // πόσα χρόνια να δείχνει στο dropdown
         />
       </FormRow>
       <FormRow label="Διεύθυνση">
@@ -566,6 +735,7 @@ function CreateMemberModal({
   );
 }
 
+
 /* EDIT */
 function EditMemberModal({
   row,
@@ -576,7 +746,9 @@ function EditMemberModal({
 }) {
   const [fullName, setFullName] = useState(row.full_name ?? '');
   const [phone, setPhone] = useState(row.phone ?? '');
-  const [birthDate, setBirthDate] = useState(row.birth_date ?? '');
+  const [birthDate, setBirthDate] = useState<Date | null>(
+    parseISODateToLocal(row.birth_date),
+  );
   const [address, setAddress] = useState(row.address ?? '');
   const [afm, setAfm] = useState(row.afm ?? '');
   const [maxDropinDebt, setMaxDropinDebt] = useState(
@@ -593,7 +765,7 @@ function EditMemberModal({
         full_name: fullName,
         phone,
         password: password || undefined,
-        birth_date: birthDate || null,
+        birth_date: birthDate ? dateToISODate(birthDate) : null,
         address: address || null,
         afm: afm || null,
         max_dropin_debt: maxDropinDebt ? Number(maxDropinDebt) : null,
@@ -620,13 +792,23 @@ function EditMemberModal({
         />
       </FormRow>
       <FormRow label="Ημ. γέννησης">
-        <input
+        <DatePicker
+          selected={birthDate}
+          onChange={(date) => setBirthDate(date)}
+          dateFormat="dd/MM/yyyy"
+          locale={el}
+          placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
           className="input"
-          type="date"
-          value={birthDate}
-          onChange={(e) => setBirthDate(e.target.value)}
+          wrapperClassName="w-full"
+          // 🔽 extra options για εύκολη επιλογή έτους
+          showMonthDropdown
+          showYearDropdown
+          dropdownMode="select"         // dropdown αντί για scroll
+          scrollableYearDropdown        // (προαιρετικό) κάνει το year list scrollable
+          yearDropdownItemNumber={80}   // πόσα χρόνια να δείχνει στο dropdown
         />
       </FormRow>
+
       <FormRow label="Διεύθυνση">
         <input
           className="input"

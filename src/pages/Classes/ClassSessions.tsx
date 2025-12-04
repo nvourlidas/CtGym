@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import SessionAttendanceModal from '../../components/Programs/SessionAttendanceModal';
 import { SessionQrModal } from '../../components/SessionQrModal';
-import { QrCode, Eye, Pencil, Trash2, Loader2, Clock } from 'lucide-react';
+import { QrCode, Pencil, Trash2, Loader2, Clock } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 type GymClass = {
@@ -793,7 +793,7 @@ function CreateSessionModal({
               <div className="p-2 border-b border-white/10">
                 <input
                   autoFocus
-                  className="input !h-9 !text-sm"
+                  className="input h-9! text-sm!"
                   placeholder="Αναζήτηση τμήματος..."
                   value={classSearch}
                   onChange={(e) => setClassSearch(e.target.value)}
@@ -988,7 +988,7 @@ function EditSessionModal({
               <div className="p-2 border-b border-white/10">
                 <input
                   autoFocus
-                  className="input !h-9 !text-sm"
+                  className="input h-9! text-sm!"
                   placeholder="Αναζήτηση τμήματος..."
                   value={classSearch}
                   onChange={(e) => setClassSearch(e.target.value)}

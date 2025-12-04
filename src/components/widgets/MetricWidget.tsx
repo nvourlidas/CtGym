@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase"; // ← adjust path if needed
-import { Activity, Users, Grid3X3, BarChart3, PieChart, Package, FileText, type LucideIcon } from 'lucide-react';
+import { Activity, Users, Grid3X3, BarChart3, PieChart, Package, FileText, Euro, type LucideIcon } from 'lucide-react';
 
 /* ---- Fixed presets (icon + color) ------------------------------------ */
 type Variant =
@@ -20,7 +20,7 @@ const VARIANT_ICON: Record<Variant, LucideIcon> = {
   bookings: BarChart3,
   memberships: PieChart,
   classes: Grid3X3,
-  revenue: BarChart3,
+  revenue: Euro,
   activity: Activity,
   files: FileText,
   inventory: Package,
@@ -32,7 +32,7 @@ const VARIANT_COLOR: Record<Variant, string> = {
   bookings: "#f59e0b", // amber
   memberships: "#8b5cf6",// violet
   classes: "#14b8a6", // teal
-  revenue: "#ef4444", // red
+  revenue: "#22c55e", // red
   activity: "#64748b", // slate
   files: "#0ea5e9", // sky
   inventory: "#f97316", // orange
@@ -204,6 +204,89 @@ export default function MetricWidget({ title, variant, query, tenantId }: Props)
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query, isRawSQL, schemaName, tableName, dateField, start, end]);
+
+
+  useEffect(() => {
+    const run = async () => {
+      setLoading(true); setError(null);
+      try {
+        // ⭐ NEW: active memberships (no date filter)
+        if (payload?.kind === "active_memberships") {
+          const { count, error } = await supabase
+            .from("memberships")
+            .select("id", { count: "exact", head: true })
+            .eq("tenant_id", tenantId)
+            .eq("status", "active");
+
+          if (error) throw error;
+          setValue(count ?? 0);
+          return;
+        }
+
+        // ⭐ Unified: status_today (checked_in | canceled | no_show)
+        if (payload?.kind === "status_today" && payload.status) {
+          const status = String(payload.status).toLowerCase(); // "checked_in" | "canceled" | "no_show"
+          const now = new Date();
+          const fromISO = utcMidnightISO(now);
+          const toISO = utcMidnightISO(
+            new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
+          );
+
+          const { data, error } = await supabase
+            .from("bookings")
+            .select("id, status, class_sessions!inner(starts_at)")
+            .eq("status", status)
+            .gte("class_sessions.starts_at", fromISO)
+            .lt("class_sessions.starts_at", toISO);
+
+          if (error) throw error;
+          setValue((data ?? []).length);
+          return;
+        }
+
+        // ---- REVENUE: cash today (or generic range) ----
+        if (payload?.kind === "revenue_cash_today" || payload?.kind === "revenue_cash_range") {
+          // ... your existing revenue logic ...
+        }
+
+        // ---- REVENUE: MRR / ARR ----
+        if (payload?.kind === "mrr" || payload?.kind === "arr") {
+          // ... existing logic ...
+        }
+
+        // ---- existing raw SQL / time_series_count logic ----
+        if (isRawSQL) {
+          const { data, error } = await (supabase.rpc as any)("execute_metric_query", { p_query: query });
+          if (error) throw error;
+          setValue(Number(data?.[0]?.value ?? 0));
+        } else {
+          if (!schemaName || !tableName || !dateField) { setValue(null); return; }
+          const { data, error } = await supabase.rpc("time_series_count", {
+            p_schema: schemaName,
+            p_table: tableName,
+            p_date_field: dateField,
+            p_granularity: "day",
+            p_start_at: start,
+            p_end_at: end,
+          });
+          if (error) throw error;
+          const total =
+            (data as any[] | null)?.reduce(
+              (acc, r) => acc + (Number(r.value) || 0),
+              0,
+            ) ?? 0;
+          setValue(total);
+        }
+      } catch (e: any) {
+        setError(e?.message || "Failed to load metric");
+      } finally {
+        setLoading(false);
+      }
+    };
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, isRawSQL, schemaName, tableName, dateField, start, end]);
+
 
   return (
     <div
