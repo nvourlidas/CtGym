@@ -477,9 +477,9 @@ export default function AdminBulkBookingsPage() {
     return (
         <>
             {/* MAIN LAYOUT – responsive */}
-            <div className="flex flex-col md:flex-row h-auto md:h-[calc(100vh-80px)] gap-3 md:gap-4 p-3 md:p-6">
+            <div className="flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-6">
                 {/* SIDEBAR: MEMBERS – full width on mobile, fixed width on desktop */}
-                <aside className="w-full md:w-50 order-2 md:order-1 flex flex-col rounded-xl border border-white/10 bg-secondary-background/70 p-4">
+                <aside className="w-full md:w-70 md:h-[calc(100vh)] order-2 md:order-1 flex flex-col rounded-xl border border-white/10 bg-secondary-background/70 p-4">
                     <h2 className="text-sm font-semibold text-white mb-2">Μέλη</h2>
                     <p className="text-[11px] text-white/60 mb-3">
                         Σύρε ένα μέλος και άφησέ το πάνω σε μάθημα για να δημιουργήσεις
@@ -526,7 +526,7 @@ export default function AdminBulkBookingsPage() {
                 </aside>
 
                 {/* MAIN: WEEK CALENDAR – first on mobile */}
-                <main className="order-1 md:order-2 flex-1 flex flex-col rounded-xl border border-white/10 bg-secondary-background/70 p-3 md:p-4">
+                <main className="order-1 md:order-2 flex-1 flex flex-col  rounded-xl border border-white/10 bg-secondary-background/70 p-3 md:p-4">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 gap-2">
                         <div>
                             <h1 className="text-sm font-semibold text-white">
@@ -587,7 +587,7 @@ export default function AdminBulkBookingsPage() {
                             return (
                                 <div
                                     key={label}
-                                    className="flex flex-col rounded-lg border border-white/10 bg-slate-950/60 p-2"
+                                    className="flex flex-col rounded-lg  border  border-white/10 bg-slate-950/60 p-2"
                                 >
                                     <div className="border-b border-white/10 pb-1 mb-1 flex items-baseline justify-between gap-2">
                                         <div>

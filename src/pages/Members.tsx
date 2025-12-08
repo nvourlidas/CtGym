@@ -8,6 +8,7 @@ import { Eye, Pencil, Trash2, Loader2 } from 'lucide-react';
 import '../styles/quill-dark.css';
 import DatePicker from 'react-datepicker';
 import { el } from 'date-fns/locale';
+import SendMemberPushModal from '../components/Members/SendMemberPushModal';
 
 type Member = {
   id: string;
@@ -87,6 +88,8 @@ export default function MembersPage() {
     () => rows.filter((m) => selectedIds.includes(m.id)),
     [rows, selectedIds],
   );
+
+  const [showPushModal, setShowPushModal] = useState(false);
 
 
   const formatMoney = (value: number) => `${value.toFixed(2)} €`;
@@ -269,6 +272,15 @@ export default function MembersPage() {
         >
           Αποστολή Email
         </button>
+        <button
+          className="h-9 rounded-md px-3 text-sm border border-white/15 text-text-primary hover:bg-secondary/30 disabled:opacity-40"
+          onClick={() => setShowPushModal(true)}
+          disabled={rows.length === 0}
+        >
+          Αποστολή Push
+        </button>
+
+
         {selectedIds.length > 0 && (
           <div className="text-xs text-text-secondary">
             Επιλεγμένα μέλη:{' '}
@@ -561,6 +573,22 @@ export default function MembersPage() {
           }))}
         />
       )}
+
+      {showPushModal && (
+        <SendMemberPushModal
+          isOpen={showPushModal}
+          onClose={() => setShowPushModal(false)}
+          tenantName={tenantNameFromProfile}
+          tenantId={profile?.tenant_id ?? null}
+          selectedMembers={selectedMembers.map((m) => ({
+            id: m.id,
+            full_name: m.full_name,
+            email: m.email,
+            user_id: m.id, // 👈 ΠΡΟΣΟΧΗ: φρόντισε να υπάρχει αυτό στο m
+          }))}
+        />
+      )}
+
 
     </div>
   );

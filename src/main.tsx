@@ -24,6 +24,7 @@ import ThemeSettings from './pages/ThemeSettingsPage';
 import Coaches from './pages/CoachesPage';
 import GymInfo from './pages/GymInfoPage';
 import BulkBookings from './pages/Classes/AdminBulkBookingsPage';
+import ForgotPassword from './pages/ForgotPasswordPage'
 
 
 //test program
@@ -31,6 +32,7 @@ import ProgramsPage2 from './pages/Classes/ProgramsPage2';
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
+  { path: 'reset-password', element: <ForgotPassword /> },
   {
     path: '/',
     element: (
