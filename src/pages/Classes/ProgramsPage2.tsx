@@ -1,5 +1,13 @@
 // src/pages/ProgramsPage.tsx
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type FormEvent,
+  type ChangeEvent,
+} from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -55,9 +63,12 @@ export default function ProgramsPage() {
 
   const [programModalOpen, setProgramModalOpen] = useState(false);
 
+  // delete-program modal open state
+  const [deleteProgramModalOpen, setDeleteProgramModalOpen] = useState(false);
+
   const calendarRef = useRef<any>(null);
 
-  // NEW: track mobile vs desktop to tweak header & layout
+  // track mobile vs desktop to tweak header & layout
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -205,6 +216,7 @@ export default function ProgramsPage() {
   };
 
   const handleProgramGenerated = () => {
+    // force refetch by nudging currentRange
     setCurrentRange((r) => (r ? { ...r } : r));
   };
 
@@ -274,6 +286,14 @@ export default function ProgramsPage() {
             className="w-full xs:w-auto md:w-auto md:ml-3 inline-flex items-center justify-center gap-2 rounded-md bg-accent px-3 md:px-4 py-2 text-xs md:text-sm font-medium text-black hover:bg-accent/80 cursor-pointer"
           >
             + Δημιουργία Προγράμματος
+          </button>
+
+          {/* Delete Program button */}
+          <button
+            onClick={() => setDeleteProgramModalOpen(true)}
+            className="w-full xs:w-auto md:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-red-500/90 px-3 md:px-4 py-2 text-xs md:text-sm font-medium text-white hover:bg-red-600 cursor-pointer"
+          >
+            Διαγραφή Προγράμματος
           </button>
         </div>
       </div>
@@ -387,6 +407,361 @@ export default function ProgramsPage() {
         onClose={() => setProgramModalOpen(false)}
         onGenerated={handleProgramGenerated}
       />
+
+      {/* Delete Program Modal */}
+      <ProgramDeleteModal
+        open={deleteProgramModalOpen}
+        onClose={() => setDeleteProgramModalOpen(false)}
+        tenantId={tenantId ?? null}
+        onDeleted={() => {
+          // force calendar to refetch sessions
+          setCurrentRange((r) => (r ? { ...r } : r));
+        }}
+      />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* ProgramDeleteModal – delete by date range + class + day + time      */
+/* ------------------------------------------------------------------ */
+
+type ProgramDeleteModalProps = {
+  open: boolean;
+  onClose: () => void;
+  tenantId: string | null;
+  onDeleted: () => void;
+};
+
+type SimpleClassRow = {
+  id: string;
+  title: string;
+};
+
+type SessionIdRow = {
+  id: string;
+  starts_at: string;
+};
+
+// Day options: Date.getDay() => 0=Κυρ, 1=Δευ, ... 6=Σαβ
+const DAY_OPTIONS = [
+  { value: 1, short: 'Δευ', full: 'Δευτέρα' },
+  { value: 2, short: 'Τρι', full: 'Τρίτη' },
+  { value: 3, short: 'Τετ', full: 'Τετάρτη' },
+  { value: 4, short: 'Πεμ', full: 'Πέμπτη' },
+  { value: 5, short: 'Παρ', full: 'Παρασκευή' },
+  { value: 6, short: 'Σαβ', full: 'Σάββατο' },
+  { value: 0, short: 'Κυρ', full: 'Κυριακή' },
+];
+
+// Generate 30-min time options from 06:00 to 23:00
+const TIME_OPTIONS: string[] = (() => {
+  const result: string[] = [];
+  const startMinutes = 6 * 60; // 06:00
+  const endMinutes = 23 * 60;  // 23:00
+  for (let m = startMinutes; m <= endMinutes; m += 30) {
+    const h = Math.floor(m / 60)
+      .toString()
+      .padStart(2, '0');
+    const mm = (m % 60).toString().padStart(2, '0');
+    result.push(`${h}:${mm}`);
+  }
+  return result;
+})();
+
+function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDeleteModalProps) {
+  const [fromDate, setFromDate] = useState<string>('');
+  const [toDate, setToDate] = useState<string>('');
+  const [classes, setClasses] = useState<SimpleClassRow[]>([]);
+  const [selectedClassId, setSelectedClassId] = useState<string>('');
+  const [startTime, setStartTime] = useState<string>(''); // "ALL" or HH:MM
+  const [selectedDays, setSelectedDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]); // all days
+
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load classes when modal opens
+  useEffect(() => {
+    if (!open || !tenantId) return;
+
+    const loadClasses = async () => {
+      const { data, error } = await supabase
+        .from('classes')
+        .select('id, title')
+        .eq('tenant_id', tenantId)
+        .order('title', { ascending: true });
+
+      if (error) {
+        console.error('Error loading classes for delete modal', error);
+      } else {
+        setClasses((data ?? []) as SimpleClassRow[]);
+      }
+    };
+
+    loadClasses();
+  }, [open, tenantId]);
+
+  // Reset when modal closes
+  useEffect(() => {
+    if (!open) {
+      setFromDate('');
+      setToDate('');
+      setSelectedClassId('');
+      setStartTime('');
+      setSelectedDays([0, 1, 2, 3, 4, 5, 6]);
+      setError(null);
+      setPending(false);
+      setClasses([]);
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target === e.currentTarget && !pending) {
+      onClose();
+    }
+  };
+
+  const toggleDay = (day: number) => {
+    setSelectedDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day],
+    );
+  };
+
+  const handleTimeSelectChange = (e: ChangeEvent<HTMLSelectElement>) => {
+    setStartTime(e.target.value);
+  };
+
+  const handleDelete = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!tenantId) {
+      setError('Δεν βρέθηκε tenant.');
+      return;
+    }
+    if (!fromDate || !toDate) {
+      setError('Συμπλήρωσε και τις δύο ημερομηνίες.');
+      return;
+    }
+    if (!selectedClassId) {
+      setError('Επίλεξε τμήμα (class).');
+      return;
+    }
+    if (!startTime) {
+      setError('Επίλεξε ώρα ή "Όλες οι ώρες".');
+      return;
+    }
+    if (selectedDays.length === 0) {
+      setError('Επίλεξε τουλάχιστον μία ημέρα εβδομάδας.');
+      return;
+    }
+
+    const isAllHours = startTime === 'ALL';
+
+    let targetHours = 0;
+    let targetMinutes = 0;
+
+    if (!isAllHours) {
+      const [hhStr, mmStr] = startTime.split(':');
+      targetHours = Number(hhStr);
+      targetMinutes = Number(mmStr);
+    }
+
+    try {
+      setPending(true);
+      setError(null);
+
+      const fromStart = new Date(`${fromDate}T00:00:00`);
+      const toEnd = new Date(`${toDate}T23:59:59`);
+
+      // 1) Get all sessions of this class in the range
+      const { data, error: selectError } = await supabase
+        .from('class_sessions')
+        .select('id, starts_at')
+        .eq('tenant_id', tenantId)
+        .eq('class_id', selectedClassId)
+        .gte('starts_at', fromStart.toISOString())
+        .lte('starts_at', toEnd.toISOString());
+
+      if (selectError) {
+        console.error('Error selecting sessions to delete', selectError);
+        setError('Κάτι πήγε στραβά κατά την αναζήτηση συνεδριών.');
+        return;
+      }
+
+      const rows = (data ?? []) as SessionIdRow[];
+
+      // 2) Keep only sessions with matching day-of-week & time-of-day (or all hours)
+      const idsToDelete = rows
+        .filter((row) => {
+          const dt = new Date(row.starts_at);
+          const matchesDay = selectedDays.includes(dt.getDay());
+          const matchesTime = isAllHours
+            ? true
+            : dt.getHours() === targetHours && dt.getMinutes() === targetMinutes;
+          return matchesDay && matchesTime;
+        })
+        .map((row) => row.id);
+
+      if (idsToDelete.length === 0) {
+        setError('Δεν βρέθηκαν συνεδρίες με αυτά τα κριτήρια.');
+        return;
+      }
+
+      // 3) Delete only those sessions
+      const { error: deleteError } = await supabase
+        .from('class_sessions')
+        .delete()
+        .in('id', idsToDelete);
+
+      if (deleteError) {
+        console.error('Error deleting program sessions', deleteError);
+        setError('Κάτι πήγε στραβά κατά τη διαγραφή.');
+        return;
+      }
+
+      onDeleted();
+      onClose();
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+      onClick={handleBackdropClick}
+    >
+      <div className="w-full max-w-md rounded-xl bg-secondary-background border border-white/10 shadow-xl p-4 md:p-5">
+        <h2 className="text-lg font-semibold text-text-primary mb-1">
+          Διαγραφή Προγράμματος
+        </h2>
+        <p className="text-xs md:text-sm text-text-secondary mb-4">
+          Θα διαγραφούν{' '}
+          <span className="font-semibold text-red-400">
+            όλες οι συνεδρίες του επιλεγμένου τμήματος
+          </span>{' '}
+          που ξεκινούν στο συγκεκριμένο διάστημα, στις επιλεγμένες ημέρες και (αν οριστεί) στην
+          επιλεγμένη ώρα. Η ενέργεια δεν μπορεί να αναιρεθεί.
+        </p>
+
+        <form onSubmit={handleDelete} className="space-y-3">
+          {/* Class select */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">Τμήμα (Class)</label>
+            <select
+              className="w-full rounded-md bg-background border border-white/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
+              value={selectedClassId}
+              onChange={(e) => setSelectedClassId(e.target.value)}
+            >
+              <option value="">— Επίλεξε τμήμα —</option>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* From date */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">Από ημερομηνία</label>
+            <input
+              type="date"
+              className="w-full rounded-md bg-background border border-white/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+            />
+          </div>
+
+          {/* To date */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">Έως ημερομηνία</label>
+            <input
+              type="date"
+              className="w-full rounded-md bg-background border border-white/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+            />
+          </div>
+
+          {/* Days of week */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">Ημέρες εβδομάδας</label>
+            <div className="flex flex-wrap gap-2">
+              {DAY_OPTIONS.map((d) => {
+                const active = selectedDays.includes(d.value);
+                return (
+                  <button
+                    key={d.value}
+                    type="button"
+                    onClick={() => toggleDay(d.value)}
+                    className={`px-2 py-1 rounded-full text-[11px] border ${
+                      active
+                        ? 'bg-primary text-white border-primary'
+                        : 'bg-background text-text-secondary border-white/15'
+                    }`}
+                    title={d.full}
+                  >
+                    {d.short}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[11px] text-text-secondary">
+              Ανέστρεψε επιλογή πατώντας ξανά σε μια ημέρα.
+            </span>
+          </div>
+
+          {/* Start time (select, with "ALL") */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-text-secondary">Ώρα έναρξης συνεδρίας</label>
+            <select
+              className="w-full rounded-md bg-background border border-white/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
+              value={startTime}
+              onChange={handleTimeSelectChange}
+            >
+              <option value="">— Επίλεξε ώρα —</option>
+              <option value="ALL">Όλες οι ώρες</option>
+              {TIME_OPTIONS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <span className="text-[11px] text-text-secondary">
+              Διάλεξε συγκεκριμένη ώρα ή «Όλες οι ώρες» για να διαγραφούν όλα τα ωράρια.
+            </span>
+          </div>
+
+          {error && <div className="text-xs text-red-400">{error}</div>}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              className="inline-flex items-center justify-center rounded-md border border-white/15 px-3 py-1.5 text-xs md:text-sm text-text-secondary hover:bg-white/5"
+              onClick={onClose}
+              disabled={pending}
+            >
+              Άκυρο
+            </button>
+            <button
+              type="submit"
+              disabled={
+                pending ||
+                !fromDate ||
+                !toDate ||
+                !selectedClassId ||
+                !startTime ||
+                selectedDays.length === 0
+              }
+              className="inline-flex items-center justify-center rounded-md bg-red-500/90 px-3 py-1.5 text-xs md:text-sm font-medium text-white hover:bg-red-600 disabled:opacity-60"
+            >
+              {pending ? 'Διαγραφή…' : 'Διαγραφή συνεδριών'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

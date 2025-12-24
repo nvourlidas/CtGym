@@ -169,139 +169,141 @@ export default function GymInfoPage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl">
-      <h1 className="mb-4 text-lg font-semibold">Πληροφορίες Γυμναστηρίου</h1>
+    <div className="p-6">
+      <div className="mx-auto w-full max-w-3xl">
+        <h1 className="mb-4 text-lg font-semibold">Πληροφορίες Γυμναστηρίου</h1>
 
-      <div className="rounded-md border border-white/10 bg-secondary-background p-4">
-        {loading ? (
-          <div className="py-8 text-sm opacity-70">Φόρτωση…</div>
-        ) : (
-          <>
-            {error && (
-              <div className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-                {error}
+        <div className="rounded-md border border-white/10 bg-secondary-background p-4">
+          {loading ? (
+            <div className="py-8 text-sm opacity-70">Φόρτωση…</div>
+          ) : (
+            <>
+              {error && (
+                <div className="mb-3 rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div className="mb-3 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
+                  {success}
+                </div>
+              )}
+
+              <FormRow label="Όνομα γυμναστηρίου *">
+                <input
+                  className="input"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </FormRow>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <FormRow label="Email επικοινωνίας">
+                  <input
+                    className="input"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </FormRow>
+                <FormRow label="Τηλέφωνο">
+                  <input
+                    className="input"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </FormRow>
               </div>
-            )}
-            {success && (
-              <div className="mb-3 rounded border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
-                {success}
+
+              <FormRow label="Διεύθυνση">
+                <input
+                  className="input"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                />
+              </FormRow>
+
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                <FormRow label="Πόλη">
+                  <input
+                    className="input"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                  />
+                </FormRow>
+                <FormRow label="Τ.Κ.">
+                  <input
+                    className="input"
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                  />
+                </FormRow>
+                <FormRow label="Ιστότοπος">
+                  <input
+                    className="input"
+                    value={website}
+                    onChange={(e) => setWebsite(e.target.value)}
+                    placeholder="https://..."
+                  />
+                </FormRow>
               </div>
-            )}
 
-            <FormRow label="Όνομα γυμναστηρίου *">
-              <input
-                className="input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </FormRow>
-
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <FormRow label="Email επικοινωνίας">
-                <input
+              <FormRow label="Περιγραφή / σύντομο κείμενο">
+                <textarea
                   className="input"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  rows={3}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                 />
               </FormRow>
-              <FormRow label="Τηλέφωνο">
-                <input
-                  className="input"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                />
-              </FormRow>
-            </div>
 
-            <FormRow label="Διεύθυνση">
-              <input
-                className="input"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-              />
-            </FormRow>
-
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <FormRow label="Πόλη">
+              <FormRow label="Logo URL">
                 <input
                   className="input"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                />
-              </FormRow>
-              <FormRow label="Τ.Κ.">
-                <input
-                  className="input"
-                  value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
-                />
-              </FormRow>
-              <FormRow label="Ιστότοπος">
-                <input
-                  className="input"
-                  value={website}
-                  onChange={(e) => setWebsite(e.target.value)}
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
                   placeholder="https://..."
                 />
               </FormRow>
-            </div>
 
-            <FormRow label="Περιγραφή / σύντομο κείμενο">
-              <textarea
-                className="input"
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </FormRow>
-
-            <FormRow label="Logo URL">
-              <input
-                className="input"
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-                placeholder="https://..."
-              />
-            </FormRow>
-
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                className="btn-secondary"
-                type="button"
-                onClick={onReset}
-                disabled={saving}
-              >
-                Επαναφορά
-              </button>
-              <button
-                className="btn-primary"
-                type="button"
-                onClick={onSave}
-                disabled={saving}
-              >
-                {saving ? 'Αποθήκευση…' : 'Αποθήκευση'}
-              </button>
-            </div>
-          </>
-        )}
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  className="btn-secondary"
+                  type="button"
+                  onClick={onReset}
+                  disabled={saving}
+                >
+                  Επαναφορά
+                </button>
+                <button
+                  className="btn-primary"
+                  type="button"
+                  onClick={onSave}
+                  disabled={saving}
+                >
+                  {saving ? 'Αποθήκευση…' : 'Αποθήκευση'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </div>
-  );
+      </div>
+      );
 }
 
-/* small helper */
-function FormRow({
-  label,
-  children,
+      /* small helper */
+      function FormRow({
+        label,
+        children,
 }: {
-  label: string;
-  children: React.ReactNode;
+        label: string;
+      children: React.ReactNode;
 }) {
   return (
-    <label className="mb-3 block">
-      <div className="mb-1 text-sm opacity-80">{label}</div>
-      {children}
-    </label>
-  );
+      <label className="mb-3 block">
+        <div className="mb-1 text-sm opacity-80">{label}</div>
+        {children}
+      </label>
+      );
 }

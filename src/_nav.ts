@@ -8,7 +8,8 @@ import {
   ContactRound,
   Info,
   Grid2X2Check,
-  ClockCheck
+  ClockCheck,
+  EuroIcon
 } from 'lucide-react';
 
 export type NavEntry =
@@ -64,7 +65,7 @@ export const NAV: NavEntry[] = [
       { label: 'Συνδρομές', to: '/memberships', icon: BookmarkCheck },
     ],
   },
-
+  { type: 'item', label: 'Οικονομικά', to: '/finances', icon: EuroIcon },
     { type: 'section', title: 'ριθμισεισ' },
   
   {
