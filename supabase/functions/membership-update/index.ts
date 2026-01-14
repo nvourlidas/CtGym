@@ -18,8 +18,8 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers":
-      reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": reqHdrs ||
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -53,8 +53,8 @@ async function getAuth(req: Request) {
     .maybeSingle();
 
   if (!prof) return { error: "profile_not_found" };
-  const isAdmin =
-    user.app_metadata?.role === "admin" || (prof as any).role === "admin";
+  const isAdmin = user.app_metadata?.role === "admin" ||
+    (prof as any).role === "admin";
   return { tenantId: (prof as any).tenant_id as string, isAdmin };
 }
 
@@ -121,6 +121,14 @@ serve(async (req) => {
 
   const updates: any = {};
 
+  const remainingProvided = Number.isFinite(body?.remaining_sessions);
+
+  const bodyPlanId = typeof body?.plan_id === "string" && body.plan_id
+    ? String(body.plan_id)
+    : null;
+
+  const planChanged = !!bodyPlanId && bodyPlanId !== existing.plan_id;
+
   // Simple fields
   if (typeof body?.status === "string") updates.status = body.status;
 
@@ -173,8 +181,11 @@ serve(async (req) => {
   }
 
   // If plan_id changes -> reload plan, snapshot, recompute ends/credits
-  if (typeof body?.plan_id === "string" && body.plan_id) {
-    const newPlanId = String(body.plan_id);
+  // If plan_id changes -> reload plan, snapshot, recompute ends/credits
+  if (planChanged) {
+    const newPlanId = bodyPlanId!;
+    const endsProvided = Object.prototype.hasOwnProperty.call(body, "ends_at");
+    
     const { data: plan, error: planErr } = await admin
       .from("membership_plans")
       .select(
@@ -201,22 +212,25 @@ serve(async (req) => {
     updates.plan_name = plan.name;
     updates.plan_price = plan.price; // snapshot of base price
 
-    // Reset remaining sessions based on new plan
-    updates.remaining_sessions =
-      plan.session_credits && plan.session_credits > 0
-        ? Number(plan.session_credits)
-        : null;
+    // Reset remaining sessions ONLY if admin didn't explicitly provide remaining_sessions
+    if (!remainingProvided) {
+      updates.remaining_sessions =
+        plan.session_credits && plan.session_credits > 0
+          ? Number(plan.session_credits)
+          : null;
+    }
 
-    // Recompute ends_at if plan has duration
-    const startsISO = updates.starts_at ?? existing.starts_at;
-    if (plan.duration_days && plan.duration_days > 0 && startsISO) {
-      const start = new Date(startsISO);
-      const end = new Date(start);
-      end.setDate(end.getDate() + Number(plan.duration_days));
-      updates.ends_at = end.toISOString();
-    } else {
-      // no duration -> allow explicit ends_at if provided, otherwise null
-      if (!("ends_at" in updates)) updates.ends_at = null;
+    // Recompute ends_at ONLY if admin didn't explicitly provide ends_at
+    if (!endsProvided) {
+      const startsISO = updates.starts_at ?? existing.starts_at;
+      if (plan.duration_days && plan.duration_days > 0 && startsISO) {
+        const start = new Date(startsISO);
+        const end = new Date(start);
+        end.setDate(end.getDate() + Number(plan.duration_days));
+        updates.ends_at = end.toISOString();
+      } else {
+        if (!("ends_at" in updates)) updates.ends_at = null;
+      }
     }
   }
 

@@ -26,7 +26,7 @@ import GymInfo from './pages/GymInfoPage';
 import BulkBookings from './pages/Classes/AdminBulkBookingsPage';
 import ForgotPassword from './pages/ForgotPasswordPage'
 import FinancePage from './pages/FinancePage'
-
+import WorkoutTemplatesPage from './pages/workouts/WorkoutTemplatesPage';
 
 //test program
 import ProgramsPage2 from './pages/Classes/ProgramsPage2';
@@ -56,6 +56,7 @@ const router = createBrowserRouter([
       { path: 'gyminfo', element: <GymInfo /> },
       { path: 'bulkbookings', element: <BulkBookings /> },
       { path: 'finances', element: <FinancePage /> },
+      { path: 'workouttemplates', element: <WorkoutTemplatesPage /> }
     ],
   },
 ]);

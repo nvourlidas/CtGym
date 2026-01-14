@@ -28,7 +28,7 @@ export const NAV: NavEntry[] = [
   { type: 'section', title: 'Κυρια' },
   { type: 'item', label: 'Dashboard', to: '/', end: true, icon: LayoutDashboard },
   { type: 'item', label: 'Μέλη', to: '/members', icon: Users },
-  { type: 'item', label: 'Τμήματα', to: '/classes', icon: Dumbbell },
+  { type: 'item', label: 'Τμήματα', to: '/classes', icon: Layers },
   { type: 'item', label: 'Κατηγορίες', to: '/categories', icon: Folder },
   { type: 'item', label: 'Γυμναστές', to: '/coaches', icon: ContactRound },
 
@@ -56,6 +56,7 @@ export const NAV: NavEntry[] = [
     ],
   },
 
+  { type: 'item', label: 'Προπονήσεις', to: '/workouttemplates', icon: Dumbbell },
   {
     type: 'group',
     label: 'Συνδρομές',

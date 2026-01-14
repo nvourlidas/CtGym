@@ -41,9 +41,9 @@ type SessionWithRelations = {
 
 type Feedback =
   | {
-      type: 'success' | 'error';
-      message: string;
-    }
+    type: 'success' | 'error';
+    message: string;
+  }
   | null;
 
 type DropInPromptState = {
@@ -473,11 +473,10 @@ function BulkBookingsModal({
 
         {resultMsg && (
           <div
-            className={`mb-3 rounded-md px-3 py-2 text-[11px] ${
-              resultMsg.type === 'success'
+            className={`mb-3 rounded-md px-3 py-2 text-[11px] ${resultMsg.type === 'success'
                 ? 'bg-emerald-900/40 text-emerald-100 border border-emerald-500/40'
                 : 'bg-red-900/40 text-red-100 border border-red-500/40'
-            }`}
+              }`}
           >
             {resultMsg.message}
           </div>
@@ -502,11 +501,10 @@ function BulkBookingsModal({
                   type="button"
                   onClick={() => setMemberId(m.id)}
                   disabled={running}
-                  className={`w-full rounded-md px-3 py-2 text-left text-xs ${
-                    selected
+                  className={`w-full rounded-md px-3 py-2 text-left text-xs ${selected
                       ? 'bg-primary/20 border border-primary/40 text-white'
                       : 'bg-transparent hover:bg-white/5 text-white/90'
-                  }`}
+                    }`}
                 >
                   <div className="font-medium">
                     {m.full_name || m.email || m.id}
@@ -1021,17 +1019,17 @@ export default function AdminBulkBookingsPage() {
     setFeedback(null);
 
     try {
-      const { error } = await supabase
-        .from('bookings')
-        .delete()
-        .eq('id', bookingId)
-        .eq('tenant_id', tenantId);
+      const res = await supabase.functions.invoke('booking-delete', {
+        body: { id: bookingId },
+      });
 
-      if (error) {
-        console.error(error);
+      const errMsg = (res.data as any)?.error ?? res.error?.message ?? '';
+
+      if (res.error || (res.data as any)?.error) {
+        console.error(res.error, res.data);
         setFeedback({
           type: 'error',
-          message: 'Σφάλμα κατά τη διαγραφή της κράτησης.',
+          message: errMsg || 'Σφάλμα κατά τη διαγραφή της κράτησης.',
         });
         return;
       }
@@ -1201,11 +1199,10 @@ export default function AdminBulkBookingsPage() {
 
           {feedback && (
             <div
-              className={`mb-3 flex items-start justify-between rounded-md px-3 py-2 text-[11px] ${
-                feedback.type === 'success'
+              className={`mb-3 flex items-start justify-between rounded-md px-3 py-2 text-[11px] ${feedback.type === 'success'
                   ? 'bg-emerald-900/40 text-emerald-100 border border-emerald-500/40'
                   : 'bg-red-900/40 text-red-100 border border-red-500/40'
-              }`}
+                }`}
             >
               <span>{feedback.message}</span>
               <button
@@ -1326,9 +1323,9 @@ export default function AdminBulkBookingsPage() {
               const when =
                 session != null
                   ? `${formatDateDMY(new Date(session.starts_at))} · ${formatTimeRange(
-                      session.starts_at,
-                      session.ends_at,
-                    )}`
+                    session.starts_at,
+                    session.ends_at,
+                  )}`
                   : '';
 
               return (
@@ -1450,11 +1447,10 @@ export default function AdminBulkBookingsPage() {
 
                             <div className="flex items-center gap-1">
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] ${
-                                  isDropIn
+                                className={`px-2 py-0.5 rounded-full text-[10px] ${isDropIn
                                     ? 'bg-amber-500/20 text-amber-200 border border-amber-500/40'
                                     : 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/40'
-                                }`}
+                                  }`}
                               >
                                 {isDropIn ? 'Drop-in' : 'Συνδρομή'}
                               </span>

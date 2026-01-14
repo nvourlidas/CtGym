@@ -177,6 +177,7 @@ serve(async (req) => {
 
   // Decide final booking type
   let finalType: "membership" | "drop_in" = "membership";
+  let chosenMembership: { id: string; plan_kind: string } | null = null;
 
   // ---------- NON-ADMIN (MEMBER) ----------
   if (!isAdmin) {
@@ -241,11 +242,13 @@ serve(async (req) => {
 
       if (canUseMembership) {
         finalType = "membership";
+        chosenMembership = {
+          id: m.id as string,
+          plan_kind: String(m.plan_kind),
+        };
       } else if (cls.drop_in_enabled) {
-        // IMPORTANT: if membership is not ok, but drop-in enabled -> allow drop-in
         finalType = "drop_in";
       } else {
-        // keep this error name for backward compatibility
         return withCors(
           req,
           JSON.stringify({ error: "no_active_membership" }),
@@ -304,16 +307,22 @@ serve(async (req) => {
   }
 
   // create booking
-  const insertData: any = {
-    tenant_id,
-    session_id,
-    user_id,
-    status: "booked",
-    booking_type: finalType,
-  };
-  if (finalType === "drop_in") {
-    insertData.drop_in_price = cls.drop_in_price ?? null;
-  }
+const insertData: any = {
+  tenant_id,
+  session_id,
+  user_id,
+  status: "booked",
+  booking_type: finalType,
+};
+
+if (finalType === "membership" && chosenMembership?.id) {
+  insertData.membership_id = chosenMembership.id; // ✅ this is what was missing
+}
+
+if (finalType === "drop_in") {
+  insertData.drop_in_price = cls.drop_in_price ?? null;
+}
+
 
   const { data: created, error: insErr } = await admin
     .from("bookings")
@@ -327,6 +336,21 @@ serve(async (req) => {
       { status: 400 },
     );
   }
+
+  // ✅ consume 1 session immediately (and store membership_id on this booking)
+if (finalType === "membership" && chosenMembership?.plan_kind === "sessions") {
+  const { error: consumeErr } = await admin.rpc("consume_membership_session", {
+    p_tenant_id: tenant_id,
+    p_user_id: user_id,
+    p_booking_id: created.id,
+  });
+
+  if (consumeErr) {
+    await admin.from("bookings").delete().eq("id", created.id);
+    return withCors(req, JSON.stringify({ error: consumeErr.message }), { status: 409 });
+  }
+}
+
 
   return withCors(
     req,
