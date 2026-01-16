@@ -1,19 +1,23 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import type { LucideIcon } from 'lucide-react';
 import { Pencil, Trash2, Loader2, Send, Plus } from 'lucide-react';
 import CreateWorkoutTemplateModal from '../../components/workouts/CreateWorkoutTemplateModal';
+import EditWorkoutTemplateModal from '../../components/workouts/EditWorkoutTemplateModal';
 
 type TemplateRow = {
   id: string;
-  user_id: string;
+  tenant_id: string;
+  created_by: string;
+  coach_id: string | null;
   name: string | null;
   notes: string | null;
-  performed_at: string;
-  is_template: boolean;
-  workout_exercises?: Array<{ id: string }>;
+  created_at: string;
+  updated_at: string | null;
+  workout_template_exercises?: Array<{ id: string }>;
 };
+
 
 type Member = {
   id: string; // auth.uid()
@@ -41,12 +45,12 @@ export default function WorkoutTemplatesPage() {
     if (!profile?.tenant_id) return;
     setLoading(true);
 
-    // templates: workouts with is_template=true
     const { data, error } = await supabase
-      .from('workouts')
-      .select('id,user_id,name,notes,performed_at,is_template,workout_exercises(id)')
-      .eq('is_template', true)
-      .order('performed_at', { ascending: false });
+      .from('workout_templates')
+      .select('id,tenant_id,created_by,coach_id,name,notes,created_at,updated_at,workout_template_exercises(id)')
+      .eq('tenant_id', profile.tenant_id)
+      .order('created_at', { ascending: false });
+
 
     if (!error && data) setRows(data as any[]);
     setLoading(false);
@@ -151,7 +155,7 @@ export default function WorkoutTemplatesPage() {
                 {!loading &&
                   filtered.length > 0 &&
                   paginated.map((w) => {
-                    const exCount = w.workout_exercises?.length ?? 0;
+                    const exCount = w.workout_template_exercises?.length ?? 0;
                     return (
                       <tr
                         key={w.id}
@@ -165,7 +169,7 @@ export default function WorkoutTemplatesPage() {
                         </Td>
                         <Td>{exCount}</Td>
                         <Td className="text-text-secondary text-xs">
-                          {new Date(w.performed_at).toLocaleString('el-GR')}
+                          {new Date(w.updated_at ?? w.created_at).toLocaleString('el-GR')}
                         </Td>
                         <Td className="text-right space-x-1 pr-3">
                           <IconButton
@@ -203,7 +207,7 @@ export default function WorkoutTemplatesPage() {
           {!loading &&
             filtered.length > 0 &&
             paginated.map((w) => {
-              const exCount = w.workout_exercises?.length ?? 0;
+              const exCount = w.workout_template_exercises?.length ?? 0;
               return (
                 <div
                   key={w.id}
@@ -216,7 +220,7 @@ export default function WorkoutTemplatesPage() {
                       </div>
                       <div className="mt-0.5 text-xs text-text-secondary">
                         {exCount} ασκήσεις ·{' '}
-                        {new Date(w.performed_at).toLocaleDateString('el-GR')}
+                        {new Date(w.updated_at ?? w.created_at).toLocaleDateString('el-GR')}
                       </div>
                     </div>
 
@@ -304,14 +308,19 @@ export default function WorkoutTemplatesPage() {
       )}
 
       {editRow && (
-        <EditTemplateModal
-          row={editRow}
+        <EditWorkoutTemplateModal
+          open={true}
+          templateId={editRow.id}
           onClose={() => {
+            setEditRow(null);
+          }}
+          onSaved={() => {
             setEditRow(null);
             load();
           }}
         />
       )}
+
 
       {assignRow && (
         <AssignTemplateModal
@@ -413,114 +422,7 @@ function FormRow({ label, children }: any) {
   );
 }
 
-function CreateTemplateModal({ tenantId, onClose }: { tenantId: string; onClose: () => void }) {
-  const { profile } = useAuth();
-  const [name, setName] = useState('');
-  const [notes, setNotes] = useState('');
-  const [busy, setBusy] = useState(false);
 
-  const submit = async () => {
-    if (!profile?.id) return;
-    if (!name.trim()) return;
-
-    setBusy(true);
-    const res = await supabase.functions.invoke('workout-template-create', {
-      body: {
-        user_id: profile.id,
-        name: name.trim(),
-        notes: notes.trim() || null,
-      },
-    });
-
-    if (res.error) {
-      console.error(res.error);
-      alert(res.error.message ?? 'Function error');
-    }
-
-    setBusy(false);
-    onClose();
-  };
-
-  return (
-    <Modal onClose={onClose} title="Νέο Template">
-      <FormRow label="Όνομα *">
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
-      </FormRow>
-
-      <FormRow label="Σημειώσεις">
-        <textarea
-          className="input"
-          rows={3}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-      </FormRow>
-
-      <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>
-          Ακύρωση
-        </button>
-        <button className="btn-primary" onClick={submit} disabled={busy}>
-          {busy ? 'Δημιουργία…' : 'Δημιουργία'}
-        </button>
-      </div>
-
-      <div className="mt-3 text-xs text-text-secondary">
-        * Η δημιουργία εδώ φτιάχνει “κεφαλίδα” template. Τις ασκήσεις/sets τις
-        προσθέτεις από το mobile ή από επόμενο builder που θα φτιάξουμε.
-      </div>
-    </Modal>
-  );
-}
-
-function EditTemplateModal({ row, onClose }: { row: TemplateRow; onClose: () => void }) {
-  const [name, setName] = useState(row.name ?? '');
-  const [notes, setNotes] = useState(row.notes ?? '');
-  const [busy, setBusy] = useState(false);
-
-  const submit = async () => {
-    if (!name.trim()) return;
-    setBusy(true);
-
-    const res = await supabase.functions.invoke('workout-template-update', {
-      body: { id: row.id, name: name.trim(), notes: notes.trim() || null },
-    });
-
-    if (res.error) {
-      console.error(res.error);
-      alert(res.error.message ?? 'Function error');
-    }
-
-    setBusy(false);
-    onClose();
-  };
-
-  return (
-    <Modal onClose={onClose} title="Επεξεργασία Template">
-      <FormRow label="Όνομα *">
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
-      </FormRow>
-
-      <FormRow label="Σημειώσεις">
-        <textarea
-          className="input"
-          rows={3}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-      </FormRow>
-
-      <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>
-          Ακύρωση
-        </button>
-        <button className="btn-primary" onClick={submit} disabled={busy}>
-          {busy ? 'Αποθήκευση…' : 'Αποθήκευση'}
-        </button>
-      </div>
-    </Modal>
-  );
-}
 
 function AssignTemplateModal({
   row,
@@ -535,6 +437,41 @@ function AssignTemplateModal({
   const [memberId, setMemberId] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
+  const [memberQuery, setMemberQuery] = useState('');
+  const [memberOpen, setMemberOpen] = useState(false);
+  const boxRef = useRef<HTMLDivElement | null>(null);
+
+
+  const filteredMembers = useMemo(() => {
+    const q = memberQuery.toLowerCase().trim();
+    if (!q) return members;
+
+    return members.filter((m) =>
+      (m.full_name ?? '').toLowerCase().includes(q) ||
+      (m.email ?? '').toLowerCase().includes(q),
+    );
+  }, [members, memberQuery]);
+
+  useEffect(() => {
+    if (!memberOpen) return;
+
+    const onDown = (e: MouseEvent) => {
+      const el = boxRef.current;
+      if (!el) return;
+      if (!el.contains(e.target as Node)) setMemberOpen(false);
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMemberOpen(false);
+    };
+
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [memberOpen]);
 
   const submit = async () => {
     if (!profile?.id) return;
@@ -544,12 +481,14 @@ function AssignTemplateModal({
 
     const res = await supabase.functions.invoke('workout-template-assign', {
       body: {
-        template_workout_id: row.id,
-        trainer_id: profile.id,
+        template_id: row.id,
         member_id: memberId,
+        coach_id: row.coach_id ?? null,  // optional, else function uses template.coach_id
         message: message.trim() || null,
-      },
+      }
+
     });
+
 
     if (res.error) {
       console.error(res.error);
@@ -568,19 +507,85 @@ function AssignTemplateModal({
       </div>
 
       <FormRow label="Μέλος *">
-        <select
-          className="input"
-          value={memberId}
-          onChange={(e) => setMemberId(e.target.value)}
-        >
-          <option value="">Επιλογή μέλους…</option>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>
-              {(m.full_name ?? 'Μέλος') + (m.email ? ` · ${m.email}` : '')}
-            </option>
-          ))}
-        </select>
+        <div className="relative" ref={boxRef}>
+          <input
+            className="input"
+            placeholder="Αναζήτηση μέλους…"
+            value={
+              memberId
+                ? (() => {
+                  const m = members.find((x) => x.id === memberId);
+                  return m ? (m.full_name ?? 'Μέλος') + (m.email ? ` · ${m.email}` : '') : '';
+                })()
+                : memberQuery
+            }
+            onChange={(e) => {
+              setMemberQuery(e.target.value);
+              setMemberId('');        // αν γράφει, σημαίνει δεν έχει επιλέξει
+              setMemberOpen(true);
+            }}
+            onFocus={() => setMemberOpen(true)}
+          />
+
+          {memberOpen && (
+            <div className="absolute z-50 mt-1 w-full max-h-56 overflow-auto rounded-md border border-white/10 bg-secondary-background shadow-xl">
+              <div className="sticky top-0 bg-secondary-background border-b border-white/10 px-3 py-2 flex items-center justify-between">
+                <div className="text-xs text-text-secondary">
+                  {filteredMembers.length} αποτελέσματα
+                </div>
+                <button
+                  type="button"
+                  className="text-xs px-2 py-1 rounded border border-white/10 hover:bg-secondary/20"
+                  onClick={() => setMemberOpen(false)}
+                >
+                  Κλείσιμο
+                </button>
+              </div>
+
+              {filteredMembers.length === 0 && (
+                <div className="px-3 py-2 text-sm text-text-secondary">
+                  Δεν βρέθηκαν μέλη
+                </div>
+              )}
+
+              {filteredMembers.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className="w-full text-left px-3 py-2 hover:bg-secondary/20 text-sm"
+                  // IMPORTANT: use onMouseDown so it fires before input loses focus
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setMemberId(m.id);
+                    setMemberQuery('');
+                    setMemberOpen(false);
+                  }}
+                >
+                  <div className="font-medium">{m.full_name ?? 'Μέλος'}</div>
+                  {m.email && <div className="text-xs text-text-secondary">{m.email}</div>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* μικρό hint / clear */}
+        {memberId && (
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              className="text-xs px-2 py-1 rounded border border-white/10 hover:bg-secondary/20"
+              onClick={() => {
+                setMemberId('');
+                setMemberQuery('');
+              }}
+            >
+              Καθαρισμός επιλογής
+            </button>
+          </div>
+        )}
       </FormRow>
+
 
       <FormRow label="Μήνυμα (προαιρετικό)">
         <textarea

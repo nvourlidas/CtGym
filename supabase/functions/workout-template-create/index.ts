@@ -18,21 +18,51 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers":
-      reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": reqHdrs ||
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
+
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
-  return new Response(body, {
-    ...init,
-    headers: { ...(init.headers || {}), ...buildCors(req) },
-  });
+  const headers = new Headers({ ...(init.headers || {}), ...buildCors(req) });
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json; charset=utf-8");
+  }
+  return new Response(body, { ...init, headers });
 }
 
 const URL = Deno.env.get("SUPABASE_URL")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
+type IncomingSet = {
+  reps?: string | number | null;
+  weight?: string | number | null;
+};
+type IncomingItem = {
+  wger_id: number;
+  name?: string;
+  sets?: IncomingSet[];
+};
+
+function toIntOrNull(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const n = Number(s.replace(",", "."));
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}
+
+function toNumOrNull(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const n = Number(s.replace(",", "."));
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
 
 async function getAuthContext(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
@@ -42,59 +72,232 @@ async function getAuthContext(req: Request) {
   });
 
   const { data: { user } } = await supa.auth.getUser();
-  if (!user) return { error: "unauthorized" };
+  if (!user) return { error: "unauthorized" as const };
 
   const { data: prof, error: pErr } = await supa
     .from("profiles")
-    .select("role")
+    .select("role, tenant_id")
     .eq("id", user.id)
     .maybeSingle();
 
-  if (pErr || !prof) return { error: "profile_not_found" };
+  if (pErr || !prof) return { error: "profile_not_found" as const };
 
   const isAdmin = user.app_metadata?.role === "admin" || prof.role === "admin";
-  return { user, isAdmin };
+  return { user, isAdmin, tenant_id: prof.tenant_id as string | null };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
-  if (req.method !== "POST") return withCors("Method not allowed", { status: 405 }, req);
+  if (req.method !== "POST") {
+    return withCors(JSON.stringify({ error: "method_not_allowed" }), {
+      status: 405,
+    }, req);
+  }
 
   const auth = await getAuthContext(req);
   if ((auth as any).error) {
-    return withCors(JSON.stringify({ error: (auth as any).error }), { status: 401 }, req);
+    return withCors(JSON.stringify({ error: (auth as any).error }), {
+      status: 401,
+    }, req);
   }
-  const { user, isAdmin } = auth as { user: any; isAdmin: boolean };
-  if (!isAdmin) return withCors(JSON.stringify({ error: "forbidden" }), { status: 403 }, req);
+
+  const { user, isAdmin, tenant_id } = auth as {
+    user: any;
+    isAdmin: boolean;
+    tenant_id: string | null;
+  };
+
+  if (!tenant_id) {
+    return withCors(JSON.stringify({ error: "tenant_required" }), {
+      status: 400,
+    }, req);
+  }
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
 
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return withCors(JSON.stringify({ error: "invalid_json" }), { status: 400 }, req);
+    return withCors(
+      JSON.stringify({ error: "invalid_json" }),
+      { status: 400 },
+      req,
+    );
   }
 
-  const name = (body?.name ?? "").trim();
-  const notes = (body?.notes ?? null) || null;
+  const name = String(body?.name ?? "").trim();
+  const notes = String(body?.notes ?? "").trim() || null;
+  const items = (body?.items ?? []) as IncomingItem[];
+  const coach_id = String(body?.coach_id ?? "").trim() || null;
 
   if (!name) {
-    return withCors(JSON.stringify({ error: "name_required" }), { status: 400 }, req);
+    return withCors(
+      JSON.stringify({ error: "name_required" }),
+      { status: 400 },
+      req,
+    );
+  }
+  if (!Array.isArray(items) || items.length === 0) {
+    return withCors(JSON.stringify({ error: "items_required" }), {
+      status: 400,
+    }, req);
+  }
+
+  // Validate items
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const wgerId = Number(it?.wger_id);
+    if (!Number.isFinite(wgerId) || wgerId <= 0) {
+      return withCors(
+        JSON.stringify({ error: "invalid_item_wger_id", index: i }),
+        { status: 400 },
+        req,
+      );
+    }
+    if (it?.sets && !Array.isArray(it.sets)) {
+      return withCors(
+        JSON.stringify({ error: "invalid_item_sets", index: i }),
+        { status: 400 },
+        req,
+      );
+    }
   }
 
   const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
 
-  const { data, error } = await admin
-    .from("workouts")
+  if (coach_id) {
+    const { data: c, error: cErr } = await admin
+      .from("coaches")
+      .select("id")
+      .eq("id", coach_id)
+      .maybeSingle();
+
+    if (cErr) {
+      return withCors(
+        JSON.stringify({ error: cErr.message }),
+        { status: 400 },
+        req,
+      );
+    }
+    if (!c) {
+      return withCors(JSON.stringify({ error: "coach_not_found" }), {
+        status: 404,
+      }, req);
+    }
+  }
+
+  // 1) Create template
+  const { data: template, error: tErr } = await admin
+    .from("workout_templates")
     .insert({
-      user_id: user.id,                 // creator admin
+      tenant_id, 
+      created_by: user.id,
+      coach_id: coach_id ?? null,
       name,
       notes,
-      is_template: true,
-      performed_at: new Date().toISOString(),
     })
-    .select("id, user_id, name, notes, is_template, performed_at")
+    .select("id, created_by, name, notes, created_at, updated_at")
     .single();
 
-  if (error) return withCors(JSON.stringify({ error: error.message }), { status: 400 }, req);
-  return withCors(JSON.stringify({ ok: true, data }), { status: 200 }, req);
+  if (tErr || !template) {
+    return withCors(
+      JSON.stringify({ error: tErr?.message ?? "template_create_failed" }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  // 2) Insert template exercises (bulk)
+  const exercisesPayload = items.map((it, idx) => ({
+    template_id: template.id,
+    exercise_wger_id: Number(it.wger_id),
+    sort_order: idx,
+  }));
+
+  const { data: insertedExercises, error: exErr } = await admin
+    .from("workout_template_exercises")
+    .insert(exercisesPayload)
+    .select("id, exercise_wger_id, sort_order");
+
+  if (exErr || !insertedExercises) {
+    // rollback (best-effort) so you don't leave orphan template
+    await admin.from("workout_templates").delete().eq("id", template.id);
+    return withCors(
+      JSON.stringify({
+        error: exErr?.message ?? "template_exercises_insert_failed",
+      }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  // Build map wger_id -> inserted template_exercise_id
+  // (assumes you don't add duplicates; your UI prevents duplicates)
+  const exIdByWger = new Map<number, string>();
+  for (const row of insertedExercises as any[]) {
+    exIdByWger.set(Number(row.exercise_wger_id), String(row.id));
+  }
+
+  // 3) Insert sets (bulk)
+  const setsPayload: any[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const teId = exIdByWger.get(Number(it.wger_id));
+    if (!teId) continue;
+
+    const sets = Array.isArray(it.sets) && it.sets.length
+      ? it.sets
+      : [{ reps: null, weight: null }];
+
+    for (let s = 0; s < sets.length; s++) {
+      const reps = toIntOrNull(sets[s]?.reps);
+      const weight = toNumOrNull(sets[s]?.weight);
+
+      setsPayload.push({
+        template_exercise_id: teId,
+        set_no: s + 1,
+        reps,
+        weight,
+        weight_unit: "kg",
+      });
+    }
+  }
+
+  if (setsPayload.length > 0) {
+    const { error: sErr } = await admin
+      .from("workout_template_sets")
+      .insert(setsPayload);
+
+    if (sErr) {
+      // rollback (best-effort)
+      await admin.from("workout_templates").delete().eq("id", template.id);
+      return withCors(
+        JSON.stringify({ error: sErr.message }),
+        { status: 400 },
+        req,
+      );
+    }
+  }
+
+  return withCors(
+    JSON.stringify({
+      ok: true,
+      data: {
+        template,
+        counts: {
+          exercises: insertedExercises.length,
+          sets: setsPayload.length,
+        },
+      },
+    }),
+    { status: 200 },
+    req,
+  );
 });

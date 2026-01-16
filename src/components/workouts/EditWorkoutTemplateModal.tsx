@@ -4,12 +4,15 @@ import { Loader2, Plus, Search, Trash2, X, ArrowLeft, Save } from 'lucide-react'
 
 type Props = {
   open: boolean;
+  templateId: string;
   onClose: () => void;
-  onSaved?: () => void; // refresh list in parent
+  onSaved?: () => void;
 };
 
 type WgerCategory = { id: number; name: string };
 type WgerEquipment = { id: number; name: string };
+
+type Coach = { id: string; full_name: string | null; email?: string | null };
 
 type ExerciseCatalogRow = {
   wger_id: number;
@@ -26,9 +29,6 @@ type LocalExercise = {
   sets: LocalSet[];
 };
 
-type Coach = { id: string; full_name: string | null; email?: string | null };
-
-
 function key() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
@@ -40,18 +40,18 @@ function pickMainImageUrl(ex: ExerciseCatalogRow): string | null {
   return (main?.url ?? imgs[0]?.url ?? null) as string | null;
 }
 
-export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: Props) {
+export default function EditWorkoutTemplateModal({ open, templateId, onClose, onSaved }: Props) {
   const [step, setStep] = useState<'category' | 'equipment' | 'exercise'>('category');
 
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
+  const [coaches, setCoaches] = useState<Coach[]>([]);
+  const [selectedCoachId, setSelectedCoachId] = useState<string>('');
 
   const [categories, setCategories] = useState<WgerCategory[]>([]);
   const [equipment, setEquipment] = useState<WgerEquipment[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<WgerCategory | null>(null);
   const [selectedEquipment, setSelectedEquipment] = useState<WgerEquipment | null>(null);
-  const [coaches, setCoaches] = useState<Coach[]>([]);
-  const [selectedCoachId, setSelectedCoachId] = useState<string>('');
 
   const [q, setQ] = useState('');
   const [searching, setSearching] = useState(false);
@@ -61,42 +61,27 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // reset when opening
+  // load all initial data + existing template
   useEffect(() => {
     if (!open) return;
+    if (!templateId) return;
 
     setError(null);
     setBusy(false);
     setStep('category');
 
-    setName('');
-    setNotes('');
-    setItems([]);
-
     setSelectedCategory(null);
     setSelectedEquipment(null);
-    setSelectedCoachId(''); // ✅ reset coach
     setQ('');
     setResults([]);
 
     (async () => {
       try {
+        // 1) load pickers in parallel
         const [catsRes, eqRes, coachesRes] = await Promise.all([
-          supabase
-            .from('wger_exercise_categories')
-            .select('id,name')
-            .order('name', { ascending: true }),
-
-          supabase
-            .from('wger_equipment')
-            .select('id,name')
-            .order('name', { ascending: true }),
-
-          // ✅ load coaches
-          supabase
-            .from('coaches')
-            .select('id, full_name, email')
-            .order('full_name', { ascending: true }),
+          supabase.from('wger_exercise_categories').select('id,name').order('name', { ascending: true }),
+          supabase.from('wger_equipment').select('id,name').order('name', { ascending: true }),
+          supabase.from('coaches').select('id, full_name, email').order('full_name', { ascending: true }),
         ]);
 
         if (catsRes.error) throw catsRes.error;
@@ -105,15 +90,73 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
 
         setCategories((catsRes.data ?? []) as any);
         setEquipment((eqRes.data ?? []) as any);
-        setCoaches((coachesRes.data ?? []) as any); // ✅ set coaches
-      } catch (e) {
+        setCoaches((coachesRes.data ?? []) as any);
+
+        // 2) load template header
+        const { data: tpl, error: tErr } = await supabase
+          .from('workout_templates')
+          .select('id,name,notes,coach_id')
+          .eq('id', templateId)
+          .single();
+
+        if (tErr) throw tErr;
+
+        setName(tpl?.name ?? '');
+        setNotes(tpl?.notes ?? '');
+        setSelectedCoachId(tpl?.coach_id ?? '');
+
+        // 3) load template exercises + sets
+        const { data: exRows, error: exErr } = await supabase
+          .from('workout_template_exercises')
+          .select('id, exercise_wger_id, sort_order, workout_template_sets(set_no, reps, weight)')
+          .eq('template_id', templateId)
+          .order('sort_order', { ascending: true });
+
+        if (exErr) throw exErr;
+
+        const wgerIds = (exRows ?? []).map((r: any) => r.exercise_wger_id);
+        let namesMap = new Map<number, ExerciseCatalogRow>();
+
+        if (wgerIds.length) {
+          // fetch names/images for these exercises
+          const { data: catRows, error: catErr } = await supabase
+            .from('exercise_catalog')
+            .select('wger_id,name,category_name,images')
+            .in('wger_id', wgerIds);
+
+          if (catErr) throw catErr;
+
+          (catRows ?? []).forEach((r: any) => namesMap.set(r.wger_id, r));
+        }
+
+        const local: LocalExercise[] = (exRows ?? []).map((r: any) => {
+          const ex = namesMap.get(r.exercise_wger_id);
+          const sets = (r.workout_template_sets ?? [])
+            .slice()
+            .sort((a: any, b: any) => (a.set_no ?? 0) - (b.set_no ?? 0))
+            .map((s: any) => ({
+              key: key(),
+              reps: s?.reps == null ? '' : String(s.reps),
+              weight: s?.weight == null ? '' : String(s.weight),
+            }));
+
+          return {
+            wger_id: r.exercise_wger_id,
+            name: ex?.name ?? `wger ${r.exercise_wger_id}`,
+            imageUrl: ex ? pickMainImageUrl(ex) : null,
+            sets: sets.length ? sets : [{ key: key(), reps: '', weight: '' }],
+          };
+        });
+
+        setItems(local);
+      } catch (e: any) {
         console.error(e);
+        setError(e?.message ?? 'Αποτυχία φόρτωσης template.');
       }
     })();
-  }, [open]);
+  }, [open, templateId]);
 
-
-  // step 3 search (category + equipment + q)
+  // search exercises (same as create)
   useEffect(() => {
     if (!open) return;
     if (step !== 'exercise') return;
@@ -123,23 +166,19 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
       try {
         setSearching(true);
 
-        // Assumption: you have a function/view that returns exercises filtered by category/equipment + search
-        // If you don't, tell me your current exercise_catalog schema and we will write the best query.
         const { data, error } = await supabase
           .from('exercise_catalog')
           .select('wger_id,name,category_name,images')
           .ilike('name', `%${q.trim()}%`)
-          .eq('category_id', selectedCategory.id) // ✅ change if your column differs
+          .eq('category_id', selectedCategory.id)
           .order('name', { ascending: true })
           .limit(60);
 
         if (error) throw error;
 
-        // equipment filter (optional)
         let filtered = (data ?? []) as ExerciseCatalogRow[];
         if (selectedEquipment) {
-          // If you have equipment_id column on exercise_catalog, apply it here.
-          // Otherwise remove this block or adapt it to your schema.
+          // adapt if you actually have equipment_id on exercise_catalog
           filtered = filtered.filter(() => true);
         }
 
@@ -219,7 +258,7 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
     }
   };
 
-  const saveTemplate = async () => {
+  const save = async () => {
     if (!name.trim()) {
       setError('Βάλε όνομα template.');
       return;
@@ -233,9 +272,9 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
       setBusy(true);
       setError(null);
 
-      // ✅ Create template + exercises + sets (ALL inside edge function)
-      const res = await supabase.functions.invoke('workout-template-create', {
+      const res = await supabase.functions.invoke('workout-template-update', {
         body: {
+          id: templateId,
           name: name.trim(),
           notes: notes.trim() || null,
           coach_id: selectedCoachId || null,
@@ -247,14 +286,8 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
       });
 
       const payload = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
-
       const errMsg = payload?.error ?? res.error?.message ?? '';
-      if (res.error || payload?.error) {
-        throw new Error(errMsg || 'Απέτυχε η δημιουργία template.');
-      }
-
-      const templateId = payload?.data?.template?.id;
-      if (!templateId) throw new Error('Missing template id.');
+      if (res.error || payload?.error) throw new Error(errMsg || 'Απέτυχε η ενημέρωση template.');
 
       onSaved?.();
       onClose();
@@ -265,7 +298,6 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
       setBusy(false);
     }
   };
-
 
   const titleRight = useMemo(() => {
     if (step === 'category') return 'Επιλογή κατηγορίας';
@@ -280,16 +312,15 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
       <div className="w-full max-w-6xl rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl overflow-hidden">
         {/* Header */}
         <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-          <div className="font-semibold">Νέο Template Προπόνησης</div>
-
+          <div className="font-semibold">Επεξεργασία Template</div>
           <button onClick={onClose} className="rounded px-2 py-1 hover:bg-white/5" aria-label="Κλείσιμο">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2">
-          {/* LEFT: meta + builder */}
-          <div className="p-4 border-b lg:border-b-0 lg:border-r border-white/10 flex flex-col max-h-[80vh]">
+          {/* LEFT */}
+          <div className="p-4 border-b lg:border-b-0 lg:border-r border-white/10">
             <div className="grid gap-3">
               <label className="block">
                 <div className="mb-1 text-sm opacity-80">Όνομα template *</div>
@@ -299,6 +330,18 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
                   onChange={(e) => setName(e.target.value)}
                   placeholder="π.χ. Push Day"
                 />
+              </label>
+
+              <label className="block">
+                <div className="mb-1 text-sm opacity-80">Coach (προαιρετικό)</div>
+                <select className="input w-full" value={selectedCoachId} onChange={(e) => setSelectedCoachId(e.target.value)}>
+                  <option value="">— Χωρίς coach —</option>
+                  {coaches.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {(c.full_name ?? 'Coach') + (c.email ? ` · ${c.email}` : '')}
+                    </option>
+                  ))}
+                </select>
               </label>
 
               <label className="block">
@@ -312,30 +355,13 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
                 />
               </label>
 
-              <label className="block">
-                <div className="mb-1 text-sm opacity-80">Coach (προαιρετικό)</div>
-                <select
-                  className="input w-full"
-                  value={selectedCoachId}
-                  onChange={(e) => setSelectedCoachId(e.target.value)}
-                >
-                  <option value="">— Χωρίς coach —</option>
-                  {coaches.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {(c.full_name ?? 'Coach') + (c.email ? ` · ${c.email}` : '')}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-
               <div className="flex items-center justify-between">
                 <div className="text-sm opacity-80">
                   Ασκήσεις: <span className="font-semibold">{items.length}</span>
                 </div>
                 <button
                   type="button"
-                  onClick={saveTemplate}
+                  onClick={save}
                   disabled={busy}
                   className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white inline-flex items-center gap-2 disabled:opacity-50"
                 >
@@ -347,8 +373,8 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
               {error && <div className="text-sm text-orange-400">{error}</div>}
             </div>
 
-            {/* Builder list */}
-            <div className="mt-4 space-y-3 overflow-y-auto pr-1 flex-1">
+            {/* Builder list (scrollable) */}
+            <div className="mt-4 max-h-[60vh] overflow-auto pr-1 space-y-3">
               {items.length === 0 ? (
                 <div className="rounded-md border border-white/10 bg-secondary/5 p-4 text-sm text-text-secondary">
                   Πρόσθεσε ασκήσεις από δεξιά για να χτίσεις το template.
@@ -359,11 +385,7 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3">
                         {ex.imageUrl ? (
-                          <img
-                            src={ex.imageUrl}
-                            className="h-10 w-10 rounded-md border border-white/10 object-cover"
-                            alt=""
-                          />
+                          <img src={ex.imageUrl} className="h-10 w-10 rounded-md border border-white/10 object-cover" alt="" />
                         ) : (
                           <div className="h-10 w-10 rounded-md border border-white/10 bg-secondary/20" />
                         )}
@@ -385,7 +407,6 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
                       </button>
                     </div>
 
-                    {/* Sets header */}
                     <div className="mt-3 grid grid-cols-[60px_1fr_1fr_36px] gap-2 text-xs text-text-secondary">
                       <div>Set</div>
                       <div>Reps</div>
@@ -393,7 +414,6 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
                       <div />
                     </div>
 
-                    {/* Sets rows */}
                     <div className="mt-2 space-y-2">
                       {ex.sets.map((s, idx) => (
                         <div key={s.key} className="grid grid-cols-[60px_1fr_1fr_36px] gap-2 items-center">
@@ -402,14 +422,18 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
                           <input
                             className="input h-9 text-center"
                             value={s.reps}
-                            onChange={(e) => updateSet(ex.wger_id, s.key, 'reps', e.target.value.replace(/[^0-9]/g, ''))}
+                            onChange={(e) =>
+                              updateSet(ex.wger_id, s.key, 'reps', e.target.value.replace(/[^0-9]/g, ''))
+                            }
                             placeholder="0"
                           />
 
                           <input
                             className="input h-9 text-center"
                             value={s.weight}
-                            onChange={(e) => updateSet(ex.wger_id, s.key, 'weight', e.target.value.replace(/[^0-9.,]/g, ''))}
+                            onChange={(e) =>
+                              updateSet(ex.wger_id, s.key, 'weight', e.target.value.replace(/[^0-9.,]/g, ''))
+                            }
                             placeholder="0"
                           />
 
@@ -440,9 +464,8 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
             </div>
           </div>
 
-          {/* RIGHT: Picker (Category -> Equipment -> Exercise) */}
+          {/* RIGHT */}
           <div className="p-4">
-            {/* Picker header */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 {step !== 'category' ? (
@@ -467,7 +490,6 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
               </div>
             </div>
 
-            {/* Step 1: categories */}
             {step === 'category' && (
               <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {categories.map((c) => (
@@ -496,7 +518,6 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
               </div>
             )}
 
-            {/* Step 2: equipment */}
             {step === 'equipment' && (
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button
@@ -532,7 +553,6 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
               </div>
             )}
 
-            {/* Step 3: exercises */}
             {step === 'exercise' && (
               <>
                 <div className="mt-4 flex items-center gap-2 rounded-md border border-white/10 bg-secondary-background px-3 h-9">
@@ -584,15 +604,12 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
           </div>
         </div>
 
-        {/* Footer */}
         <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between">
           <button className="btn-secondary" onClick={onClose} disabled={busy}>
             Κλείσιμο
           </button>
 
-          <div className="text-xs text-text-secondary">
-            Tip: φτιάξε πρώτα το template και μετά κάνε assign σε μέλος.
-          </div>
+          <div className="text-xs text-text-secondary">Tip: κάνε edit και μετά ξανά ανάθεση.</div>
         </div>
       </div>
     </div>

@@ -23,11 +23,13 @@ function buildCors(req: Request) {
     "Access-Control-Max-Age": "86400",
   };
 }
+
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
-  return new Response(body, {
-    ...init,
-    headers: { ...(init.headers || {}), ...buildCors(req) },
-  });
+  const headers = new Headers({ ...(init.headers || {}), ...buildCors(req) });
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json; charset=utf-8");
+  }
+  return new Response(body, { ...init, headers });
 }
 
 const URL = Deno.env.get("SUPABASE_URL")!;
@@ -42,7 +44,7 @@ async function getAuthContext(req: Request) {
   });
 
   const { data: { user } } = await supa.auth.getUser();
-  if (!user) return { error: "unauthorized" };
+  if (!user) return { error: "unauthorized" as const };
 
   const { data: prof, error: pErr } = await supa
     .from("profiles")
@@ -50,7 +52,7 @@ async function getAuthContext(req: Request) {
     .eq("id", user.id)
     .maybeSingle();
 
-  if (pErr || !prof) return { error: "profile_not_found" };
+  if (pErr || !prof) return { error: "profile_not_found" as const };
 
   const isAdmin = user.app_metadata?.role === "admin" || prof.role === "admin";
   return { user, isAdmin };
@@ -58,14 +60,18 @@ async function getAuthContext(req: Request) {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
-  if (req.method !== "POST") return withCors("Method not allowed", { status: 405 }, req);
+  if (req.method !== "POST") {
+    return withCors(JSON.stringify({ error: "method_not_allowed" }), { status: 405 }, req);
+  }
 
   const auth = await getAuthContext(req);
   if ((auth as any).error) {
     return withCors(JSON.stringify({ error: (auth as any).error }), { status: 401 }, req);
   }
   const { isAdmin } = auth as { isAdmin: boolean };
-  if (!isAdmin) return withCors(JSON.stringify({ error: "forbidden" }), { status: 403 }, req);
+  if (!isAdmin) {
+    return withCors(JSON.stringify({ error: "forbidden" }), { status: 403 }, req);
+  }
 
   let body: any;
   try {
@@ -74,29 +80,46 @@ serve(async (req) => {
     return withCors(JSON.stringify({ error: "invalid_json" }), { status: 400 }, req);
   }
 
-  const id = (body?.id ?? "").trim();
-  if (!id) return withCors(JSON.stringify({ error: "id_required" }), { status: 400 }, req);
+  const id = String(body?.id ?? "").trim();
+  if (!id) {
+    return withCors(JSON.stringify({ error: "id_required" }), { status: 400 }, req);
+  }
 
   const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
 
-  // ensure template
+  // ✅ ensure template exists
   const { data: existing, error: exErr } = await admin
-    .from("workouts")
-    .select("id, is_template")
+    .from("workout_templates")
+    .select("id")
     .eq("id", id)
     .maybeSingle();
 
-  if (exErr || !existing) return withCors(JSON.stringify({ error: "not_found" }), { status: 404 }, req);
-  if (!existing.is_template) return withCors(JSON.stringify({ error: "not_a_template" }), { status: 400 }, req);
+  if (exErr) {
+    return withCors(JSON.stringify({ error: exErr.message }), { status: 400 }, req);
+  }
+  if (!existing) {
+    return withCors(JSON.stringify({ error: "not_found" }), { status: 404 }, req);
+  }
 
-  // delete assignments (if you have this table)
+  // ✅ delete assignments (optional table)
+  // Preferred column name in the NEW model:
   await admin
     .from("workout_template_assignments")
     .delete()
-    .eq("template_workout_id", id);
+    .eq("template_id", id);
 
-  const { error } = await admin.from("workouts").delete().eq("id", id);
-  if (error) return withCors(JSON.stringify({ error: error.message }), { status: 400 }, req);
+  // If your table still uses the old column name, use this instead:
+  // await admin.from("workout_template_assignments").delete().eq("template_workout_id", id);
+
+  // ✅ delete template (cascade deletes exercises + sets)
+  const { error: delErr } = await admin
+    .from("workout_templates")
+    .delete()
+    .eq("id", id);
+
+  if (delErr) {
+    return withCors(JSON.stringify({ error: delErr.message }), { status: 400 }, req);
+  }
 
   return withCors(JSON.stringify({ ok: true }), { status: 200 }, req);
 });
