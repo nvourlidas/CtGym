@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
 import { MobilePreview } from '../components/MobilePreview';
+import SubscriptionRequiredModal from '../components/SubscriptionRequiredModal';
 
 type Theme = {
     primary_color: string;
@@ -39,12 +40,24 @@ const defaultTheme: Theme = {
 };
 
 export default function ThemeSettingsPage() {
-    const { profile } = useAuth(); // profile.tenant_id
+    const { profile, subscription } = useAuth(); // profile.tenant_id
+    const [showSubModal, setShowSubModal] = useState(false);
     const [theme, setTheme] = useState<Theme>(defaultTheme);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [uploadingLogo, setUploadingLogo] = useState(false);
+
+    const subscriptionInactive = !subscription?.is_active;
+
+    function requireActiveSubscription(action: () => void) {
+        if (subscriptionInactive) {
+            setShowSubModal(true);
+            return;
+        }
+        action();
+    }
+
 
     const isDefault = useMemo(() => {
         const keys: ColorKey[] = [
@@ -233,7 +246,7 @@ export default function ThemeSettingsPage() {
             </div>
 
             <button
-                onClick={handleSave}
+                onClick={() => requireActiveSubscription(() => handleSave)}
                 disabled={saving}
                 className="px-4 py-2 rounded bg-blue-600 text-white font-semibold disabled:opacity-50"
             >
@@ -253,7 +266,7 @@ export default function ThemeSettingsPage() {
 
                     <button
                         type="button"
-                        onClick={handleUploadLogoAndSave}
+                        onClick={() => requireActiveSubscription(() => handleUploadLogoAndSave)}
                         disabled={!logoFile || uploadingLogo}
                         className="px-3 py-2 rounded bg-blue-600 text-white text-sm disabled:opacity-40"
                     >
@@ -264,6 +277,11 @@ export default function ThemeSettingsPage() {
 
             {/* Small preview */}
             <MobilePreview theme={theme} />
+
+            <SubscriptionRequiredModal
+                open={showSubModal}
+                onClose={() => setShowSubModal(false)}
+            />
         </div>
     );
 }

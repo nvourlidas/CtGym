@@ -22,6 +22,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import SessionModal from '../../components/Programs/SessionModal';
 import ProgramGeneratorModal from '../../components/Programs/ProgramGeneratorModal';
+import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
 
 export type SessionRowFromDb = {
   id: string;
@@ -48,8 +49,10 @@ export type SessionRow = {
 type CalendarView = 'month' | 'week' | 'day';
 
 export default function ProgramsPage() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
   const tenantId = profile?.tenant_id;
+
+  const [showSubModal, setShowSubModal] = useState(false);
 
   const [view, setView] = useState<CalendarView>('month');
   const [currentRange, setCurrentRange] = useState<{ start: string; end: string } | null>(null);
@@ -70,6 +73,18 @@ export default function ProgramsPage() {
 
   // track mobile vs desktop to tweak header & layout
   const [isMobile, setIsMobile] = useState(false);
+
+
+  const subscriptionInactive = !subscription?.is_active;
+
+  function requireActiveSubscription(action: () => void) {
+    if (subscriptionInactive) {
+      setShowSubModal(true);
+      return;
+    }
+    action();
+  }
+
 
   useEffect(() => {
     const updateIsMobile = () => {
@@ -250,31 +265,28 @@ export default function ProgramsPage() {
           <div className="inline-flex rounded-md border border-white/10 overflow-hidden">
             <button
               onClick={() => setView('month')}
-              className={`px-3 py-1 text-xs md:text-sm ${
-                view === 'month'
-                  ? 'bg-primary text-white'
-                  : 'bg-secondary-background text-text-secondary'
-              }`}
+              className={`px-3 py-1 text-xs md:text-sm ${view === 'month'
+                ? 'bg-primary text-white'
+                : 'bg-secondary-background text-text-secondary'
+                }`}
             >
               Μήνας
             </button>
             <button
               onClick={() => setView('week')}
-              className={`px-3 py-1 text-xs md:text-sm ${
-                view === 'week'
-                  ? 'bg-primary text-white'
-                  : 'bg-secondary-background text-text-secondary'
-              }`}
+              className={`px-3 py-1 text-xs md:text-sm ${view === 'week'
+                ? 'bg-primary text-white'
+                : 'bg-secondary-background text-text-secondary'
+                }`}
             >
               Εβδομάδα
             </button>
             <button
               onClick={() => setView('day')}
-              className={`px-3 py-1 text-xs md:text-sm ${
-                view === 'day'
-                  ? 'bg-primary text-white'
-                  : 'bg-secondary-background text-text-secondary'
-              }`}
+              className={`px-3 py-1 text-xs md:text-sm ${view === 'day'
+                ? 'bg-primary text-white'
+                : 'bg-secondary-background text-text-secondary'
+                }`}
             >
               Ημέρα
             </button>
@@ -282,7 +294,7 @@ export default function ProgramsPage() {
 
           {/* Create Program button */}
           <button
-            onClick={() => setProgramModalOpen(true)}
+            onClick={() => requireActiveSubscription(() => setProgramModalOpen(true))}
             className="w-full xs:w-auto md:w-auto md:ml-3 inline-flex items-center justify-center gap-2 rounded-md bg-accent px-3 md:px-4 py-2 text-xs md:text-sm font-medium text-black hover:bg-accent/80 cursor-pointer"
           >
             + Δημιουργία Προγράμματος
@@ -290,7 +302,7 @@ export default function ProgramsPage() {
 
           {/* Delete Program button */}
           <button
-            onClick={() => setDeleteProgramModalOpen(true)}
+            onClick={() => requireActiveSubscription(() => setDeleteProgramModalOpen(true))}
             className="w-full xs:w-auto md:w-auto inline-flex items-center justify-center gap-2 rounded-md bg-red-500/90 px-3 md:px-4 py-2 text-xs md:text-sm font-medium text-white hover:bg-red-600 cursor-pointer"
           >
             Διαγραφή Προγράμματος
@@ -317,15 +329,15 @@ export default function ProgramsPage() {
               headerToolbar={
                 isMobile
                   ? {
-                      left: 'prev,next',
-                      center: 'title',
-                      right: 'today',
-                    }
+                    left: 'prev,next',
+                    center: 'title',
+                    right: 'today',
+                  }
                   : {
-                      left: 'today prev,next',
-                      center: 'title',
-                      right: '',
-                    }
+                    left: 'today prev,next',
+                    center: 'title',
+                    right: '',
+                  }
               }
               buttonText={{
                 today: 'Σήμερα',
@@ -337,10 +349,10 @@ export default function ProgramsPage() {
               droppable={false}
               eventResizableFromStart
               events={events}
-              dateClick={handleDateClick}
-              eventClick={handleEventClick}
-              eventDrop={handleEventDrop}
-              eventResize={handleEventResize}
+              dateClick={() => requireActiveSubscription(() => handleDateClick)}
+              eventClick={() => requireActiveSubscription(() =>handleEventClick)}
+              eventDrop={() => requireActiveSubscription(() =>handleEventDrop)}
+              eventResize={() => requireActiveSubscription(() =>handleEventResize)}
               datesSet={handleDatesSet}
               viewDidMount={(arg) => {
                 if (arg.view.type === 'dayGridMonth' && view !== 'month') setView('month');
@@ -418,6 +430,11 @@ export default function ProgramsPage() {
           setCurrentRange((r) => (r ? { ...r } : r));
         }}
       />
+
+      <SubscriptionRequiredModal
+        open={showSubModal}
+        onClose={() => setShowSubModal(false)}
+      />
     </div>
   );
 }
@@ -469,7 +486,7 @@ const TIME_OPTIONS: string[] = (() => {
   return result;
 })();
 import DatePicker from 'react-datepicker';
-import {el} from 'date-fns/locale/el';
+import { el } from 'date-fns/locale/el';
 
 /* ...your existing imports... */
 
@@ -721,11 +738,10 @@ function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDelet
                     key={d.value}
                     type="button"
                     onClick={() => toggleDay(d.value)}
-                    className={`px-2 py-1 rounded-full text-[11px] border ${
-                      active
-                        ? 'bg-primary text-white border-primary'
-                        : 'bg-background text-text-secondary border-white/15'
-                    }`}
+                    className={`px-2 py-1 rounded-full text-[11px] border ${active
+                      ? 'bg-primary text-white border-primary'
+                      : 'bg-background text-text-secondary border-white/15'
+                      }`}
                     title={d.full}
                   >
                     {d.short}

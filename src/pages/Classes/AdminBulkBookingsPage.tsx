@@ -3,6 +3,7 @@ import type { DragEvent } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import { Trash2 } from 'lucide-react';
+import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
 
 type Member = { id: string; full_name: string | null; email: string | null };
 
@@ -474,8 +475,8 @@ function BulkBookingsModal({
         {resultMsg && (
           <div
             className={`mb-3 rounded-md px-3 py-2 text-[11px] ${resultMsg.type === 'success'
-                ? 'bg-emerald-900/40 text-emerald-100 border border-emerald-500/40'
-                : 'bg-red-900/40 text-red-100 border border-red-500/40'
+              ? 'bg-emerald-900/40 text-emerald-100 border border-emerald-500/40'
+              : 'bg-red-900/40 text-red-100 border border-red-500/40'
               }`}
           >
             {resultMsg.message}
@@ -502,8 +503,8 @@ function BulkBookingsModal({
                   onClick={() => setMemberId(m.id)}
                   disabled={running}
                   className={`w-full rounded-md px-3 py-2 text-left text-xs ${selected
-                      ? 'bg-primary/20 border border-primary/40 text-white'
-                      : 'bg-transparent hover:bg-white/5 text-white/90'
+                    ? 'bg-primary/20 border border-primary/40 text-white'
+                    : 'bg-transparent hover:bg-white/5 text-white/90'
                     }`}
                 >
                   <div className="font-medium">
@@ -701,8 +702,10 @@ function BulkBookingsModal({
 /* ------------ Page ------------ */
 
 export default function AdminBulkBookingsPage() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
   const tenantId = profile?.tenant_id ?? null;
+
+  const [showSubModal, setShowSubModal] = useState(false);
 
   const [members, setMembers] = useState<Member[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
@@ -734,6 +737,18 @@ export default function AdminBulkBookingsPage() {
 
   // bulk modal
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
+
+
+  const subscriptionInactive = !subscription?.is_active;
+
+  function requireActiveSubscription(action: () => void) {
+    if (subscriptionInactive) {
+      setShowSubModal(true);
+      return;
+    }
+    action();
+  }
+
 
   /* ------------ load members ------------ */
 
@@ -1188,7 +1203,7 @@ export default function AdminBulkBookingsPage() {
               {/* ✅ NEW: Bulk bookings button */}
               <button
                 type="button"
-                onClick={() => setBulkModalOpen(true)}
+                onClick={() => requireActiveSubscription(() => setBulkModalOpen(true))}
                 className="rounded-md bg-amber-400 px-2.5 py-1 text-xs font-semibold text-slate-900 hover:bg-amber-300"
                 title="Δημιουργία κρατήσεων για ένα μέλος σε εύρος ημερομηνιών"
               >
@@ -1200,8 +1215,8 @@ export default function AdminBulkBookingsPage() {
           {feedback && (
             <div
               className={`mb-3 flex items-start justify-between rounded-md px-3 py-2 text-[11px] ${feedback.type === 'success'
-                  ? 'bg-emerald-900/40 text-emerald-100 border border-emerald-500/40'
-                  : 'bg-red-900/40 text-red-100 border border-red-500/40'
+                ? 'bg-emerald-900/40 text-emerald-100 border border-emerald-500/40'
+                : 'bg-red-900/40 text-red-100 border border-red-500/40'
                 }`}
             >
               <span>{feedback.message}</span>
@@ -1251,7 +1266,7 @@ export default function AdminBulkBookingsPage() {
                         key={s.id}
                         className="rounded-md bg-slate-900/80 border border-white/15 p-2 text-[11px] text-white/90 space-y-1"
                         onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => handleDropOnSession(e, s.id)}
+                        onDrop={(e) => requireActiveSubscription(() => handleDropOnSession(e, s.id))}
                       >
                         <div className="flex items-center justify-between gap-1">
                           <span className="font-semibold truncate">
@@ -1448,8 +1463,8 @@ export default function AdminBulkBookingsPage() {
                             <div className="flex items-center gap-1">
                               <span
                                 className={`px-2 py-0.5 rounded-full text-[10px] ${isDropIn
-                                    ? 'bg-amber-500/20 text-amber-200 border border-amber-500/40'
-                                    : 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/40'
+                                  ? 'bg-amber-500/20 text-amber-200 border border-amber-500/40'
+                                  : 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/40'
                                   }`}
                               >
                                 {isDropIn ? 'Drop-in' : 'Συνδρομή'}
@@ -1489,6 +1504,12 @@ export default function AdminBulkBookingsPage() {
           </div>
         </div>
       )}
+
+
+      <SubscriptionRequiredModal
+        open={showSubModal}
+        onClose={() => setShowSubModal(false)}
+      />
     </>
   );
 }

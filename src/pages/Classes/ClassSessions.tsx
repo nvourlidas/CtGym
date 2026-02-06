@@ -1,5 +1,5 @@
 import DatePicker from 'react-datepicker';
-import {el} from 'date-fns/locale/el';
+import { el } from 'date-fns/locale/el';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
@@ -7,6 +7,7 @@ import SessionAttendanceModal from '../../components/Programs/SessionAttendanceM
 import { SessionQrModal } from '../../components/SessionQrModal';
 import { QrCode, Pencil, Trash2, Loader2, Clock } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
 
 type GymClass = {
   id: string;
@@ -33,7 +34,8 @@ type SessionRow = {
 type DateFilter = '' | 'today' | 'week' | 'month';
 
 export default function ClassSessionsPage() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
+  const [showSubModal, setShowSubModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<SessionRow[]>([]);
   const [classes, setClasses] = useState<GymClass[]>([]);
@@ -56,6 +58,17 @@ export default function ClassSessionsPage() {
   // multi-select state
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const subscriptionInactive = !subscription?.is_active;
+
+  function requireActiveSubscription(action: () => void) {
+    if (subscriptionInactive) {
+      setShowSubModal(true);
+      return;
+    }
+    action();
+  }
+
 
   async function load() {
     if (!profile?.tenant_id) return;
@@ -190,8 +203,8 @@ export default function ClassSessionsPage() {
       if (firstError) {
         setError(
           firstError.error?.message ??
-            (firstError.data as any)?.error ??
-            'Η ομαδική διαγραφή είχε σφάλματα.',
+          (firstError.data as any)?.error ??
+          'Η ομαδική διαγραφή είχε σφάλματα.',
         );
       } else {
         setError(null);
@@ -243,7 +256,7 @@ export default function ClassSessionsPage() {
 
         <button
           className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-accent/90 text-white hover:text-black cursor-pointer"
-          onClick={() => setShowCreate(true)}
+          onClick={() => requireActiveSubscription(() => setShowCreate(true))}
         >
           Νέα Συνεδρία
         </button>
@@ -251,7 +264,7 @@ export default function ClassSessionsPage() {
         <button
           className="h-9 rounded-md px-3 text-sm border border-danger/50 text-danger hover:bg-danger/10 disabled:opacity-40"
           disabled={selectedIds.length === 0 || bulkDeleting}
-          onClick={handleBulkDelete}
+          onClick={() => requireActiveSubscription(() => handleBulkDelete())}
         >
           {bulkDeleting
             ? 'Διαγραφή επιλεγμένων…'
@@ -388,12 +401,19 @@ export default function ClassSessionsPage() {
                           <IconButton
                             icon={Pencil}
                             label="Επεξεργασία"
-                            onClick={() => setEditRow(s)}
+                            onClick={() => requireActiveSubscription(() => setEditRow(s))}
                           />
                           <DeleteButton
                             id={s.id}
                             onDeleted={load}
                             setError={setError}
+                            guard={() => {
+                              if (subscriptionInactive) {
+                                setShowSubModal(true);
+                                return false;
+                              }
+                              return true;
+                            }}
                           />
                         </Td>
                       </tr>
@@ -472,12 +492,19 @@ export default function ClassSessionsPage() {
                       <IconButton
                         icon={Pencil}
                         label="Επεξεργασία"
-                        onClick={() => setEditRow(s)}
+                        onClick={() => requireActiveSubscription(() => setEditRow(s))}
                       />
                       <DeleteButton
                         id={s.id}
                         onDeleted={load}
                         setError={setError}
+                        guard={() => {
+                          if (subscriptionInactive) {
+                            setShowSubModal(true);
+                            return false;
+                          }
+                          return true;
+                        }}
                       />
                     </div>
                   </div>
@@ -591,11 +618,10 @@ export default function ClassSessionsPage() {
           sessionTitle={getClass(attendanceSession.class_id)?.title ?? '—'}
           sessionTime={`${formatDate(
             attendanceSession.starts_at,
-          )} • ${formatTime(attendanceSession.starts_at)}${
-            attendanceSession.ends_at
-              ? '–' + formatTime(attendanceSession.ends_at)
-              : ''
-          }`}
+          )} • ${formatTime(attendanceSession.starts_at)}${attendanceSession.ends_at
+            ? '–' + formatTime(attendanceSession.ends_at)
+            : ''
+            }`}
           onClose={() => setAttendanceSession(null)}
         />
       )}
@@ -610,6 +636,11 @@ export default function ClassSessionsPage() {
           token={qrSession.checkin_token}
         />
       )}
+
+      <SubscriptionRequiredModal
+        open={showSubModal}
+        onClose={() => setShowSubModal(false)}
+      />
     </div>
   );
 }
@@ -634,11 +665,10 @@ function FilterChip({
     <button
       type="button"
       onClick={onClick}
-      className={`px-3 h-8 rounded-full text-xs font-medium transition border ${
-        active
-          ? 'bg-accent text-black border-black'
-          : 'bg-secondary-background text-text-secondary border-white/10 hover:border-white/30'
-      }`}
+      className={`px-3 h-8 rounded-full text-xs font-medium transition border ${active
+        ? 'bg-accent text-black border-black'
+        : 'bg-secondary-background text-text-secondary border-white/10 hover:border-white/30'
+        }`}
     >
       {label}
     </button>
@@ -649,14 +679,17 @@ function DeleteButton({
   id,
   onDeleted,
   setError,
+  guard,
 }: {
   id: string;
   onDeleted: () => void;
   setError: (s: string | null) => void;
+  guard: () => boolean;
 }) {
   const [busy, setBusy] = useState(false);
 
   const onClick = async () => {
+    if (guard && !guard()) return;
     if (
       !confirm(
         'Διαγραφή αυτής της συνεδρίας; Αυτή η ενέργεια δεν μπορεί να ακυρωθεί.',
@@ -811,9 +844,8 @@ function CreateSessionModal({
                   <button
                     key={c.id}
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
-                      c.id === classId ? 'bg-white/10' : ''
-                    }`}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${c.id === classId ? 'bg-white/10' : ''
+                      }`}
                     onClick={() => {
                       setClassId(c.id);
                       setClassDropdownOpen(false);
@@ -1010,9 +1042,8 @@ function EditSessionModal({
                   <button
                     key={c.id}
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
-                      c.id === classId ? 'bg-white/10' : ''
-                    }`}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${c.id === classId ? 'bg-white/10' : ''
+                      }`}
                     onClick={() => {
                       setClassId(c.id);
                       setClassDropdownOpen(false);

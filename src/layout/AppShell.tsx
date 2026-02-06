@@ -1,5 +1,5 @@
 // src/layout/AppShell.tsx
-import { Outlet, NavLink, useLocation  } from 'react-router-dom';
+import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
@@ -11,7 +11,7 @@ import logo from '../assets/CTGYM.YELLOW 1080x1080.svg';
 type Tenant = { name: string };
 
 export default function AppShell() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -26,6 +26,38 @@ export default function AppShell() {
       setTenant(data ?? null);
     })();
   }, [profile?.tenant_id]);
+
+
+  const subscriptionBanner = useMemo(() => {
+    if (!subscription || profile?.role !== 'admin') return null;
+
+    const now = new Date();
+
+    const endDate =
+      subscription.grace_until
+        ? new Date(subscription.grace_until)
+        : subscription.current_period_end
+          ? new Date(subscription.current_period_end)
+          : null;
+
+    if (!endDate) return null;
+
+    const daysLeft = Math.ceil(
+      (endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    if (daysLeft < 0) {
+      return { type: 'expired' as const, daysLeft, message: 'Η συνδρομή σας έχει λήξει. Οι λειτουργίες είναι περιορισμένες.' };
+    }
+
+    if (daysLeft <= 7) {
+      return { type: 'warning' as const, daysLeft, message: `Η συνδρομή σας λήγει σε ${daysLeft} ημέρες.` };
+    }
+
+    return null;
+  }, [subscription, profile?.role]);
+
+
 
   return (
     <div className="min-h-screen bg-background text-text-primary flex">
@@ -50,6 +82,21 @@ export default function AppShell() {
 
       {/* Main column: header sits here so it starts where sidebar ends */}
       <div className="flex-1 min-w-0 flex flex-col">
+        {subscriptionBanner && (
+          <div
+            className={[
+              'px-4 py-2 text-sm text-center font-medium border-b',
+              subscriptionBanner.type === 'expired'
+                ? 'bg-danger text-white border-red-700/40'
+                : 'bg-accent text-black border-yellow-600/40',
+            ].join(' ')}
+          >
+            {subscriptionBanner.message}{' '}
+            <NavLink to="/billing" className="underline font-semibold ml-2">
+              Διαχείριση συνδρομής
+            </NavLink>
+          </div>
+        )}
         <header className="h-14 sticky top-0 z-10 bg-secondary-background text-text-primary border-b border-white/10">
           <div className="h-full px-4 flex items-center justify-between">
             <div className="flex items-center gap-3">

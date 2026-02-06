@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Pencil, Trash2, Loader2, Send, Plus } from 'lucide-react';
 import CreateWorkoutTemplateModal from '../../components/workouts/CreateWorkoutTemplateModal';
 import EditWorkoutTemplateModal from '../../components/workouts/EditWorkoutTemplateModal';
+import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
 
 type TemplateRow = {
   id: string;
@@ -26,7 +27,8 @@ type Member = {
 };
 
 export default function WorkoutTemplatesPage() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
+  const [showSubModal, setShowSubModal] = useState(false);
 
   const [rows, setRows] = useState<TemplateRow[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -40,6 +42,17 @@ export default function WorkoutTemplatesPage() {
   // pagination
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  const subscriptionInactive = !subscription?.is_active;
+
+  function requireActiveSubscription(action: () => void) {
+    if (subscriptionInactive) {
+      setShowSubModal(true);
+      return;
+    }
+    action();
+  }
+
 
   async function load() {
     if (!profile?.tenant_id) return;
@@ -113,7 +126,7 @@ export default function WorkoutTemplatesPage() {
         />
         <button
           className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white inline-flex items-center gap-2"
-          onClick={() => setShowCreate(true)}
+          onClick={() => requireActiveSubscription(() => setShowCreate(true))}
         >
           <Plus className="h-4 w-4" />
           Νέο Template
@@ -124,7 +137,7 @@ export default function WorkoutTemplatesPage() {
         {/* DESKTOP TABLE */}
         <div className="hidden md:block">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-sm">
+            <table className="w-full min-w-205 text-sm">
               <thead className="bg-secondary-background/60">
                 <tr className="text-left">
                   <Th>Όνομα</Th>
@@ -163,7 +176,7 @@ export default function WorkoutTemplatesPage() {
                       >
                         <Td className="font-medium">{w.name ?? '—'}</Td>
                         <Td className="text-text-secondary">
-                          <div className="max-w-xs whitespace-normal break-words text-xs leading-snug">
+                          <div className="max-w-xs whitespace-normal wrap-break-word text-xs leading-snug">
                             {w.notes ?? '—'}
                           </div>
                         </Td>
@@ -175,14 +188,22 @@ export default function WorkoutTemplatesPage() {
                           <IconButton
                             icon={Send}
                             label="Ανάθεση"
-                            onClick={() => setAssignRow(w)}
+                            onClick={() => requireActiveSubscription(() => setAssignRow(w))}
                           />
                           <IconButton
                             icon={Pencil}
                             label="Επεξεργασία"
-                            onClick={() => setEditRow(w)}
+                            onClick={() => requireActiveSubscription(() => setEditRow(w))}
                           />
-                          <DeleteButton id={w.id} onDeleted={load} />
+                          <DeleteButton id={w.id} onDeleted={load}
+                            guard={() => {
+                              if (subscriptionInactive) {
+                                setShowSubModal(true);
+                                return false;
+                              }
+                              return true;
+                            }}
+                          />
                         </Td>
                       </tr>
                     );
@@ -228,18 +249,26 @@ export default function WorkoutTemplatesPage() {
                       <IconButton
                         icon={Send}
                         label="Ανάθεση"
-                        onClick={() => setAssignRow(w)}
+                        onClick={() => requireActiveSubscription(() => setAssignRow(w))}
                       />
                       <IconButton
                         icon={Pencil}
                         label="Επεξεργασία"
-                        onClick={() => setEditRow(w)}
+                        onClick={() => requireActiveSubscription(() => setEditRow(w))}
                       />
-                      <DeleteButton id={w.id} onDeleted={load} />
+                      <DeleteButton id={w.id} onDeleted={load}
+                        guard={() => {
+                          if (subscriptionInactive) {
+                            setShowSubModal(true);
+                            return false;
+                          }
+                          return true;
+                        }}
+                      />
                     </div>
                   </div>
 
-                  <div className="mt-2 text-xs text-text-secondary whitespace-normal break-words leading-snug">
+                  <div className="mt-2 text-xs text-text-secondary whitespace-normal wrap-break-word leading-snug">
                     {w.notes ?? '—'}
                   </div>
                 </div>
@@ -332,6 +361,12 @@ export default function WorkoutTemplatesPage() {
           }}
         />
       )}
+
+
+      <SubscriptionRequiredModal
+        open={showSubModal}
+        onClose={() => setShowSubModal(false)}
+      />
     </div>
   );
 }
@@ -370,10 +405,11 @@ function IconButton({
 
 /* ------------------ actions ------------------ */
 
-function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
+function DeleteButton({ id, onDeleted, guard }: { id: string; onDeleted: () => void; guard: () => boolean; }) {
   const [busy, setBusy] = useState(false);
 
   const onClick = async () => {
+    if (guard && !guard()) return;
     if (!confirm('Διαγραφή αυτού του template; Αυτό δεν μπορεί να αναιρεθεί.')) return;
     setBusy(true);
     await supabase.functions.invoke('workout-template-delete', { body: { id } });

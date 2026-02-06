@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Loader2, Plus, Search, Trash2, X, ArrowLeft, Save } from 'lucide-react';
+import { useAuth } from '../../auth';
 
 type Props = {
   open: boolean;
@@ -41,6 +42,7 @@ function pickMainImageUrl(ex: ExerciseCatalogRow): string | null {
 }
 
 export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: Props) {
+  const { profile } = useAuth();
   const [step, setStep] = useState<'category' | 'equipment' | 'exercise'>('category');
 
   const [name, setName] = useState('');
@@ -96,6 +98,7 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
           supabase
             .from('coaches')
             .select('id, full_name, email')
+            .eq('tenant_id', profile?.tenant_id ?? '')
             .order('full_name', { ascending: true }),
         ]);
 
@@ -322,7 +325,7 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
                   <option value="">— Χωρίς coach —</option>
                   {coaches.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {(c.full_name ?? 'Coach') + (c.email ? ` · ${c.email}` : '')}
+                      {(c.full_name ?? 'Coach')}
                     </option>
                   ))}
                 </select>

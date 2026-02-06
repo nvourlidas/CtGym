@@ -12,10 +12,12 @@ type MemberDetailsModalProps = {
     birth_date?: string | null;
     address?: string | null;
     afm?: string | null;
-    max_dropin_debt?: number | null; // κρατάω το όνομα όπως στη DB σου
+    max_dropin_debt?: number | null;
   };
   tenantId: string;
   onClose: () => void;
+  subscriptionInactive?: boolean;
+  onSubscriptionBlocked?: () => void;
 };
 
 type HistoryRow = {
@@ -66,10 +68,13 @@ function calculateAge(birthDateStr?: string | null): number | null {
   return age >= 0 ? age : null;
 }
 
+
 export default function MemberDetailsModal({
   member,
   tenantId,
   onClose,
+  subscriptionInactive,
+  onSubscriptionBlocked,
 }: MemberDetailsModalProps) {
   const [activeTab, setActiveTab] = useState<'details' | 'history' | 'economic'>('details');
 
@@ -97,6 +102,15 @@ export default function MemberDetailsModal({
   useEffect(() => {
     setHistoryPage(1);
   }, [historyFrom, historyTo, historyPageSize]);
+
+
+  const guard = () => {
+    if (subscriptionInactive) {
+      onSubscriptionBlocked?.();
+      return false;
+    }
+    return true;
+  };
 
 
 
@@ -293,6 +307,7 @@ export default function MemberDetailsModal({
 
   const triggerEconomicRefresh = () =>
     setEconomicRefreshKey((key) => key + 1);
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -575,7 +590,10 @@ export default function MemberDetailsModal({
                       {/* Membership Debt Card (clickable) */}
                       <button
                         type="button"
-                        onClick={() => setShowMembershipDebtModal(true)}
+                        onClick={() => {
+                          if (!guard()) return;
+                          setShowMembershipDebtModal(true);
+                        }}
                         className="text-left rounded-lg border border-white/10 bg-black/10 p-4 hover:border-primary/60 hover:bg-primary/5 transition cursor-pointer"
                       >
                         <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
@@ -592,7 +610,10 @@ export default function MemberDetailsModal({
                       {/* Drop-in Debt Card (clickable) */}
                       <button
                         type="button"
-                        onClick={() => setShowDropinDebtModal(true)}
+                        onClick={() => {
+                          if (!guard()) return;
+                          setShowDropinDebtModal(true);
+                        }}
                         className="text-left rounded-lg border border-white/10 bg-black/10 p-4 hover:border-primary/60 hover:bg-primary/5 transition cursor-pointer"
                       >
                         <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
@@ -672,6 +693,7 @@ export default function MemberDetailsModal({
           memberId={member.id}
           onClose={() => setShowMembershipDebtModal(false)}
           onUpdated={triggerEconomicRefresh}
+          guard={guard} 
         />
       )}
 
@@ -682,6 +704,7 @@ export default function MemberDetailsModal({
           memberId={member.id}
           onClose={() => setShowDropinDebtModal(false)}
           onUpdated={triggerEconomicRefresh}
+          guard={guard} 
         />
       )}
     </div>
@@ -695,11 +718,13 @@ function MembershipDebtModal({
   memberId,
   onClose,
   onUpdated,
+  guard,
 }: {
   tenantId: string;
   memberId: string;
   onClose: () => void;
   onUpdated: () => void;
+  guard?: () => boolean;
 }) {
   const [rows, setRows] = useState<MembershipDebtRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -748,6 +773,7 @@ function MembershipDebtModal({
   };
 
   const onSave = async () => {
+    if (guard && !guard()) return;
     setSaving(true);
     setError(null);
 
@@ -855,11 +881,13 @@ function DropinDebtModal({
   memberId,
   onClose,
   onUpdated,
+  guard,
 }: {
   tenantId: string;
   memberId: string;
   onClose: () => void;
   onUpdated: () => void;
+  guard?: () => boolean;
 }) {
   const [rows, setRows] = useState<(DropinDebtRow & { markPaid: boolean })[]>([]);
   const [loading, setLoading] = useState(true);
@@ -919,6 +947,7 @@ function DropinDebtModal({
   };
 
   const onSave = async () => {
+    if (guard && !guard()) return;
     setSaving(true);
     setError(null);
     try {

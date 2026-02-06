@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
+import SubscriptionRequiredModal from '../components/SubscriptionRequiredModal';
 
 type Category = {
   id: string;
@@ -11,8 +12,9 @@ type Category = {
 };
 
 export default function CategoriesPage() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
   const tenantId = profile?.tenant_id;
+  const [showSubModal, setShowSubModal] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,6 +23,9 @@ export default function CategoriesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
+
+  const subscriptionInactive = !subscription?.is_active;
+
 
   useEffect(() => {
     if (!tenantId) return;
@@ -47,6 +52,12 @@ export default function CategoriesPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
+
+    if (subscriptionInactive) {
+      setShowSubModal(true);
+      return;
+    }
+
     if (!name.trim() || !tenantId) return;
 
     setSaving(true);
@@ -93,9 +104,9 @@ export default function CategoriesPage() {
   const filtered = !q
     ? categories
     : categories.filter((c) =>
-        c.name.toLowerCase().includes(q.toLowerCase()) ||
-        (c.id ?? '').toLowerCase().includes(q.toLowerCase()),
-      );
+      c.name.toLowerCase().includes(q.toLowerCase()) ||
+      (c.id ?? '').toLowerCase().includes(q.toLowerCase()),
+    );
 
   return (
     <div className="p-6 space-y-6">
@@ -226,6 +237,11 @@ export default function CategoriesPage() {
           </tbody>
         </table>
       </div>
+
+      <SubscriptionRequiredModal
+        open={showSubModal}
+        onClose={() => setShowSubModal(false)}
+      />
     </div>
   );
 }

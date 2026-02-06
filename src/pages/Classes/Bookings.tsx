@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import type { LucideIcon } from 'lucide-react';
 import { Pencil, Trash2, Loader2, Plus } from 'lucide-react';
+import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
 
 type Member = { id: string; full_name: string | null };
 
@@ -65,7 +66,8 @@ function translateErrorMessage(raw: string): string {
 }
 
 export default function BookingsPage() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
+  const [showSubModal, setShowSubModal] = useState(false);
   const [rows, setRows] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -89,6 +91,17 @@ export default function BookingsPage() {
   // pagination
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+
+  const subscriptionInactive = !subscription?.is_active;
+
+  function requireActiveSubscription(action: () => void) {
+    if (subscriptionInactive) {
+      setShowSubModal(true);
+      return;
+    }
+    action();
+  }
 
   async function load() {
     if (!profile?.tenant_id) return;
@@ -147,18 +160,18 @@ export default function BookingsPage() {
           : null,
         session: b.class_sessions
           ? {
-              id: b.class_sessions.id,
-              starts_at: b.class_sessions.starts_at,
-              ends_at: b.class_sessions.ends_at,
-              capacity: b.class_sessions.capacity,
-              classes: b.class_sessions.classes
-                ? {
-                    id: b.class_sessions.classes.id,
-                    title: b.class_sessions.classes.title,
-                    class_categories: b.class_sessions.classes.class_categories ?? null,
-                  }
-                : null,
-            }
+            id: b.class_sessions.id,
+            starts_at: b.class_sessions.starts_at,
+            ends_at: b.class_sessions.ends_at,
+            capacity: b.class_sessions.capacity,
+            classes: b.class_sessions.classes
+              ? {
+                id: b.class_sessions.classes.id,
+                title: b.class_sessions.classes.title,
+                class_categories: b.class_sessions.classes.class_categories ?? null,
+              }
+              : null,
+          }
           : null,
       }));
       setRows(mapped);
@@ -316,7 +329,7 @@ export default function BookingsPage() {
 
         <button
           className="mt-1 sm:mt-0 h-9 w-full sm:w-auto rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white flex items-center justify-center gap-2 sm:ml-auto"
-          onClick={() => setShowCreate(true)}
+          onClick={() => requireActiveSubscription(() => setShowCreate(true))}
         >
           <Plus className="w-4 h-4" />
           <span>Νέα Κράτηση</span>
@@ -366,12 +379,19 @@ export default function BookingsPage() {
                         <IconButton
                           icon={Pencil}
                           label="Επεξεργασία κράτησης"
-                          onClick={() => setEditRow(b)}
+                          onClick={() => requireActiveSubscription(() => setEditRow(b))}
                         />
                         <DeleteButton
                           id={b.id}
                           onDeleted={load}
                           onError={handleError}
+                           guard={() => {
+                              if (subscriptionInactive) {
+                                setShowSubModal(true);
+                                return false;
+                              }
+                              return true;
+                            }}
                         />
                       </div>
                     </div>
@@ -522,12 +542,19 @@ export default function BookingsPage() {
                           <IconButton
                             icon={Pencil}
                             label="Επεξεργασία"
-                            onClick={() => setEditRow(b)}
+                            onClick={() => requireActiveSubscription(() => setEditRow(b))}
                           />
                           <DeleteButton
                             id={b.id}
                             onDeleted={load}
                             onError={handleError}
+                            guard={() => {
+                              if (subscriptionInactive) {
+                                setShowSubModal(true);
+                                return false;
+                              }
+                              return true;
+                            }}
                           />
                         </Td>
                       </tr>
@@ -619,6 +646,11 @@ export default function BookingsPage() {
           </div>
         </Modal>
       )}
+
+      <SubscriptionRequiredModal
+        open={showSubModal}
+        onClose={() => setShowSubModal(false)}
+      />
     </div>
   );
 }
@@ -662,13 +694,16 @@ function DeleteButton({
   id,
   onDeleted,
   onError,
+  guard
 }: {
   id: string;
   onDeleted: () => void;
   onError: (title: string, message: string) => void;
+  guard: () => boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const onClick = async () => {
+    if (guard && !guard()) return;
     if (
       !confirm(
         'Διαγραφή αυτής της κράτησης; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.',
@@ -885,9 +920,8 @@ function CreateBookingModal({
                   <button
                     key={m.id}
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
-                      m.id === userId ? 'bg-white/10' : ''
-                    }`}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${m.id === userId ? 'bg-white/10' : ''
+                      }`}
                     onClick={() => {
                       setUserId(m.id);
                       setMemberDropdownOpen(false);
@@ -958,9 +992,8 @@ function CreateBookingModal({
                   <button
                     key={s.id}
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-xs md:text-sm hover:bg-white/5 ${
-                      s.id === sessionId ? 'bg-white/10' : ''
-                    }`}
+                    className={`w-full px-3 py-2 text-left text-xs md:text-sm hover:bg-white/5 ${s.id === sessionId ? 'bg-white/10' : ''
+                      }`}
                     onClick={() => {
                       setSessionId(s.id);
                       setSessionDropdownOpen(false);

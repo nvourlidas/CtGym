@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
+import SubscriptionRequiredModal from '../components/SubscriptionRequiredModal';
 
 type Coach = {
   id: string;
@@ -14,8 +15,10 @@ type Coach = {
 };
 
 export default function CoachesPage() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
   const tenantId = profile?.tenant_id as string | undefined;
+
+  const [showSubModal, setShowSubModal] = useState(false);
 
   const [rows, setRows] = useState<Coach[]>([]);
   const [loading, setLoading] = useState(true);
@@ -81,6 +84,18 @@ export default function CoachesPage() {
   const startIdx = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const endIdx = Math.min(filtered.length, page * pageSize);
 
+
+  const subscriptionInactive = !subscription?.is_active;
+
+  function requireActiveSubscription(action: () => void) {
+    if (subscriptionInactive) {
+      setShowSubModal(true);
+      return;
+    }
+    action();
+  }
+
+
   return (
     <div className="p-6">
       {/* Header toolbar */}
@@ -93,7 +108,7 @@ export default function CoachesPage() {
         />
         <button
           className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white"
-          onClick={() => setShowCreate(true)}
+          onClick={() => requireActiveSubscription(() => setShowCreate(true))}
         >
           Νέος Προπονητής
         </button>
@@ -156,7 +171,7 @@ export default function CoachesPage() {
                   <Td className="text-right">
                     <button
                       className="px-2 py-1 text-sm rounded hover:bg-secondary/10"
-                      onClick={() => setEditRow(c)}
+                      onClick={() => requireActiveSubscription(() => setEditRow(c))}
                     >
                       Επεξεργασία
                     </button>
@@ -164,6 +179,13 @@ export default function CoachesPage() {
                       id={c.id}
                       tenantId={tenantId!}
                       onDeleted={load}
+                      guard={() => {
+                              if (subscriptionInactive) {
+                                setShowSubModal(true);
+                                return false;
+                              }
+                              return true;
+                            }}
                     />
                   </Td>
                 </tr>
@@ -241,6 +263,12 @@ export default function CoachesPage() {
           }}
         />
       )}
+
+
+      <SubscriptionRequiredModal
+        open={showSubModal}
+        onClose={() => setShowSubModal(false)}
+      />
     </div>
   );
 }
@@ -258,14 +286,17 @@ function DeleteCoachButton({
   id,
   tenantId,
   onDeleted,
+  guard,
 }: {
   id: string;
   tenantId: string;
   onDeleted: () => void;
+  guard: () => boolean;
 }) {
   const [busy, setBusy] = useState(false);
 
   const onClick = async () => {
+    if (guard && !guard()) return;
     if (!confirm('Διαγραφή αυτού του προπονητή; Αυτό δεν μπορεί να αναιρεθεί.')) return;
     setBusy(true);
     const { error } = await supabase

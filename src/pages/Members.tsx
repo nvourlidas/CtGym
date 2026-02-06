@@ -9,6 +9,7 @@ import '../styles/quill-dark.css';
 import DatePicker from 'react-datepicker';
 import { el } from 'date-fns/locale';
 import SendMemberPushModal from '../components/Members/SendMemberPushModal';
+import SubscriptionRequiredModal from '../components/SubscriptionRequiredModal';
 
 type Member = {
   id: string;
@@ -59,7 +60,8 @@ function parseISODateToLocal(dateStr: string | null | undefined): Date | null {
 
 
 export default function MembersPage() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
+  const [showSubModal, setShowSubModal] = useState(false);
   const [tenant, setTenant] = useState<TenantRow | null>(null);
   const [rows, setRows] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
@@ -247,6 +249,18 @@ export default function MembersPage() {
   }, [profile?.tenant_id]);
 
 
+
+  const subscriptionInactive = !subscription?.is_active;
+
+  function requireActiveSubscription(action: () => void) {
+    if (subscriptionInactive) {
+      setShowSubModal(true);
+      return;
+    }
+    action();
+  }
+
+
   const tenantNameFromProfile = tenant?.name ?? 'Cloudtec Gym';
 
 
@@ -261,24 +275,27 @@ export default function MembersPage() {
         />
         <button
           className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white"
-          onClick={() => setShowCreate(true)}
+          onClick={() => requireActiveSubscription(() => setShowCreate(true))}
         >
           Νέο Μέλος
         </button>
+
         <button
           className="h-9 rounded-md px-3 text-sm border border-white/15 text-text-primary hover:bg-secondary/30 disabled:opacity-40"
-          onClick={() => setShowEmailModal(true)}
+          onClick={() => requireActiveSubscription(() => setShowEmailModal(true))}
           disabled={rows.length === 0}
         >
           Αποστολή Email
         </button>
+
         <button
           className="h-9 rounded-md px-3 text-sm border border-white/15 text-text-primary hover:bg-secondary/30 disabled:opacity-40"
-          onClick={() => setShowPushModal(true)}
+          onClick={() => requireActiveSubscription(() => setShowPushModal(true))}
           disabled={rows.length === 0}
         >
           Αποστολή Push
         </button>
+
 
 
         {selectedIds.length > 0 && (
@@ -373,7 +390,7 @@ export default function MembersPage() {
                             : '—'}
                         </Td>
                         <Td>
-                          <Td>{formatDateDMY(m.created_at)}</Td>
+                          {formatDateDMY(m.created_at)}
                         </Td>
                         <Td className="text-right space-x-1 pr-3">
                           <IconButton
@@ -384,9 +401,19 @@ export default function MembersPage() {
                           <IconButton
                             icon={Pencil}
                             label="Επεξεργασία"
-                            onClick={() => setEditRow(m)}
+                            onClick={() => requireActiveSubscription(() => setEditRow(m))}
                           />
-                          <DeleteButton id={m.id} onDeleted={load} />
+                          <DeleteButton
+                            id={m.id}
+                            onDeleted={load}
+                            guard={() => {
+                              if (subscriptionInactive) {
+                                setShowSubModal(true);
+                                return false;
+                              }
+                              return true;
+                            }}
+                          />
                         </Td>
                       </tr>
                     );
@@ -445,9 +472,19 @@ export default function MembersPage() {
                       <IconButton
                         icon={Pencil}
                         label="Επεξεργασία"
-                        onClick={() => setEditRow(m)}
+                        onClick={() => requireActiveSubscription(() => setEditRow(m))}
                       />
-                      <DeleteButton id={m.id} onDeleted={load} />
+                      <DeleteButton
+                        id={m.id}
+                        onDeleted={load}
+                        guard={() => {
+                          if (subscriptionInactive) {
+                            setShowSubModal(true);
+                            return false;
+                          }
+                          return true;
+                        }}
+                      />
                     </div>
                   </div>
 
@@ -555,6 +592,8 @@ export default function MembersPage() {
           member={detailsMember}
           tenantId={profile.tenant_id}
           onClose={() => setDetailsMember(null)}
+          subscriptionInactive={subscriptionInactive}
+          onSubscriptionBlocked={() => setShowSubModal(true)}
         />
       )}
 
@@ -589,6 +628,10 @@ export default function MembersPage() {
         />
       )}
 
+      <SubscriptionRequiredModal
+        open={showSubModal}
+        onClose={() => setShowSubModal(false)}
+      />
 
     </div>
   );
@@ -604,13 +647,16 @@ function Td({ children, className = '' }: any) {
 function DeleteButton({
   id,
   onDeleted,
+  guard,
 }: {
   id: string;
   onDeleted: () => void;
+  guard?: () => boolean;
 }) {
   const [busy, setBusy] = useState(false);
 
   const onClick = async () => {
+    if (guard && !guard()) return; // ✅ subscription modal handled by parent
     if (
       !confirm(
         'Διαγραφή αυτού του μέλους; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.',
@@ -760,6 +806,7 @@ function CreateMemberModal({
         </button>
       </div>
     </Modal>
+
   );
 }
 

@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import { Pencil, Trash2, Loader2 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
 
 type Member = { id: string; full_name: string | null; email?: string | null };
 type Plan = {
@@ -42,7 +43,8 @@ type MembershipRow = {
 };
 
 export default function MembershipsPage() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
+  const [showSubModal, setShowSubModal] = useState(false);
   const [rows, setRows] = useState<MembershipRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -59,6 +61,17 @@ export default function MembershipsPage() {
   const [filterPlan, setFilterPlan] = useState<string>('');         // plan_id
   const [filterStatus, setFilterStatus] = useState<string>('');     // active/paused/...
   const [filterDebt, setFilterDebt] = useState<'all' | 'with' | 'without'>('all');
+
+
+  const subscriptionInactive = !subscription?.is_active;
+
+  function requireActiveSubscription(action: () => void) {
+    if (subscriptionInactive) {
+      setShowSubModal(true);
+      return;
+    }
+    action();
+  }
 
   async function load() {
     if (!profile?.tenant_id) return;
@@ -275,7 +288,7 @@ export default function MembershipsPage() {
 
         <button
           className="h-9 w-full sm:w-auto rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white sm:ml-auto"
-          onClick={() => setShowCreate(true)}
+          onClick={() => requireActiveSubscription(() => setShowCreate(true))}
         >
           Νέα Συνδρομή
         </button>
@@ -427,9 +440,17 @@ export default function MembershipsPage() {
                       <IconButton
                         icon={Pencil}
                         label="Επεξεργασία πλάνου"
-                        onClick={() => setEditRow(m)}
+                        onClick={() => requireActiveSubscription(() => setEditRow(m))}
                       />
-                      <DeleteButton id={m.id} onDeleted={load} />
+                      <DeleteButton id={m.id} onDeleted={load}
+                        guard={() => {
+                          if (subscriptionInactive) {
+                            setShowSubModal(true);
+                            return false;
+                          }
+                          return true;
+                        }}
+                      />
                     </div>
                   </div>
                 );
@@ -547,14 +568,22 @@ export default function MembershipsPage() {
                           })()}
                         </Td>
 
-                      <Td className="text-right space-x-1 pr-3">
-                        <IconButton
-                          icon={Pencil}
-                          label="Επεξεργασία πλάνου"
-                          onClick={() => setEditRow(m)}
-                        />
-                        <DeleteButton id={m.id} onDeleted={load} />
-                      </Td>
+                        <Td className="text-right space-x-1 pr-3">
+                          <IconButton
+                            icon={Pencil}
+                            label="Επεξεργασία πλάνου"
+                            onClick={() => requireActiveSubscription(() => setEditRow(m))}
+                          />
+                          <DeleteButton id={m.id} onDeleted={load}
+                            guard={() => {
+                              if (subscriptionInactive) {
+                                setShowSubModal(true);
+                                return false;
+                              }
+                              return true;
+                            }}
+                          />
+                        </Td>
                       </tr>
                     );
                   })}
@@ -624,6 +653,11 @@ export default function MembershipsPage() {
           onClose={() => { setEditRow(null); load(); }}
         />
       )}
+
+      <SubscriptionRequiredModal
+        open={showSubModal}
+        onClose={() => setShowSubModal(false)}
+      />
     </div>
   );
 }
@@ -675,10 +709,11 @@ function IconButton({
 }
 
 /* Delete button stays ίδιο */
-function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
+function DeleteButton({ id, onDeleted, guard }: { id: string; onDeleted: () => void; guard: () => boolean; }) {
   const [busy, setBusy] = useState(false);
 
   const onClick = async () => {
+     if (guard && !guard()) return;
     if (!confirm('Ειστε σίγουρος για τη διαγραφή συνδρομής;')) return;
     setBusy(true);
     const res = await supabase.functions.invoke('membership-delete', { body: { id } });
@@ -772,7 +807,7 @@ function getStatusDisplay(status?: string | null) {
 
 /* ── Create ───────────────────────────────────────────────────────────── */
 import DatePicker from 'react-datepicker';
-import {el} from 'date-fns/locale/el';
+import { el } from 'date-fns/locale/el';
 
 /* ...rest of your imports... */
 
@@ -955,9 +990,8 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
                   <button
                     key={m.id}
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
-                      m.id === userId ? 'bg-white/10' : ''
-                    }`}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${m.id === userId ? 'bg-white/10' : ''
+                      }`}
                     onClick={() => {
                       setUserId(m.id);
                       setMemberDropdownOpen(false);
@@ -1014,9 +1048,8 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
                   <button
                     key={p.id}
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
-                      p.id === planId ? 'bg-white/10' : ''
-                    }`}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${p.id === planId ? 'bg-white/10' : ''
+                      }`}
                     onClick={() => {
                       setPlanId(p.id);
                       setPlanDropdownOpen(false);

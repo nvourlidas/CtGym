@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import type { LucideIcon } from 'lucide-react';
 import { Pencil, Trash2, Loader2 } from 'lucide-react';
+import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
 
 type CoachRef = {
   id: string;
@@ -21,12 +22,12 @@ type GymClass = {
   member_drop_in_price: number | null;
   coach_id: string | null;
   class_categories?:
-    | {
-        id: string;
-        name: string;
-        color: string | null;
-      }
-    | null;
+  | {
+    id: string;
+    name: string;
+    color: string | null;
+  }
+  | null;
   coach?: CoachRef | null;
 };
 
@@ -42,7 +43,8 @@ type Coach = {
 };
 
 export default function ClassesPage() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
+  const [showSubModal, setShowSubModal] = useState(false);
   const [rows, setRows] = useState<GymClass[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -54,6 +56,19 @@ export default function ClassesPage() {
   // pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+
+  const subscriptionInactive = !subscription?.is_active;
+
+  function requireActiveSubscription(action: () => void) {
+    if (subscriptionInactive) {
+      setShowSubModal(true);
+      return;
+    }
+    action();
+  }
+
+
 
   async function load() {
     if (!profile?.tenant_id) return;
@@ -181,7 +196,7 @@ export default function ClassesPage() {
         />
         <button
           className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white"
-          onClick={() => setShowCreate(true)}
+          onClick={() => requireActiveSubscription(() => setShowCreate(true))}
         >
           Νέο Τμήμα
         </button>
@@ -279,9 +294,19 @@ export default function ClassesPage() {
                         <IconButton
                           icon={Pencil}
                           label="Επεξεργασία"
-                          onClick={() => setEditRow(c)}
+                          onClick={() => requireActiveSubscription(() => setEditRow(c))}
                         />
-                        <DeleteButton id={c.id} onDeleted={load} />
+                        <DeleteButton
+                          id={c.id}
+                          onDeleted={load}
+                          guard={() => {
+                            if (subscriptionInactive) {
+                              setShowSubModal(true);
+                              return false;
+                            }
+                            return true;
+                          }}
+                        />
                       </Td>
                     </tr>
                   ))}
@@ -323,9 +348,19 @@ export default function ClassesPage() {
                     <IconButton
                       icon={Pencil}
                       label="Επεξεργασία"
-                      onClick={() => setEditRow(c)}
+                      onClick={() => requireActiveSubscription(() => setEditRow(c))}
                     />
-                    <DeleteButton id={c.id} onDeleted={load} />
+                    <DeleteButton
+                      id={c.id}
+                      onDeleted={load}
+                      guard={() => {
+                        if (subscriptionInactive) {
+                          setShowSubModal(true);
+                          return false;
+                        }
+                        return true;
+                      }}
+                    />
                   </div>
                 </div>
 
@@ -446,6 +481,12 @@ export default function ClassesPage() {
           }}
         />
       )}
+
+
+      <SubscriptionRequiredModal
+        open={showSubModal}
+        onClose={() => setShowSubModal(false)}
+      />
     </div>
   );
 }
@@ -460,15 +501,20 @@ function Td({ children, className = '' }: any) {
 function DeleteButton({
   id,
   onDeleted,
+  guard,
 }: {
   id: string;
   onDeleted: () => void;
+  guard?: () => boolean; // ✅ return false to block
 }) {
   const [busy, setBusy] = useState(false);
 
   const onClick = async () => {
+    if (guard && !guard()) return; // ✅ subscription modal handled by parent
+
     if (!confirm('Διαγραφή αυτού του τμήματος; Αυτό δεν μπορεί να αναιρεθεί.'))
       return;
+
     setBusy(true);
     await supabase.functions.invoke('class-delete', { body: { id } });
     setBusy(false);
@@ -484,15 +530,12 @@ function DeleteButton({
       aria-label="Διαγραφή τμήματος"
       title="Διαγραφή τμήματος"
     >
-      {busy ? (
-        <Loader2 className="h-4 w-4 animate-spin" />
-      ) : (
-        <Trash2 className="h-4 w-4" />
-      )}
+      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
       <span className="sr-only">Διαγραφή</span>
     </button>
   );
 }
+
 
 function CreateClassModal({
   tenantId,

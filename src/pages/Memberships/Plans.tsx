@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import type { LucideIcon } from 'lucide-react';
 import { Pencil, Trash2, Plus, Loader2 } from 'lucide-react';
+import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
 
 type PlanKind = 'duration' | 'sessions' | 'hybrid';
 
@@ -26,7 +27,8 @@ type Plan = {
 };
 
 export default function Plans() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
+  const [showSubModal, setShowSubModal] = useState(false);
   const [rows, setRows] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
@@ -39,6 +41,18 @@ export default function Plans() {
   // pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+
+  const subscriptionInactive = !subscription?.is_active;
+
+  function requireActiveSubscription(action: () => void) {
+    if (subscriptionInactive) {
+      setShowSubModal(true);
+      return;
+    }
+    action();
+  }
+
 
   async function load() {
     if (!profile?.tenant_id) return;
@@ -173,7 +187,7 @@ export default function Plans() {
         />
         <button
           className="h-9 w-full sm:w-auto rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white flex items-center justify-center gap-2"
-          onClick={() => setShowCreate(true)}
+          onClick={() => requireActiveSubscription(() => setShowCreate(true))}
         >
           <Plus className="w-4 h-4" />
           <span>Νέο Πλάνο</span>
@@ -221,9 +235,17 @@ export default function Plans() {
                       <IconButton
                         icon={Pencil}
                         label="Επεξεργασία πλάνου"
-                        onClick={() => setEditRow(p)}
+                        onClick={() => requireActiveSubscription(() => setEditRow(p))}
                       />
-                      <DeleteButton id={p.id} onDeleted={load} />
+                      <DeleteButton id={p.id} onDeleted={load}
+                        guard={() => {
+                          if (subscriptionInactive) {
+                            setShowSubModal(true);
+                            return false;
+                          }
+                          return true;
+                        }}
+                      />
                     </div>
                   </div>
 
@@ -319,9 +341,17 @@ export default function Plans() {
                         <IconButton
                           icon={Pencil}
                           label="Επεξεργασία πλάνου"
-                          onClick={() => setEditRow(p)}
+                          onClick={() => requireActiveSubscription(() => setEditRow(p))}
                         />
-                        <DeleteButton id={p.id} onDeleted={load} />
+                        <DeleteButton id={p.id} onDeleted={load}
+                          guard={() => {
+                            if (subscriptionInactive) {
+                              setShowSubModal(true);
+                              return false;
+                            }
+                            return true;
+                          }}
+                        />
                       </Td>
                     </tr>
                   ))}
@@ -399,6 +429,12 @@ export default function Plans() {
           }}
         />
       )}
+
+
+      <SubscriptionRequiredModal
+        open={showSubModal}
+        onClose={() => setShowSubModal(false)}
+      />
     </div>
   );
 }
@@ -437,9 +473,10 @@ function IconButton({
   );
 }
 
-function DeleteButton({ id, onDeleted }: { id: string; onDeleted: () => void }) {
+function DeleteButton({ id, onDeleted, guard }: { id: string; onDeleted: () => void; guard: () => boolean; }) {
   const [busy, setBusy] = useState(false);
   const onClick = async () => {
+    if (guard && !guard()) return;
     if (
       !confirm(
         'Διαγραφή αυτού του πλάνου; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.',
