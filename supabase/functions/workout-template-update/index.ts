@@ -17,23 +17,48 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers":
-      reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": reqHdrs ||
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
 
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
   const headers = new Headers({ ...(init.headers || {}), ...buildCors(req) });
-  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json; charset=utf-8");
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json; charset=utf-8");
+  }
   return new Response(body, { ...init, headers });
+}
+
+async function assertTenantActive(admin: any, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_subscription_status")
+    .select("is_active, status, current_period_end, grace_until")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!data?.is_active) {
+    const err: any = new Error("SUBSCRIPTION_INACTIVE");
+    err.details = {
+      status: data?.status ?? null,
+      current_period_end: data?.current_period_end ?? null,
+      grace_until: data?.grace_until ?? null,
+    };
+    throw err;
+  }
 }
 
 const URL = Deno.env.get("SUPABASE_URL")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-type IncomingSet = { reps?: string | number | null; weight?: string | number | null };
+type IncomingSet = {
+  reps?: string | number | null;
+  weight?: string | number | null;
+};
 type IncomingItem = { wger_id: number; sets?: IncomingSet[] };
 
 function toIntOrNull(v: unknown): number | null {
@@ -79,23 +104,45 @@ async function getAuthContext(req: Request) {
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
   if (req.method !== "POST") {
-    return withCors(JSON.stringify({ error: "method_not_allowed" }), { status: 405 }, req);
+    return withCors(JSON.stringify({ error: "method_not_allowed" }), {
+      status: 405,
+    }, req);
   }
 
   const auth = await getAuthContext(req);
   if ((auth as any).error) {
-    return withCors(JSON.stringify({ error: (auth as any).error }), { status: 401 }, req);
+    return withCors(JSON.stringify({ error: (auth as any).error }), {
+      status: 401,
+    }, req);
   }
 
-  const { user, isAdmin, tenant_id } = auth as { user: any; isAdmin: boolean; tenant_id: string | null };
-  if (!isAdmin) return withCors(JSON.stringify({ error: "forbidden" }), { status: 403 }, req);
-  if (!tenant_id) return withCors(JSON.stringify({ error: "tenant_required" }), { status: 400 }, req);
+  const { user, isAdmin, tenant_id } = auth as {
+    user: any;
+    isAdmin: boolean;
+    tenant_id: string | null;
+  };
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+  if (!tenant_id) {
+    return withCors(JSON.stringify({ error: "tenant_required" }), {
+      status: 400,
+    }, req);
+  }
 
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return withCors(JSON.stringify({ error: "invalid_json" }), { status: 400 }, req);
+    return withCors(
+      JSON.stringify({ error: "invalid_json" }),
+      { status: 400 },
+      req,
+    );
   }
 
   const id = String(body?.id ?? "").trim();
@@ -104,13 +151,23 @@ serve(async (req) => {
   const coachRaw = body?.coach_id;
   const itemsRaw = body?.items;
 
-  if (!id) return withCors(JSON.stringify({ error: "id_required" }), { status: 400 }, req);
+  if (!id) {
+    return withCors(
+      JSON.stringify({ error: "id_required" }),
+      { status: 400 },
+      req,
+    );
+  }
 
   const patch: Record<string, any> = {};
 
   if (nameRaw !== undefined) {
     const name = String(nameRaw ?? "").trim();
-    if (!name) return withCors(JSON.stringify({ error: "name_required" }), { status: 400 }, req);
+    if (!name) {
+      return withCors(JSON.stringify({ error: "name_required" }), {
+        status: 400,
+      }, req);
+    }
     patch.name = name;
   }
 
@@ -128,22 +185,46 @@ serve(async (req) => {
   const items = (hasItems ? (itemsRaw ?? []) : []) as IncomingItem[];
 
   if (!hasItems && Object.keys(patch).length === 0) {
-    return withCors(JSON.stringify({ error: "no_changes" }), { status: 400 }, req);
+    return withCors(
+      JSON.stringify({ error: "no_changes" }),
+      { status: 400 },
+      req,
+    );
   }
 
   if (hasItems) {
     if (!Array.isArray(items) || items.length === 0) {
-      return withCors(JSON.stringify({ error: "items_required" }), { status: 400 }, req);
+      return withCors(JSON.stringify({ error: "items_required" }), {
+        status: 400,
+      }, req);
     }
     for (let i = 0; i < items.length; i++) {
       const wgerId = Number(items[i]?.wger_id);
       if (!Number.isFinite(wgerId) || wgerId <= 0) {
-        return withCors(JSON.stringify({ error: "invalid_item_wger_id", index: i }), { status: 400 }, req);
+        return withCors(
+          JSON.stringify({ error: "invalid_item_wger_id", index: i }),
+          { status: 400 },
+          req,
+        );
       }
     }
   }
 
   const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+
+  // ✅ subscription gate (service role bypasses RLS)
+  try {
+    await assertTenantActive(admin, tenant_id); // or tenant_id (same here)
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({
+        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+        details: e?.details ?? null,
+      }),
+      { status: 402 },
+      req,
+    );
+  }
 
   // ✅ Ensure template exists AND belongs to same tenant
   const { data: existing, error: exErr } = await admin
@@ -152,10 +233,24 @@ serve(async (req) => {
     .eq("id", id)
     .maybeSingle();
 
-  if (exErr) return withCors(JSON.stringify({ error: exErr.message }), { status: 400 }, req);
-  if (!existing) return withCors(JSON.stringify({ error: "not_found" }), { status: 404 }, req);
+  if (exErr) {
+    return withCors(
+      JSON.stringify({ error: exErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+  if (!existing) {
+    return withCors(
+      JSON.stringify({ error: "not_found" }),
+      { status: 404 },
+      req,
+    );
+  }
   if (existing.tenant_id !== tenant_id) {
-    return withCors(JSON.stringify({ error: "cross_tenant_forbidden" }), { status: 403 }, req);
+    return withCors(JSON.stringify({ error: "cross_tenant_forbidden" }), {
+      status: 403,
+    }, req);
   }
 
   // 1) Update header
@@ -165,19 +260,35 @@ serve(async (req) => {
       .from("workout_templates")
       .update(patch)
       .eq("id", id)
-      .select("id, tenant_id, created_by, coach_id, name, notes, created_at, updated_at")
+      .select(
+        "id, tenant_id, created_by, coach_id, name, notes, created_at, updated_at",
+      )
       .single();
 
-    if (uErr) return withCors(JSON.stringify({ error: uErr.message }), { status: 400 }, req);
+    if (uErr) {
+      return withCors(
+        JSON.stringify({ error: uErr.message }),
+        { status: 400 },
+        req,
+      );
+    }
     updatedTemplate = t;
   } else {
     const { data: t, error: tErr } = await admin
       .from("workout_templates")
-      .select("id, tenant_id, created_by, coach_id, name, notes, created_at, updated_at")
+      .select(
+        "id, tenant_id, created_by, coach_id, name, notes, created_at, updated_at",
+      )
       .eq("id", id)
       .single();
 
-    if (tErr) return withCors(JSON.stringify({ error: tErr.message }), { status: 400 }, req);
+    if (tErr) {
+      return withCors(
+        JSON.stringify({ error: tErr.message }),
+        { status: 400 },
+        req,
+      );
+    }
     updatedTemplate = t;
   }
 
@@ -192,7 +303,11 @@ serve(async (req) => {
       .delete()
       .eq("template_id", id);
 
-    if (delErr) return withCors(JSON.stringify({ error: delErr.message }), { status: 400 }, req);
+    if (delErr) {
+      return withCors(JSON.stringify({ error: delErr.message }), {
+        status: 400,
+      }, req);
+    }
 
     const exercisesPayload = items.map((it, idx) => ({
       template_id: id,
@@ -206,7 +321,11 @@ serve(async (req) => {
       .select("id, exercise_wger_id, sort_order");
 
     if (insErr || !insertedExercises) {
-      return withCors(JSON.stringify({ error: insErr?.message ?? "exercises_insert_failed" }), { status: 400 }, req);
+      return withCors(
+        JSON.stringify({ error: insErr?.message ?? "exercises_insert_failed" }),
+        { status: 400 },
+        req,
+      );
     }
 
     exCount = insertedExercises.length;
@@ -221,7 +340,9 @@ serve(async (req) => {
       const teId = exIdByWger.get(Number(it.wger_id));
       if (!teId) continue;
 
-      const sets = Array.isArray(it.sets) && it.sets.length ? it.sets : [{ reps: null, weight: null }];
+      const sets = Array.isArray(it.sets) && it.sets.length
+        ? it.sets
+        : [{ reps: null, weight: null }];
       for (let s = 0; s < sets.length; s++) {
         setsPayload.push({
           template_exercise_id: teId,
@@ -234,8 +355,14 @@ serve(async (req) => {
     }
 
     if (setsPayload.length > 0) {
-      const { error: sErr } = await admin.from("workout_template_sets").insert(setsPayload);
-      if (sErr) return withCors(JSON.stringify({ error: sErr.message }), { status: 400 }, req);
+      const { error: sErr } = await admin.from("workout_template_sets").insert(
+        setsPayload,
+      );
+      if (sErr) {
+        return withCors(JSON.stringify({ error: sErr.message }), {
+          status: 400,
+        }, req);
+      }
     }
 
     setCount = setsPayload.length;

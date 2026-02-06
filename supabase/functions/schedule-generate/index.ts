@@ -24,8 +24,8 @@ function buildCors(req: Request) {
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     // Echo requested headers for preflight
-    "Access-Control-Allow-Headers":
-      reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": reqHdrs ||
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -36,6 +36,26 @@ function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
     ...init,
     headers: { ...baseHeaders, ...buildCors(req) },
   });
+}
+
+async function assertTenantActive(admin: any, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_subscription_status")
+    .select("is_active, status, current_period_end, grace_until")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!data?.is_active) {
+    const err: any = new Error("SUBSCRIPTION_INACTIVE");
+    err.details = {
+      status: data?.status ?? null,
+      current_period_end: data?.current_period_end ?? null,
+      grace_until: data?.grace_until ?? null,
+    };
+    throw err;
+  }
 }
 
 serve(async (req) => {
@@ -63,7 +83,7 @@ serve(async (req) => {
       return withCors(
         JSON.stringify({ error: "unauthorized" }),
         { status: 401, headers: { "Content-Type": "application/json" } },
-        req
+        req,
       );
     }
 
@@ -76,17 +96,17 @@ serve(async (req) => {
       return withCors(
         JSON.stringify({ error: "profile_not_found" }),
         { status: 401, headers: { "Content-Type": "application/json" } },
-        req
+        req,
       );
     }
 
-    const isAdmin =
-      (prof as any).role === "admin" || user.app_metadata?.role === "admin";
+    const isAdmin = (prof as any).role === "admin" ||
+      user.app_metadata?.role === "admin";
     if (!isAdmin) {
       return withCors(
         JSON.stringify({ error: "forbidden" }),
         { status: 403, headers: { "Content-Type": "application/json" } },
-        req
+        req,
       );
     }
 
@@ -98,40 +118,63 @@ serve(async (req) => {
       return withCors(
         JSON.stringify({ error: "invalid_json" }),
         { status: 400, headers: { "Content-Type": "application/json" } },
-        req
+        req,
       );
     }
 
     const tenant_id: string = body?.tenant_id ?? (prof as any).tenant_id;
-    const from: string =
-      body?.from ?? new Date().toISOString().slice(0, 10);
-    const to: string =
-      body?.to ??
+
+    if (tenant_id !== (prof as any).tenant_id) {
+      return withCors(
+        JSON.stringify({ error: "tenant_mismatch" }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+        req,
+      );
+    }
+
+    const from: string = body?.from ?? new Date().toISOString().slice(0, 10);
+    const to: string = body?.to ??
       new Date(Date.now() + 28 * 24 * 3600 * 1000).toISOString().slice(0, 10); // next 4 weeks
 
-    const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+    const admin = createClient(URL, SERVICE, {
+      auth: { persistSession: false },
+    });
+
+    try {
+      await assertTenantActive(admin, tenant_id);
+    } catch (e: any) {
+      return withCors(
+        JSON.stringify({
+          error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+          details: e?.details ?? null,
+        }),
+        { status: 402, headers: { "Content-Type": "application/json" } },
+        req,
+      );
+    }
+
     const { data, error } = await admin.rpc(
       "generate_class_sessions_for_range",
-      { p_tenant_id: tenant_id, p_from: from, p_to: to }
+      { p_tenant_id: tenant_id, p_from: from, p_to: to },
     );
     if (error) {
       return withCors(
         JSON.stringify({ error: error.message }),
         { status: 400, headers: { "Content-Type": "application/json" } },
-        req
+        req,
       );
     }
 
     return withCors(
       JSON.stringify({ ok: true, created: data ?? 0 }),
       { status: 200, headers: { "Content-Type": "application/json" } },
-      req
+      req,
     );
   } catch (e: any) {
     return withCors(
       JSON.stringify({ error: e?.message ?? "internal_error" }),
       { status: 500, headers: { "Content-Type": "application/json" } },
-      req
+      req,
     );
   }
 });

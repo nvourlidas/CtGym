@@ -18,8 +18,8 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers":
-      reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": reqHdrs ||
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -29,6 +29,17 @@ function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
     ...init,
     headers: { ...(init.headers || {}), ...buildCors(req) },
   });
+}
+
+async function assertTenantActive(admin: any, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_subscription_status")
+    .select("is_active")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data?.is_active) throw new Error("SUBSCRIPTION_INACTIVE");
 }
 
 serve(async (req) => {
@@ -70,7 +81,10 @@ serve(async (req) => {
   }
 
   const url = Deno.env.get("SUPABASE_URL")!;
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const authHeader = req.headers.get("Authorization") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false },
   });
@@ -87,6 +101,78 @@ serve(async (req) => {
         req,
       );
     }
+  }
+
+  const anon = createClient(url, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false },
+  });
+
+  const { data: { user } } = await anon.auth.getUser();
+  if (!user) {
+    return withCors(
+      JSON.stringify({ error: "unauthorized" }),
+      { status: 401 },
+      req,
+    );
+  }
+
+  const { data: callerProf } = await anon
+    .from("profiles")
+    .select("tenant_id, role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (!callerProf) {
+    return withCors(JSON.stringify({ error: "profile_not_found" }), {
+      status: 401,
+    }, req);
+  }
+
+  const isAdmin = user.app_metadata?.role === "admin" ||
+    (callerProf as any).role === "admin";
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const callerTenantId = (callerProf as any).tenant_id as string;
+
+  // ensure target user belongs to caller tenant
+  const { data: targetProf, error: tErr } = await admin
+    .from("profiles")
+    .select("tenant_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (tErr) {
+    return withCors(
+      JSON.stringify({ error: tErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+  if (!targetProf) {
+    return withCors(JSON.stringify({ error: "target_profile_not_found" }), {
+      status: 404,
+    }, req);
+  }
+
+  if ((targetProf as any).tenant_id !== callerTenantId) {
+    return withCors(JSON.stringify({ error: "tenant_mismatch" }), {
+      status: 403,
+    }, req);
+  }
+
+  try {
+    await assertTenantActive(admin, callerTenantId);
+  } catch {
+    return withCors(JSON.stringify({ error: "SUBSCRIPTION_INACTIVE" }), {
+      status: 402,
+    }, req);
   }
 
   // Prepare profile updates

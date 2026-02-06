@@ -32,6 +32,26 @@ function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
   return new Response(body, { ...init, headers });
 }
 
+async function assertTenantActive(admin: any, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_subscription_status")
+    .select("is_active, status, current_period_end, grace_until")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!data?.is_active) {
+    const err: any = new Error("SUBSCRIPTION_INACTIVE");
+    err.details = {
+      status: data?.status ?? null,
+      current_period_end: data?.current_period_end ?? null,
+      grace_until: data?.grace_until ?? null,
+    };
+    throw err;
+  }
+}
+
 const URL = Deno.env.get("SUPABASE_URL")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -172,6 +192,20 @@ serve(async (req) => {
 
   const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
 
+  // ✅ subscription gate (service role bypasses RLS)
+  try {
+    await assertTenantActive(admin, tenant_id); // or tenant_id (same here)
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({
+        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+        details: e?.details ?? null,
+      }),
+      { status: 402 },
+      req,
+    );
+  }
+
   if (coach_id) {
     const { data: c, error: cErr } = await admin
       .from("coaches")
@@ -197,7 +231,7 @@ serve(async (req) => {
   const { data: template, error: tErr } = await admin
     .from("workout_templates")
     .insert({
-      tenant_id, 
+      tenant_id,
       created_by: user.id,
       coach_id: coach_id ?? null,
       name,

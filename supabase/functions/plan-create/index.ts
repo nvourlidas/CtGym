@@ -21,8 +21,8 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers":
-      reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": reqHdrs ||
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -32,6 +32,26 @@ function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
     ...init,
     headers: { ...(init.headers || {}), ...buildCors(req) },
   });
+}
+
+async function assertTenantActive(admin: any, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_subscription_status")
+    .select("is_active, status, current_period_end, grace_until")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!data?.is_active) {
+    const err: any = new Error("SUBSCRIPTION_INACTIVE");
+    err.details = {
+      status: data?.status ?? null,
+      current_period_end: data?.current_period_end ?? null,
+      grace_until: data?.grace_until ?? null,
+    };
+    throw err;
+  }
 }
 
 async function getAuth(req: Request) {
@@ -50,8 +70,8 @@ async function getAuth(req: Request) {
     .eq("id", user.id)
     .maybeSingle();
   if (!prof) return { error: "profile_not_found" };
-  const isAdmin =
-    user.app_metadata?.role === "admin" || (prof as any).role === "admin";
+  const isAdmin = user.app_metadata?.role === "admin" ||
+    (prof as any).role === "admin";
   return { tenantId: (prof as any).tenant_id as string, isAdmin };
 }
 
@@ -92,8 +112,9 @@ serve(async (req) => {
   const tenant_id = (body?.tenant_id ?? "").trim();
   const name = (body?.name ?? "").trim();
   const price = typeof body?.price === "number" ? body.price : null;
-  const description =
-    typeof body?.description === "string" ? body.description : null;
+  const description = typeof body?.description === "string"
+    ? body.description
+    : null;
   const plan_kind = String(body?.plan_kind ?? "duration").toLowerCase();
   const duration_days = Number.isFinite(body?.duration_days)
     ? Math.max(0, body.duration_days)
@@ -151,6 +172,20 @@ serve(async (req) => {
     auth: { persistSession: false },
   });
 
+  // ✅ subscription gate (service role bypasses RLS)
+  try {
+    await assertTenantActive(admin, tenantId);
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({
+        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+        details: e?.details ?? null,
+      }),
+      { status: 402 },
+      req,
+    );
+  }
+
   // If category_ids provided, validate they exist & belong to same tenant
   if (category_ids.length > 0) {
     const { data: cats, error: catErr } = await admin
@@ -160,7 +195,10 @@ serve(async (req) => {
 
     if (catErr) {
       return withCors(
-        JSON.stringify({ error: "invalid_category_ids", details: catErr.message }),
+        JSON.stringify({
+          error: "invalid_category_ids",
+          details: catErr.message,
+        }),
         { status: 400 },
         req,
       );

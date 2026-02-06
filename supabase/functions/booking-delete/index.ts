@@ -1,4 +1,3 @@
-// supabase/functions/booking-delete/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
@@ -42,7 +41,7 @@ async function getAuth(req: Request) {
   });
 
   const { data: { user } } = await anon.auth.getUser();
-  if (!user) return { error: "unauthorized" };
+  if (!user) return { error: "unauthorized" as const };
 
   const { data: prof } = await anon
     .from("profiles")
@@ -50,10 +49,31 @@ async function getAuth(req: Request) {
     .eq("id", user.id)
     .maybeSingle();
 
-  if (!prof) return { error: "profile_not_found" };
+  if (!prof) return { error: "profile_not_found" as const };
 
   const isAdmin = user.app_metadata?.role === "admin" || (prof as any).role === "admin";
   return { tenantId: (prof as any).tenant_id as string, isAdmin };
+}
+
+// ✅ subscription gate (service role bypasses RLS)
+async function assertTenantActive(admin: any, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_subscription_status")
+    .select("is_active, status, current_period_end, grace_until")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!data?.is_active) {
+    const err: any = new Error("SUBSCRIPTION_INACTIVE");
+    err.details = {
+      status: data?.status ?? null,
+      current_period_end: data?.current_period_end ?? null,
+      grace_until: data?.grace_until ?? null,
+    };
+    throw err;
+  }
 }
 
 serve(async (req) => {
@@ -94,13 +114,26 @@ serve(async (req) => {
     return withCors(JSON.stringify({ error: "tenant_mismatch" }), { status: 403 }, req);
   }
 
+  // ✅ subscription gate AFTER tenant mismatch check
+  try {
+    await assertTenantActive(admin, tenantId);
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({
+        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+        details: e?.details ?? null,
+      }),
+      { status: 402 },
+      req,
+    );
+  }
+
   // ✅ Call the DB function that restores remaining_sessions (+1) and deletes the booking
-const { data: refundedRows, error: rpcErr } = await admin.rpc(
-  "delete_booking_and_restore_session",
-  { p_booking_id: id },
-);
-if (rpcErr) return withCors(JSON.stringify({ error: rpcErr.message }), { status: 400 }, req);
+  const { data: refundedRows, error: rpcErr } = await admin.rpc(
+    "delete_booking_and_restore_session",
+    { p_booking_id: id },
+  );
+  if (rpcErr) return withCors(JSON.stringify({ error: rpcErr.message }), { status: 400 }, req);
 
-return withCors(JSON.stringify({ ok: true, refundedRows }), { status: 200 }, req);
-
+  return withCors(JSON.stringify({ ok: true, refundedRows }), { status: 200 }, req);
 });

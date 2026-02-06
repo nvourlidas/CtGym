@@ -17,8 +17,8 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers":
-      reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": reqHdrs ||
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -28,6 +28,26 @@ function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
     ...init,
     headers: { ...(init.headers || {}), ...buildCors(req) },
   });
+}
+
+async function assertTenantActive(admin: any, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_subscription_status")
+    .select("is_active, status, current_period_end, grace_until")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!data?.is_active) {
+    const err: any = new Error("SUBSCRIPTION_INACTIVE");
+    err.details = {
+      status: data?.status ?? null,
+      current_period_end: data?.current_period_end ?? null,
+      grace_until: data?.grace_until ?? null,
+    };
+    throw err;
+  }
 }
 
 const URL = Deno.env.get("SUPABASE_URL")!;
@@ -50,16 +70,18 @@ async function getAuth(req: Request) {
     .eq("id", user.id)
     .maybeSingle();
   if (!prof) return { error: "profile_not_found" };
-  const isAdmin =
-    user.app_metadata?.role === "admin" || (prof as any).role === "admin";
+  const isAdmin = user.app_metadata?.role === "admin" ||
+    (prof as any).role === "admin";
   return { tenantId: (prof as any).tenant_id as string, isAdmin };
 }
 
 serve(async (req) => {
-  if (req.method === "OPTIONS")
+  if (req.method === "OPTIONS") {
     return withCors(null, { status: 204 }, req);
-  if (req.method !== "POST")
+  }
+  if (req.method !== "POST") {
     return withCors("Method not allowed", { status: 405 }, req);
+  }
 
   const auth = await getAuth(req);
   if ((auth as any).error) {
@@ -96,8 +118,7 @@ serve(async (req) => {
   const class_id = (body?.class_id ?? "").trim();
   const starts_at = body?.starts_at ? new Date(body.starts_at) : null;
   const ends_at = body?.ends_at ? new Date(body.ends_at) : null;
-  const capacity =
-    typeof body?.capacity === "number" ? body.capacity : null;
+  const capacity = typeof body?.capacity === "number" ? body.capacity : null;
 
   // NEW: cancel_before_hours
   let cancel_before_hours: number | null = null;
@@ -138,6 +159,20 @@ serve(async (req) => {
   const admin = createClient(URL, SERVICE, {
     auth: { persistSession: false },
   });
+
+  // ✅ subscription gate (service role bypasses RLS)
+  try {
+    await assertTenantActive(admin, tenantId); // or tenant_id (same here)
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({
+        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+        details: e?.details ?? null,
+      }),
+      { status: 402 },
+      req,
+    );
+  }
 
   // verify session + tenant
   const { data: existing } = await admin

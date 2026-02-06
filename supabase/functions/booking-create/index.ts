@@ -97,6 +97,28 @@ serve(async (req) => {
     });
   }
 
+  type SB = ReturnType<typeof createClient>;
+
+  async function assertTenantActive(admin: any, tenantId: string) {
+    const { data, error } = await admin
+      .from("tenant_subscription_status")
+      .select("is_active, status, current_period_end, grace_until")
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+
+    if (!data?.is_active) {
+      const err: any = new Error("SUBSCRIPTION_INACTIVE");
+      err.details = {
+        status: data?.status ?? null,
+        current_period_end: data?.current_period_end ?? null,
+        grace_until: data?.grace_until ?? null,
+      };
+      throw err;
+    }
+  }
+
   // Non-admins can only book for themselves
   if (!isAdmin) {
     user_id = user.id;
@@ -132,6 +154,20 @@ serve(async (req) => {
   const admin = createClient(URL, SERVICE, {
     auth: { persistSession: false },
   });
+
+  // ✅ Subscription gate (service role bypasses RLS, so we must enforce here)
+  try {
+    await assertTenantActive(admin, tenant_id);
+  } catch (e: any) {
+    return withCors(
+      req,
+      JSON.stringify({
+        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+        details: e?.details ?? null,
+      }),
+      { status: 402 },
+    );
+  }
 
   // load session
   const { data: session, error: sErr } = await admin
@@ -307,22 +343,21 @@ serve(async (req) => {
   }
 
   // create booking
-const insertData: any = {
-  tenant_id,
-  session_id,
-  user_id,
-  status: "booked",
-  booking_type: finalType,
-};
+  const insertData: any = {
+    tenant_id,
+    session_id,
+    user_id,
+    status: "booked",
+    booking_type: finalType,
+  };
 
-if (finalType === "membership" && chosenMembership?.id) {
-  insertData.membership_id = chosenMembership.id; // ✅ this is what was missing
-}
+  if (finalType === "membership" && chosenMembership?.id) {
+    insertData.membership_id = chosenMembership.id; // ✅ this is what was missing
+  }
 
-if (finalType === "drop_in") {
-  insertData.drop_in_price = cls.drop_in_price ?? null;
-}
-
+  if (finalType === "drop_in") {
+    insertData.drop_in_price = cls.drop_in_price ?? null;
+  }
 
   const { data: created, error: insErr } = await admin
     .from("bookings")
@@ -338,19 +373,25 @@ if (finalType === "drop_in") {
   }
 
   // ✅ consume 1 session immediately (and store membership_id on this booking)
-if (finalType === "membership" && chosenMembership?.plan_kind === "sessions") {
-  const { error: consumeErr } = await admin.rpc("consume_membership_session", {
-    p_tenant_id: tenant_id,
-    p_user_id: user_id,
-    p_booking_id: created.id,
-  });
+  if (
+    finalType === "membership" && chosenMembership?.plan_kind === "sessions"
+  ) {
+    const { error: consumeErr } = await admin.rpc(
+      "consume_membership_session",
+      {
+        p_tenant_id: tenant_id,
+        p_user_id: user_id,
+        p_booking_id: created.id,
+      },
+    );
 
-  if (consumeErr) {
-    await admin.from("bookings").delete().eq("id", created.id);
-    return withCors(req, JSON.stringify({ error: consumeErr.message }), { status: 409 });
+    if (consumeErr) {
+      await admin.from("bookings").delete().eq("id", created.id);
+      return withCors(req, JSON.stringify({ error: consumeErr.message }), {
+        status: 409,
+      });
+    }
   }
-}
-
 
   return withCors(
     req,

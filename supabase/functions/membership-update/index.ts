@@ -29,6 +29,27 @@ function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
     headers: { ...(init.headers || {}), ...buildCors(req) },
   });
 }
+
+async function assertTenantActive(admin: any, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_subscription_status")
+    .select("is_active, status, current_period_end, grace_until")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!data?.is_active) {
+    const err: any = new Error("SUBSCRIPTION_INACTIVE");
+    err.details = {
+      status: data?.status ?? null,
+      current_period_end: data?.current_period_end ?? null,
+      grace_until: data?.grace_until ?? null,
+    };
+    throw err;
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 
 const URL = Deno.env.get("SUPABASE_URL")!;
@@ -96,6 +117,20 @@ serve(async (req) => {
   }
 
   const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+
+  // ✅ subscription gate (service role bypasses RLS)
+  try {
+    await assertTenantActive(admin, tenantId);
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({
+        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+        details: e?.details ?? null,
+      }),
+      { status: 402 },
+      req,
+    );
+  }
 
   // Load existing membership
   const { data: existing, error: exErr } = await admin
@@ -185,7 +220,7 @@ serve(async (req) => {
   if (planChanged) {
     const newPlanId = bodyPlanId!;
     const endsProvided = Object.prototype.hasOwnProperty.call(body, "ends_at");
-    
+
     const { data: plan, error: planErr } = await admin
       .from("membership_plans")
       .select(

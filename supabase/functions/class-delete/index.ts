@@ -17,12 +17,16 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": reqHdrs ||
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
-  return new Response(body, { ...init, headers: { ...(init.headers || {}), ...buildCors(req) } });
+  return new Response(body, {
+    ...init,
+    headers: { ...(init.headers || {}), ...buildCors(req) },
+  });
 }
 
 const URL = Deno.env.get("SUPABASE_URL")!;
@@ -31,7 +35,10 @@ const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 async function getAuthContext(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
-  const supa = createClient(URL, ANON, { global: { headers: { Authorization: authHeader } }, auth: { persistSession: false } });
+  const supa = createClient(URL, ANON, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false },
+  });
   const { data: { user } } = await supa.auth.getUser();
   if (!user) return { error: "unauthorized" };
 
@@ -46,20 +53,66 @@ async function getAuthContext(req: Request) {
   return { tenantId: prof.tenant_id as string, isAdmin };
 }
 
+async function assertTenantActive(admin: any, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_subscription_status")
+    .select("is_active, status, current_period_end, grace_until")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!data?.is_active) {
+    const err: any = new Error("SUBSCRIPTION_INACTIVE");
+    err.details = {
+      status: data?.status ?? null,
+      current_period_end: data?.current_period_end ?? null,
+      grace_until: data?.grace_until ?? null,
+    };
+    throw err;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
-  if (req.method !== "POST") return withCors("Method not allowed", { status: 405 }, req);
+  if (req.method !== "POST") {
+    return withCors("Method not allowed", { status: 405 }, req);
+  }
 
   const auth = await getAuthContext(req);
-  if ((auth as any).error) return withCors(JSON.stringify({ error: (auth as any).error }), { status: 401 }, req);
+  if ((auth as any).error) {
+    return withCors(JSON.stringify({ error: (auth as any).error }), {
+      status: 401,
+    }, req);
+  }
   const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
-  if (!isAdmin) return withCors(JSON.stringify({ error: "forbidden" }), { status: 403 }, req);
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
 
   let body: any;
-  try { body = await req.json(); } catch { return withCors(JSON.stringify({ error: "invalid_json" }), { status: 400 }, req); }
+  try {
+    body = await req.json();
+  } catch {
+    return withCors(
+      JSON.stringify({ error: "invalid_json" }),
+      { status: 400 },
+      req,
+    );
+  }
 
   const id = (body?.id ?? "").trim();
-  if (!id) return withCors(JSON.stringify({ error: "id_required" }), { status: 400 }, req);
+  if (!id) {
+    return withCors(
+      JSON.stringify({ error: "id_required" }),
+      { status: 400 },
+      req,
+    );
+  }
 
   // ✅ Use SERVICE for verification, then enforce tenant check
   const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
@@ -68,13 +121,49 @@ serve(async (req) => {
     .select("id, tenant_id")
     .eq("id", id)
     .maybeSingle();
-  if (fErr) return withCors(JSON.stringify({ error: fErr.message }), { status: 400 }, req);
-  if (!existing) return withCors(JSON.stringify({ error: "not_found" }), { status: 404 }, req);
-  if (existing.tenant_id !== tenantId) return withCors(JSON.stringify({ error: "tenant_mismatch" }), { status: 403 }, req);
+  if (fErr) {
+    return withCors(
+      JSON.stringify({ error: fErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+  if (!existing) {
+    return withCors(
+      JSON.stringify({ error: "not_found" }),
+      { status: 404 },
+      req,
+    );
+  }
+  if (existing.tenant_id !== tenantId) {
+    return withCors(JSON.stringify({ error: "tenant_mismatch" }), {
+      status: 403,
+    }, req);
+  }
+
+  // ✅ subscription gate (service role bypasses RLS)
+  try {
+    await assertTenantActive(admin, tenantId);
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({
+        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+        details: e?.details ?? null,
+      }),
+      { status: 402 },
+      req,
+    );
+  }
 
   // If desired, ensure FK ON DELETE CASCADE on class_sessions
   const { error } = await admin.from("classes").delete().eq("id", id);
-  if (error) return withCors(JSON.stringify({ error: error.message }), { status: 400 }, req);
+  if (error) {
+    return withCors(
+      JSON.stringify({ error: error.message }),
+      { status: 400 },
+      req,
+    );
+  }
 
   return withCors(JSON.stringify({ ok: true }), { status: 200 }, req);
 });

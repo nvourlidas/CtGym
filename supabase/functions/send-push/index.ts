@@ -22,8 +22,8 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers":
-      reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": reqHdrs ||
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -33,6 +33,26 @@ function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
     ...init,
     headers: { ...(init.headers || {}), ...buildCors(req) },
   });
+}
+
+async function assertTenantActive(admin: any, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_subscription_status")
+    .select("is_active, status, current_period_end, grace_until")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!data?.is_active) {
+    const err: any = new Error("SUBSCRIPTION_INACTIVE");
+    err.details = {
+      status: data?.status ?? null,
+      current_period_end: data?.current_period_end ?? null,
+      grace_until: data?.grace_until ?? null,
+    };
+    throw err;
+  }
 }
 
 async function getAuth(req: Request) {
@@ -56,8 +76,8 @@ async function getAuth(req: Request) {
 
   if (!prof) return { error: "profile_not_found" };
 
-  const isAdmin =
-    user.app_metadata?.role === "admin" || (prof as any).role === "admin";
+  const isAdmin = user.app_metadata?.role === "admin" ||
+    (prof as any).role === "admin";
 
   return { tenantId: (prof as any).tenant_id as string, isAdmin };
 }
@@ -93,11 +113,10 @@ async function resolveRecipientUserIds(
 
   if (error) throw error;
 
-  const ids =
-    (data ?? [])
-      .filter((r: any) => (r?.role ?? "") !== "admin") // exclude admins
-      .map((r: any) => r.id as string)
-      .filter((id: any) => typeof id === "string" && id.length > 0) ?? [];
+  const ids = (data ?? [])
+    .filter((r: any) => (r?.role ?? "") !== "admin") // exclude admins
+    .map((r: any) => r.id as string)
+    .filter((id: any) => typeof id === "string" && id.length > 0) ?? [];
 
   return uniq(ids);
 }
@@ -163,22 +182,34 @@ serve(async (req) => {
   const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
 
   if (!isAdmin) {
-    return withCors(JSON.stringify({ error: "forbidden" }), { status: 403 }, req);
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
   }
 
   let body: SendPushPayload;
   try {
     body = (await req.json()) as SendPushPayload;
   } catch {
-    return withCors(JSON.stringify({ error: "invalid_json" }), { status: 400 }, req);
+    return withCors(
+      JSON.stringify({ error: "invalid_json" }),
+      { status: 400 },
+      req,
+    );
   }
 
   const tenant_id = (body.tenant_id ?? "").trim();
   if (!tenant_id) {
-    return withCors(JSON.stringify({ error: "missing_tenant_id" }), { status: 400 }, req);
+    return withCors(JSON.stringify({ error: "missing_tenant_id" }), {
+      status: 400,
+    }, req);
   }
   if (tenant_id !== tenantId) {
-    return withCors(JSON.stringify({ error: "tenant_mismatch" }), { status: 403 }, req);
+    return withCors(JSON.stringify({ error: "tenant_mismatch" }), {
+      status: 403,
+    }, req);
   }
 
   const title = (body.title ?? "").trim();
@@ -210,6 +241,20 @@ serve(async (req) => {
     auth: { persistSession: false },
   });
 
+  // ✅ subscription gate (service role bypasses RLS)
+  try {
+    await assertTenantActive(admin, tenant_id);
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({
+        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+        details: e?.details ?? null,
+      }),
+      { status: 402 },
+      req,
+    );
+  }
+
   // ✅ Resolve recipients first (for inbox)
   let recipientUserIds: string[] = [];
   try {
@@ -221,7 +266,10 @@ serve(async (req) => {
     );
   } catch (e: any) {
     return withCors(
-      JSON.stringify({ error: "recipient_resolve_failed", details: e?.message ?? String(e) }),
+      JSON.stringify({
+        error: "recipient_resolve_failed",
+        details: e?.message ?? String(e),
+      }),
       { status: 500 },
       req,
     );
@@ -242,7 +290,10 @@ serve(async (req) => {
     inserted = res.inserted;
   } catch (e: any) {
     return withCors(
-      JSON.stringify({ error: "inbox_insert_failed", details: e?.message ?? String(e) }),
+      JSON.stringify({
+        error: "inbox_insert_failed",
+        details: e?.message ?? String(e),
+      }),
       { status: 500 },
       req,
     );

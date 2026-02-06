@@ -18,8 +18,8 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers":
-      reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": reqHdrs ||
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -29,6 +29,27 @@ function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
     headers: { ...(init.headers || {}), ...buildCors(req) },
   });
 }
+
+async function assertTenantActive(admin: any, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_subscription_status")
+    .select("is_active, status, current_period_end, grace_until")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!data?.is_active) {
+    const err: any = new Error("SUBSCRIPTION_INACTIVE");
+    err.details = {
+      status: data?.status ?? null,
+      current_period_end: data?.current_period_end ?? null,
+      grace_until: data?.grace_until ?? null,
+    };
+    throw err;
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 
 const URL = Deno.env.get("SUPABASE_URL")!;
@@ -54,8 +75,8 @@ async function getAuth(req: Request) {
     .maybeSingle();
 
   if (!prof) return { error: "profile_not_found" };
-  const isAdmin =
-    user.app_metadata?.role === "admin" || (prof as any).role === "admin";
+  const isAdmin = user.app_metadata?.role === "admin" ||
+    (prof as any).role === "admin";
   return { tenantId: (prof as any).tenant_id as string, isAdmin };
 }
 
@@ -73,7 +94,11 @@ serve(async (req) => {
   }
   const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
   if (!isAdmin) {
-    return withCors(JSON.stringify({ error: "forbidden" }), { status: 403 }, req);
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
   }
 
   let body: any;
@@ -93,14 +118,16 @@ serve(async (req) => {
   const starts_at = body?.starts_at ? new Date(body.starts_at) : new Date();
 
   // debt (όπως πριν)
-  const debt =
-    typeof body?.debt === "number" && Number.isFinite(body.debt)
-      ? Math.max(0, body.debt)
-      : 0;
+  const debt = typeof body?.debt === "number" && Number.isFinite(body.debt)
+    ? Math.max(0, body.debt)
+    : 0;
 
   // NEW: custom_price (optional)
   let custom_price: number | null = null;
-  if (body?.custom_price !== undefined && body.custom_price !== null && body.custom_price !== "") {
+  if (
+    body?.custom_price !== undefined && body.custom_price !== null &&
+    body.custom_price !== ""
+  ) {
     const parsed = Number(body.custom_price);
     if (!Number.isFinite(parsed) || parsed < 0) {
       return withCors(
@@ -115,7 +142,8 @@ serve(async (req) => {
   // NEW: discount_reason (optional)
   const discount_reason_raw = body?.discount_reason;
   const discount_reason =
-    typeof discount_reason_raw === "string" && discount_reason_raw.trim().length > 0
+    typeof discount_reason_raw === "string" &&
+      discount_reason_raw.trim().length > 0
       ? discount_reason_raw.trim()
       : null;
 
@@ -131,6 +159,20 @@ serve(async (req) => {
   }
 
   const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+
+  // ✅ subscription gate (service role bypasses RLS)
+  try {
+    await assertTenantActive(admin, tenantId);
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({
+        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+        details: e?.details ?? null,
+      }),
+      { status: 402 },
+      req,
+    );
+  }
 
   // Load plan and validate tenant
   const { data: plan, error: planErr } = await admin
@@ -162,10 +204,9 @@ serve(async (req) => {
     ends_at = end.toISOString();
   }
 
-  const remaining_sessions =
-    plan.session_credits && plan.session_credits > 0
-      ? Number(plan.session_credits)
-      : null;
+  const remaining_sessions = plan.session_credits && plan.session_credits > 0
+    ? Number(plan.session_credits)
+    : null;
 
   // days_remaining based on ends_at and "today"
   let days_remaining: number | null = null;
@@ -200,8 +241,8 @@ serve(async (req) => {
       remaining_sessions,
       plan_kind: plan.plan_kind,
       plan_name: plan.name,
-      plan_price: plan.price,    // κανονική τιμή πλάνου
-      custom_price,              // τελική τιμή για αυτό το μέλος (αν υπάρχει)
+      plan_price: plan.price, // κανονική τιμή πλάνου
+      custom_price, // τελική τιμή για αυτό το μέλος (αν υπάρχει)
       discount_reason,
       days_remaining,
       debt,

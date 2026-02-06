@@ -23,8 +23,8 @@ function buildCors(req: Request) {
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
     // Echo requested headers to satisfy browsers’ preflight
-    "Access-Control-Allow-Headers":
-      reqHdrs || "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers": reqHdrs ||
+      "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -35,6 +35,26 @@ function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
     ...init,
     headers: { ...(init.headers || {}), ...buildCors(req) },
   });
+}
+
+async function assertTenantActive(admin: any, tenantId: string) {
+  const { data, error } = await admin
+    .from("tenant_subscription_status")
+    .select("is_active, status, current_period_end, grace_until")
+    .eq("tenant_id", tenantId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  if (!data?.is_active) {
+    const err: any = new Error("SUBSCRIPTION_INACTIVE");
+    err.details = {
+      status: data?.status ?? null,
+      current_period_end: data?.current_period_end ?? null,
+      grace_until: data?.grace_until ?? null,
+    };
+    throw err;
+  }
 }
 
 serve(async (req) => {
@@ -87,6 +107,20 @@ serve(async (req) => {
     auth: { persistSession: false },
   });
 
+  // ✅ subscription gate (service role bypasses RLS)
+  try {
+    await assertTenantActive(admin, String(tenant_id));
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({
+        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+        details: e?.details ?? null,
+      }),
+      { status: 402 },
+      req,
+    );
+  }
+
   // 5) Create auth user
   const { data: created, error: createErr } = await admin.auth.admin.createUser(
     {
@@ -116,7 +150,10 @@ serve(async (req) => {
 
   // ensure numeric or null for max_dropin_debt
   let maxDropinValue: number | null = null;
-  if (max_dropin_debt !== undefined && max_dropin_debt !== null && max_dropin_debt !== "") {
+  if (
+    max_dropin_debt !== undefined && max_dropin_debt !== null &&
+    max_dropin_debt !== ""
+  ) {
     const n = Number(max_dropin_debt);
     maxDropinValue = Number.isFinite(n) ? n : null;
   }
