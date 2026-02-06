@@ -331,7 +331,7 @@ export function CalendarMonth({
                   return (
                     <div
                       key={idx}
-                      className={`min-h-[80px] sm:min-h-[90px] bg-secondary-background/60 p-2 relative ${
+                      className={`min-h-20 sm:min-h-22.5 bg-secondary-background/60 p-2 relative ${
                         isOtherMonth ? 'opacity-60' : ''
                       }`}
                     >

@@ -15,7 +15,7 @@ export function MobilePreview({ theme }: { theme: Theme }) {
     <div className="mt-2 flex justify-center">
       {/* “Device” frame */}
       <div
-        className="w-[320px] h-[640px] rounded-[36px] border border-gray-700 shadow-xl overflow-hidden relative"
+        className="w-[320px] h-160 rounded-[36px] border border-gray-700 shadow-xl overflow-hidden relative"
         style={{ backgroundColor: theme.bg_color }}
       >
         {/* top status bar */}

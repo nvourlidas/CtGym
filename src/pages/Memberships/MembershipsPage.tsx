@@ -771,14 +771,18 @@ function getStatusDisplay(status?: string | null) {
 }
 
 /* ── Create ───────────────────────────────────────────────────────────── */
+import DatePicker from 'react-datepicker';
+import {el} from 'date-fns/locale/el';
+
+/* ...rest of your imports... */
+
 function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClose: () => void }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [userId, setUserId] = useState('');
   const [planId, setPlanId] = useState('');
-  const [startsAt, setStartsAt] = useState(() =>
-    new Date().toISOString().slice(0, 10),
-  ); // yyyy-mm-dd
+
+  const [startsAt, setStartsAt] = useState<Date | null>(new Date()); // ✅ DatePicker
   const [debt, setDebt] = useState<number>(0);
   const [customPrice, setCustomPrice] = useState<number | null>(null);
   const [discountReason, setDiscountReason] = useState<string>('');
@@ -807,9 +811,7 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
 
       const { data: p } = await supabase
         .from('membership_plans')
-        .select(
-          'id, name, plan_kind, duration_days, session_credits, price',
-        )
+        .select('id, name, plan_kind, duration_days, session_credits, price')
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
 
@@ -851,9 +853,7 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
       const name = (m.full_name ?? '').toLowerCase();
       const id = m.id.toLowerCase();
       const email = (m.email ?? '').toLowerCase();
-      return (
-        name.includes(needle) || id.includes(needle) || email.includes(needle)
-      );
+      return name.includes(needle) || id.includes(needle) || email.includes(needle);
     });
   }, [members, memberSearch]);
 
@@ -876,23 +876,13 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
     });
   }, [plans, planSearch]);
 
-  const selectedPlan = useMemo(
-    () => plans.find((p) => p.id === planId) ?? null,
-    [plans, planId],
-  );
+  const selectedPlan = useMemo(() => plans.find((p) => p.id === planId) ?? null, [plans, planId]);
 
   const basePrice = selectedPlan?.price ?? null;
-  const effectivePrice =
-    customPrice != null
-      ? customPrice
-      : basePrice != null
-        ? basePrice
-        : null;
+  const effectivePrice = customPrice != null ? customPrice : basePrice != null ? basePrice : null;
 
   const discount =
-    basePrice != null && effectivePrice != null
-      ? basePrice - effectivePrice
-      : null;
+    basePrice != null && effectivePrice != null ? basePrice - effectivePrice : null;
 
   const planLabel = (p: Plan) => {
     const parts: string[] = [];
@@ -910,7 +900,7 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
         tenant_id: tenantId,
         user_id: userId,
         plan_id: planId,
-        starts_at: startsAt,
+        starts_at: startsAt ? dateToISODate(startsAt) : null, // ✅ same payload format
         debt: Number.isFinite(debt) ? debt : 0,
         custom_price: customPrice,
         discount_reason: discountReason || null,
@@ -949,7 +939,7 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
               <div className="p-2 border-b border-white/10">
                 <input
                   autoFocus
-                  className="input !h-9 !text-sm"
+                  className="input h-9! text-sm!"
                   placeholder="Αναζήτηση μέλους (όνομα, email)…"
                   value={memberSearch}
                   onChange={(e) => setMemberSearch(e.target.value)}
@@ -965,8 +955,9 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
                   <button
                     key={m.id}
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${m.id === userId ? 'bg-white/10' : ''
-                      }`}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
+                      m.id === userId ? 'bg-white/10' : ''
+                    }`}
                     onClick={() => {
                       setUserId(m.id);
                       setMemberDropdownOpen(false);
@@ -996,9 +987,7 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
             className="input flex items-center justify-between"
             onClick={() => setPlanDropdownOpen((v) => !v)}
           >
-            <span>
-              {selectedPlan ? planLabel(selectedPlan) : '— επιλογή πλάνου —'}
-            </span>
+            <span>{selectedPlan ? planLabel(selectedPlan) : '— επιλογή πλάνου —'}</span>
             <span className="ml-2 text-xs opacity-70">
               {planDropdownOpen ? '▲' : '▼'}
             </span>
@@ -1009,7 +998,7 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
               <div className="p-2 border-b border-white/10">
                 <input
                   autoFocus
-                  className="input !h-9 !text-sm"
+                  className="input h-9! text-sm!"
                   placeholder="Αναζήτηση πλάνου…"
                   value={planSearch}
                   onChange={(e) => setPlanSearch(e.target.value)}
@@ -1025,8 +1014,9 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
                   <button
                     key={p.id}
                     type="button"
-                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${p.id === planId ? 'bg-white/10' : ''
-                      }`}
+                    className={`w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
+                      p.id === planId ? 'bg-white/10' : ''
+                    }`}
                     onClick={() => {
                       setPlanId(p.id);
                       setPlanDropdownOpen(false);
@@ -1045,16 +1035,14 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
         <FormRow label="Τελική τιμή για αυτό το μέλος (€)">
           <div className="flex flex-col gap-1 text-sm">
             <input
-              className="input max-w-[160px]"
+              className="input max-w-40"
               type="number"
               min={0}
               step="0.50"
               value={customPrice ?? ''}
               placeholder={basePrice.toString()}
               onChange={(e) =>
-                setCustomPrice(
-                  e.target.value === '' ? null : Number(e.target.value),
-                )
+                setCustomPrice(e.target.value === '' ? null : Number(e.target.value))
               }
             />
             <div className="text-xs text-text-secondary">
@@ -1062,13 +1050,9 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
               {effectivePrice != null && discount != null && discount !== 0 && (
                 <>
                   {' · Τελική: '}
-                  <span className="text-emerald-300">
-                    {formatMoney(effectivePrice)}
-                  </span>
+                  <span className="text-emerald-300">{formatMoney(effectivePrice)}</span>
                   {' · Έκπτωση: '}
-                  <span className="text-amber-300">
-                    {formatMoney(discount)}
-                  </span>
+                  <span className="text-amber-300">{formatMoney(discount)}</span>
                 </>
               )}
             </div>
@@ -1085,14 +1069,24 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
         />
       </FormRow>
 
+      {/* ✅ DatePicker for startsAt */}
       <FormRow label="Έναρξη">
-        <input
+        <DatePicker
+          selected={startsAt}
+          onChange={(d) => setStartsAt(d)}
+          dateFormat="dd/MM/yyyy"
+          locale={el}
+          placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
           className="input"
-          type="date"
-          value={startsAt}
-          onChange={(e) => setStartsAt(e.target.value)}
+          wrapperClassName="w-full"
+          showMonthDropdown
+          showYearDropdown
+          dropdownMode="select"
+          scrollableYearDropdown
+          yearDropdownItemNumber={80}
         />
       </FormRow>
+
       <FormRow label="Οφειλή (€)">
         <input
           className="input"
@@ -1118,8 +1112,14 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
 /* ── Edit ─────────────────────────────────────────────────────────────── */
 function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: () => void }) {
   const [status, setStatus] = useState(row.status ?? 'active');
-  const [startsAt, setStartsAt] = useState(row.starts_at?.slice(0, 10) ?? '');
-  const [endsAt, setEndsAt] = useState(row.ends_at?.slice(0, 10) ?? '');
+
+  const [startsAt, setStartsAt] = useState<Date | null>(
+    row.starts_at ? new Date(row.starts_at) : null,
+  );
+  const [endsAt, setEndsAt] = useState<Date | null>(
+    row.ends_at ? new Date(row.ends_at) : null,
+  );
+
   const [remaining, setRemaining] = useState<number>(row.remaining_sessions ?? 0);
   const [planId, setPlanId] = useState<string>(row.plan_id ?? '');
   const [debt, setDebt] = useState<number>(row.debt ?? 0);
@@ -1139,27 +1139,14 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
     })();
   }, [row.tenant_id]);
 
-  const selectedPlan = useMemo(
-    () => plans.find((p) => p.id === planId) ?? null,
-    [plans, planId],
-  );
+  const selectedPlan = useMemo(() => plans.find((p) => p.id === planId) ?? null, [plans, planId]);
 
-  const basePrice =
-    selectedPlan?.price != null
-      ? selectedPlan.price
-      : row.plan_price ?? null;
+  const basePrice = selectedPlan?.price != null ? selectedPlan.price : row.plan_price ?? null;
 
-  const effectivePrice =
-    customPrice != null
-      ? customPrice
-      : basePrice != null
-        ? basePrice
-        : null;
+  const effectivePrice = customPrice != null ? customPrice : basePrice != null ? basePrice : null;
 
   const discount =
-    basePrice != null && effectivePrice != null
-      ? basePrice - effectivePrice
-      : null;
+    basePrice != null && effectivePrice != null ? basePrice - effectivePrice : null;
 
   const submit = async () => {
     setBusy(true);
@@ -1167,8 +1154,8 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
       body: {
         id: row.id,
         status,
-        starts_at: startsAt || null,
-        ends_at: endsAt || null,
+        starts_at: startsAt ? dateToISODate(startsAt) : null,
+        ends_at: endsAt ? dateToISODate(endsAt) : null,
         remaining_sessions: Number.isFinite(remaining) ? remaining : null,
         plan_id: planId || null, // server will resnapshot if plan changes
         debt: Number.isFinite(debt) ? debt : null,
@@ -1189,12 +1176,11 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
       <FormRow label="Πλάνο">
         <select className="input" value={planId} onChange={(e) => setPlanId(e.target.value)}>
           <option value="">(διατηρήστε την τρέχουσα)</option>
-          {plans.map(p => (
+          {plans.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name} · {[
-                p.duration_days ? `${p.duration_days}μ` : null,
-                p.session_credits ? `${p.session_credits} υπόλοιπο` : null,
-              ].filter(Boolean).join(' • ')}
+              {p.name} · {[p.duration_days ? `${p.duration_days}μ` : null, p.session_credits ? `${p.session_credits} υπόλοιπο` : null]
+                .filter(Boolean)
+                .join(' • ')}
             </option>
           ))}
         </select>
@@ -1204,30 +1190,22 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
         <FormRow label="Τελική τιμή για αυτό το μέλος (€)">
           <div className="flex flex-col gap-1 text-sm">
             <input
-              className="input max-w-[160px]"
+              className="input max-w-40"
               type="number"
               min={0}
               step="0.50"
               value={customPrice ?? ''}
               placeholder={basePrice.toString()}
-              onChange={(e) =>
-                setCustomPrice(
-                  e.target.value === '' ? null : Number(e.target.value),
-                )
-              }
+              onChange={(e) => setCustomPrice(e.target.value === '' ? null : Number(e.target.value))}
             />
             <div className="text-xs text-text-secondary">
               Κανονική τιμή πλάνου: {formatMoney(basePrice)}
               {effectivePrice != null && discount != null && discount !== 0 && (
                 <>
                   {' · Τελική: '}
-                  <span className="text-emerald-300">
-                    {formatMoney(effectivePrice)}
-                  </span>
+                  <span className="text-emerald-300">{formatMoney(effectivePrice)}</span>
                   {' · Έκπτωση: '}
-                  <span className="text-amber-300">
-                    {formatMoney(discount)}
-                  </span>
+                  <span className="text-amber-300">{formatMoney(discount)}</span>
                 </>
               )}
             </div>
@@ -1252,22 +1230,44 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
           <option value="expired">έληξε</option>
         </select>
       </FormRow>
+
+      {/* ✅ DatePickers for startsAt/endsAt */}
       <FormRow label="Έναρξη">
-        <input
+        <DatePicker
+          selected={startsAt}
+          onChange={(d) => setStartsAt(d)}
+          dateFormat="dd/MM/yyyy"
+          locale={el}
+          placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
           className="input"
-          type="date"
-          value={startsAt}
-          onChange={(e) => setStartsAt(e.target.value)}
+          wrapperClassName="w-full"
+          showMonthDropdown
+          showYearDropdown
+          dropdownMode="select"
+          scrollableYearDropdown
+          yearDropdownItemNumber={80}
+          maxDate={endsAt ?? undefined}
         />
       </FormRow>
+
       <FormRow label="Λήξη">
-        <input
+        <DatePicker
+          selected={endsAt}
+          onChange={(d) => setEndsAt(d)}
+          dateFormat="dd/MM/yyyy"
+          locale={el}
+          placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
           className="input"
-          type="date"
-          value={endsAt}
-          onChange={(e) => setEndsAt(e.target.value)}
+          wrapperClassName="w-full"
+          showMonthDropdown
+          showYearDropdown
+          dropdownMode="select"
+          scrollableYearDropdown
+          yearDropdownItemNumber={80}
+          minDate={startsAt ?? undefined}
         />
       </FormRow>
+
       <FormRow label="Υπολοιπόμενες συνεδρίες">
         <input
           className="input"
@@ -1277,6 +1277,7 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
           onChange={(e) => setRemaining(Number(e.target.value))}
         />
       </FormRow>
+
       <FormRow label="Οφειλή (€)">
         <input
           className="input"
@@ -1288,11 +1289,18 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
       </FormRow>
 
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Κλείσιμο</button>
+        <button className="btn-secondary" onClick={onClose}>
+          Κλείσιμο
+        </button>
         <button className="btn-primary" onClick={submit} disabled={busy}>
           {busy ? 'Αποθήκευση...' : 'Αποθήκευση'}
         </button>
       </div>
     </Modal>
   );
+}
+
+function dateToISODate(d: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

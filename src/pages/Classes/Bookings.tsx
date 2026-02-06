@@ -439,7 +439,7 @@ export default function BookingsPage() {
 
             {/* Desktop table */}
             <div className="hidden md:block overflow-x-auto">
-              <table className="min-w-[900px] w-full text-sm">
+              <table className="min-w-225 w-full text-sm">
                 <thead className="bg-secondary-background/60">
                   <tr className="text-left">
                     <Th>Μέλος</Th>
@@ -869,7 +869,7 @@ function CreateBookingModal({
               <div className="p-2 border-b border-white/10">
                 <input
                   autoFocus
-                  className="input !h-9 !text-sm"
+                  className="input h-9! text-sm!"
                   placeholder="Αναζήτηση μέλους..."
                   value={memberSearch}
                   onChange={(e) => setMemberSearch(e.target.value)}
@@ -923,7 +923,7 @@ function CreateBookingModal({
             <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
               <div className="p-2 border-b border-white/10 space-y-2">
                 <input
-                  className="input !h-9 !text-sm"
+                  className="input h-9! text-sm!"
                   placeholder="Αναζήτηση (τίτλος, ώρα)..."
                   value={sessionSearch}
                   onChange={(e) => setSessionSearch(e.target.value)}
@@ -932,7 +932,7 @@ function CreateBookingModal({
                   <span>Φίλτρο ημερομηνίας:</span>
                   <input
                     type="date"
-                    className="input !h-8 !text-xs"
+                    className="input h-8! text-xs!"
                     value={sessionDate}
                     onChange={(e) => setSessionDate(e.target.value)}
                   />

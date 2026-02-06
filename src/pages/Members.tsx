@@ -300,7 +300,7 @@ export default function MembersPage() {
         {/* DESKTOP / TABLE VIEW */}
         <div className="hidden md:block">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
+            <table className="w-full min-w-180 text-sm">
               <thead className="bg-secondary-background/60">
                 <tr className="text-left">
                   <Th className="w-10">

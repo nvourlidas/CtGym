@@ -1,8 +1,8 @@
 // src/pages/ThemeSettingsPage.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
-import { MobilePreview } from '../components/MobilePreview'
+import { MobilePreview } from '../components/MobilePreview';
 
 type Theme = {
     primary_color: string;
@@ -35,6 +35,7 @@ const defaultTheme: Theme = {
     text_muted: '#9ca3af',
     success_color: '#22C55E',
     error_color: '#f97373',
+    app_logo_url: null,
 };
 
 export default function ThemeSettingsPage() {
@@ -45,6 +46,19 @@ export default function ThemeSettingsPage() {
     const [logoFile, setLogoFile] = useState<File | null>(null);
     const [uploadingLogo, setUploadingLogo] = useState(false);
 
+    const isDefault = useMemo(() => {
+        const keys: ColorKey[] = [
+            'primary_color',
+            'accent_color',
+            'bg_color',
+            'card_color',
+            'text_color',
+            'text_muted',
+            'success_color',
+            'error_color',
+        ];
+        return keys.every((k) => (theme[k] ?? '').toLowerCase() === defaultTheme[k].toLowerCase());
+    }, [theme]);
 
     useEffect(() => {
         if (!profile) return;
@@ -68,6 +82,8 @@ export default function ThemeSettingsPage() {
                     error_color: data.error_color,
                     app_logo_url: data.app_logo_url ?? null,
                 });
+            } else {
+                setTheme(defaultTheme);
             }
             setLoading(false);
         };
@@ -130,8 +146,6 @@ export default function ThemeSettingsPage() {
         }
     };
 
-
-
     const handleSave = async () => {
         if (!profile) return;
         setSaving(true);
@@ -140,20 +154,49 @@ export default function ThemeSettingsPage() {
             ...theme,
         };
 
-        const { error } = await supabase
-            .from('tenant_themes')
-            .upsert(payload, { onConflict: 'tenant_id' });
+        const { error } = await supabase.from('tenant_themes').upsert(payload, { onConflict: 'tenant_id' });
 
         if (error) console.log('save theme error', error);
         setSaving(false);
     };
 
+    const confirmRestore = () => {
+        return window.confirm(
+            'Η επαναφορά θα αλλάξει ΟΛΑ τα χρώματα στα προεπιλεγμένα.\n' +
+            'Το λογότυπο δεν θα επηρεαστεί.\n\n' +
+            'Θέλεις να συνεχίσεις;'
+        );
+    };
+
+
+    const handleRestoreDefaults = () => {
+        if (!confirmRestore()) return;
+        // keep current logo, just reset colors
+        setTheme((prev) => ({
+            ...defaultTheme,
+            app_logo_url: prev.app_logo_url ?? null,
+        }));
+    };
 
     if (loading) return <div>Loading theme…</div>;
 
     return (
         <div className="p-6 space-y-4">
-            <h1 className="text-xl font-semibold">Χρώματα εφαρμογής μέλους</h1>
+            <div className="flex items-center justify-between gap-3">
+                <h1 className="text-xl font-semibold">Χρώματα εφαρμογής μέλους</h1>
+
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={handleRestoreDefaults}
+                        disabled={saving || isDefault}
+                        className="px-3 py-2 rounded border font-semibold disabled:opacity-40"
+                        title="Επαναφορά χρωμάτων στα προεπιλεγμένα (χωρίς αποθήκευση)"
+                    >
+                        Restore defaults
+                    </button>
+                </div>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {(
@@ -174,25 +217,21 @@ export default function ThemeSettingsPage() {
                         {/* color picker */}
                         <input
                             type="color"
-                            value={theme[key]}             // ✅ πάντα string
-                            onChange={(e) =>
-                                setTheme((prev) => ({ ...prev, [key]: e.target.value }))
-                            }
+                            value={theme[key]}
+                            onChange={(e) => setTheme((prev) => ({ ...prev, [key]: e.target.value }))}
                         />
 
                         {/* text input */}
                         <input
                             type="text"
                             className="border rounded px-2 py-1 flex-1"
-                            value={theme[key]}             // ✅ πάντα string
-                            onChange={(e) =>
-                                setTheme((prev) => ({ ...prev, [key]: e.target.value }))
-                            }
+                            value={theme[key]}
+                            onChange={(e) => setTheme((prev) => ({ ...prev, [key]: e.target.value }))}
                         />
                     </div>
                 ))}
-
             </div>
+
             <button
                 onClick={handleSave}
                 disabled={saving}
@@ -221,22 +260,8 @@ export default function ThemeSettingsPage() {
                         {uploadingLogo ? 'Ανέβασμα…' : 'Upload & Save'}
                     </button>
                 </div>
-
-                {/* optional manual URL edit */}
-                <input
-                    type="text"
-                    className="border rounded px-2 py-1 w-full mt-2"
-                    placeholder="Cloudflare logo URL"
-                    value={theme.app_logo_url ?? ''}
-                    onChange={(e) =>
-                        setTheme((prev) => ({
-                            ...prev,
-                            app_logo_url: e.target.value || null,
-                        }))
-                    }
-                />
-
             </div>
+
             {/* Small preview */}
             <MobilePreview theme={theme} />
         </div>

@@ -1233,7 +1233,7 @@ export default function FinancePage() {
 
       {/* Table */}
       <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-900/80">
-        <div className="max-h-[500px] overflow-auto">
+        <div className="max-h-125 overflow-auto">
           <table className="min-w-full text-left text-xs text-slate-100">
             <thead className="bg-slate-800/90 text-[0.70rem] uppercase tracking-wide text-slate-400">
               <tr>

@@ -236,7 +236,7 @@ function BulkBookingsModal({
 
   const validate = (): string | null => {
     if (!memberId) return 'Επίλεξε μέλος.';
-    if (!classId) return 'Επίλεξε τάξη.';
+    if (!classId) return 'Επίλεξε Τμήμα.';
     if (!fromDate || !toDate) return 'Συμπλήρωσε ημερομηνίες.';
     const a = dateInputToLocalStart(fromDate);
     const b = dateInputToLocalStart(toDate);
@@ -532,14 +532,14 @@ function BulkBookingsModal({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Class */}
           <div>
-            <div className="mb-1 text-[11px] text-white/70">Τάξη</div>
+            <div className="mb-1 text-[11px] text-white/70">Τμήμα</div>
             <select
               className="w-full rounded-md bg-slate-900/80 border border-white/15 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
               value={classId}
               onChange={(e) => setClassId(e.target.value)}
               disabled={running}
             >
-              <option value="">— Επιλογή τάξης —</option>
+              <option value="">— Επιλογή Τμήματος —</option>
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.title}
@@ -627,7 +627,7 @@ function BulkBookingsModal({
         </div>
         {!canUseDropInFallback && allowDropInFallback && (
           <div className="mt-1 text-[11px] text-amber-200">
-            Η τάξη δεν επιτρέπει drop-in — το fallback δεν θα χρησιμοποιηθεί.
+            Το Τμήμα δεν επιτρέπει drop-in — το fallback δεν θα χρησιμοποιηθεί.
           </div>
         )}
 
@@ -785,7 +785,7 @@ export default function AdminBulkBookingsPage() {
           console.error(error);
           setFeedback({
             type: 'error',
-            message: 'Σφάλμα κατά τη φόρτωση τάξεων.',
+            message: 'Σφάλμα κατά τη φόρτωση τμημάτων.',
           });
         } else {
           setClasses(((data ?? []) as unknown) as SessionClassRel[]);
@@ -1216,7 +1216,7 @@ export default function AdminBulkBookingsPage() {
           )}
 
           {/* grid: 1 column on mobile, 2 on small tablets, 7 on desktop */}
-          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 md:gap-2 md:min-h-[480px]">
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 md:gap-2 md:min-h-120">
             {WEEKDAY_LABELS.map((label, idx) => {
               const dayDate = addDaysSimple(weekStart, idx);
               const daySessions = sessionsByDay[idx] ?? [];

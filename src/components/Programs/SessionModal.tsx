@@ -1,4 +1,6 @@
 // src/components/Programs/SessionModal.tsx
+import DatePicker from 'react-datepicker';
+import { el } from 'date-fns/locale/el';
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
@@ -30,8 +32,12 @@ export default function SessionModal({
   const [classDropdownOpen, setClassDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
-  const [startsAt, setStartsAt] = useState<string>(''); // datetime-local (local time)
-  const [endsAt, setEndsAt] = useState<string>('');
+  // ✅ split date + time so we can use the same DatePicker (like your other modals)
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [startTime, setStartTime] = useState('18:00');
+  const [endTime, setEndTime] = useState('19:00');
+
   const [capacity, setCapacity] = useState<number | ''>('');
   const [cancelBeforeHours, setCancelBeforeHours] = useState<number | ''>(''); // NEW
   const [saving, setSaving] = useState(false);
@@ -65,20 +71,33 @@ export default function SessionModal({
 
   useEffect(() => {
     if (session) {
-      // EDIT MODE – convert UTC ISO from DB -> local datetime-local string
+      // EDIT MODE – UTC ISO from DB -> local Date
       setClassId(session.class_id);
-      setStartsAt(isoToLocalInputValue(session.starts_at));
-      setEndsAt(session.ends_at ? isoToLocalInputValue(session.ends_at) : '');
+
+      const s = new Date(session.starts_at);
+      const e = session.ends_at ? new Date(session.ends_at) : null;
+
+      setStartDate(s);
+      setEndDate(e ?? s);
+
+      setStartTime(toHHMM(s));
+      setEndTime(toHHMM(e ?? new Date(s.getTime() + 60 * 60 * 1000)));
+
       setCapacity(session.capacity ?? '');
       setCancelBeforeHours(
         session.cancel_before_hours != null ? session.cancel_before_hours : ''
       );
     } else if (defaultDate) {
-      // CREATE MODE – default from clicked calendar date (local)
+      // CREATE MODE – base from clicked calendar date (local)
       const base = new Date(defaultDate);
       const end = new Date(base.getTime() + 60 * 60 * 1000);
-      setStartsAt(toLocalInputValue(base));
-      setEndsAt(toLocalInputValue(end));
+
+      setStartDate(base);
+      setEndDate(base);
+
+      setStartTime(toHHMM(base));
+      setEndTime(toHHMM(end));
+
       setClassId('');
       setCapacity('');
       setCancelBeforeHours('');
@@ -91,16 +110,15 @@ export default function SessionModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tenantId || !classId || !startsAt || !endsAt) return;
+    if (!tenantId || !classId || !startDate || !endDate || !startTime || !endTime) return;
 
     setSaving(true);
 
-    // LOCAL -> UTC for saving in DB
-    const startIso = localInputToIso(startsAt);
-    const endIso = localInputToIso(endsAt);
+    const startIso = dateAndTimeToUtcIso(startDate, startTime);
+    const endIso = dateAndTimeToUtcIso(endDate, endTime);
+
     const capVal = capacity === '' ? null : Number(capacity);
-    const cancelVal =
-      cancelBeforeHours === '' ? null : Number(cancelBeforeHours);
+    const cancelVal = cancelBeforeHours === '' ? null : Number(cancelBeforeHours);
 
     try {
       if (isEdit && session) {
@@ -173,11 +191,7 @@ export default function SessionModal({
 
     setDeleting(true);
     try {
-      const { error } = await supabase
-        .from('class_sessions')
-        .delete()
-        .eq('id', session.id);
-
+      const { error } = await supabase.from('class_sessions').delete().eq('id', session.id);
       if (error) throw error;
 
       onDeleted(session.id);
@@ -219,9 +233,7 @@ export default function SessionModal({
               className="input flex items-center justify-between"
               onClick={() => setClassDropdownOpen((v) => !v)}
             >
-              <span>
-                {selectedClass ? selectedClass.title : 'Επιλέξτε μάθημα…'}
-              </span>
+              <span>{selectedClass ? selectedClass.title : 'Επιλέξτε μάθημα…'}</span>
               <span className="ml-2 text-xs opacity-70">
                 {classDropdownOpen ? '▲' : '▼'}
               </span>
@@ -232,7 +244,7 @@ export default function SessionModal({
                 <div className="p-2 border-b border-white/10">
                   <input
                     autoFocus
-                    className="input !h-9 !text-sm"
+                    className="input h-9! text-sm!"
                     placeholder="Αναζήτηση μαθήματος..."
                     value={classSearch}
                     onChange={(e) => setClassSearch(e.target.value)}
@@ -264,41 +276,79 @@ export default function SessionModal({
             )}
           </div>
 
+          {/* ✅ DatePicker + time inputs */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1">Έναρξη</label>
-              <input
-                type="datetime-local"
+              <label className="block text-sm font-medium mb-1">Ημερομηνία έναρξης</label>
+              <DatePicker
+                selected={startDate}
+                onChange={(date) => setStartDate(date)}
+                dateFormat="dd/MM/yyyy"
+                locale={el}
+                placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
                 className="input"
-                value={startsAt}
-                onChange={(e) => setStartsAt(e.target.value)}
+                wrapperClassName="w-full"
+                showMonthDropdown
+                showYearDropdown
+                dropdownMode="select"
+                scrollableYearDropdown
+                yearDropdownItemNumber={80}
+                maxDate={endDate ?? undefined}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Ώρα έναρξης</label>
+              <input
+                type="time"
+                className="input"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
                 required
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1">Λήξη</label>
-              <input
-                type="datetime-local"
+              <label className="block text-sm font-medium mb-1">Ημερομηνία λήξης</label>
+              <DatePicker
+                selected={endDate}
+                onChange={(date) => setEndDate(date)}
+                dateFormat="dd/MM/yyyy"
+                locale={el}
+                placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
                 className="input"
-                value={endsAt}
-                onChange={(e) => setEndsAt(e.target.value)}
+                wrapperClassName="w-full"
+                showMonthDropdown
+                showYearDropdown
+                dropdownMode="select"
+                scrollableYearDropdown
+                yearDropdownItemNumber={80}
+                minDate={startDate ?? undefined}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Ώρα λήξης</label>
+              <input
+                type="time"
+                className="input"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
                 required
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">
-              Διαθέσιμες θέσεις
-            </label>
+            <label className="block text-sm font-medium mb-1">Διαθέσιμες θέσεις</label>
             <input
               type="number"
               min={0}
               className="input"
               value={capacity}
-              onChange={(e) =>
-                setCapacity(e.target.value === '' ? '' : Number(e.target.value))
-              }
+              onChange={(e) => setCapacity(e.target.value === '' ? '' : Number(e.target.value))}
             />
           </div>
 
@@ -312,9 +362,7 @@ export default function SessionModal({
               className="input"
               value={cancelBeforeHours}
               onChange={(e) =>
-                setCancelBeforeHours(
-                  e.target.value === '' ? '' : Number(e.target.value)
-                )
+                setCancelBeforeHours(e.target.value === '' ? '' : Number(e.target.value))
               }
             />
           </div>
@@ -334,18 +382,10 @@ export default function SessionModal({
             )}
 
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="btn-secondary"
-              >
+              <button type="button" onClick={onClose} className="btn-secondary">
                 Άκυρο
               </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="btn-primary disabled:opacity-60"
-              >
+              <button type="submit" disabled={saving} className="btn-primary disabled:opacity-60">
                 {saving ? 'Αποθήκευση…' : 'Αποθήκευση'}
               </button>
             </div>
@@ -356,30 +396,16 @@ export default function SessionModal({
   );
 }
 
-/** Converts a Date (local) -> "YYYY-MM-DDTHH:mm" for datetime-local */
-function toLocalInputValue(d: Date) {
+/** "18:05" */
+function toHHMM(d: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
-  return (
-    d.getFullYear() +
-    '-' +
-    pad(d.getMonth() + 1) +
-    '-' +
-    pad(d.getDate()) +
-    'T' +
-    pad(d.getHours()) +
-    ':' +
-    pad(d.getMinutes())
-  );
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/** Converts UTC ISO string from DB -> local datetime-local string */
-function isoToLocalInputValue(iso: string) {
-  const d = new Date(iso); // JS converts UTC -> local automatically
-  return toLocalInputValue(d);
-}
-
-/** Converts datetime-local string (local) -> UTC ISO string for DB */
-function localInputToIso(local: string) {
-  // "YYYY-MM-DDTHH:mm" interpreted as local time
-  return new Date(local).toISOString();
+/** Local (date + HH:mm) -> UTC ISO for DB */
+function dateAndTimeToUtcIso(dateOnly: Date, hhmm: string) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(dateOnly);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
 }

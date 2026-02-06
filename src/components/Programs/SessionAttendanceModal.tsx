@@ -145,7 +145,7 @@ export default function SessionAttendanceModal({
     title: string;
     items: Booking[];
   }) => (
-    <div className="flex-1 min-w-[220px]">
+    <div className="flex-1 min-w-55">
       <div className="text-xs uppercase tracking-wide opacity-70 mb-2">
         {title} <span className="opacity-60">({items.length})</span>
       </div>

@@ -28,7 +28,7 @@ export function SessionQrModal({
   });
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60">
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60">
       <div className="bg-secondary-background border border-white/10 rounded-xl p-6 w-full max-w-sm shadow-xl">
         <h2 className="text-lg font-semibold mb-1">QR Check-in</h2>
         {sessionTitle && (

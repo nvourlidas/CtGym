@@ -308,7 +308,7 @@ export default function ProgramsPage() {
 
         {/* Wrapper with horizontal scroll on small screens */}
         <div className="-mx-2 md:mx-0 overflow-x-auto">
-          <div className="min-w-[720px] md:min-w-full px-2 md:px-0">
+          <div className="min-w-180 md:min-w-full px-2 md:px-0">
             <FullCalendar
               ref={calendarRef}
               plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -468,10 +468,14 @@ const TIME_OPTIONS: string[] = (() => {
   }
   return result;
 })();
+import DatePicker from 'react-datepicker';
+import {el} from 'date-fns/locale/el';
+
+/* ...your existing imports... */
 
 function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDeleteModalProps) {
-  const [fromDate, setFromDate] = useState<string>('');
-  const [toDate, setToDate] = useState<string>('');
+  const [fromDate, setFromDate] = useState<Date | null>(null);
+  const [toDate, setToDate] = useState<Date | null>(null);
   const [classes, setClasses] = useState<SimpleClassRow[]>([]);
   const [selectedClassId, setSelectedClassId] = useState<string>('');
   const [startTime, setStartTime] = useState<string>(''); // "ALL" or HH:MM
@@ -504,8 +508,8 @@ function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDelet
   // Reset when modal closes
   useEffect(() => {
     if (!open) {
-      setFromDate('');
-      setToDate('');
+      setFromDate(null);
+      setToDate(null);
       setSelectedClassId('');
       setStartTime('');
       setSelectedDays([0, 1, 2, 3, 4, 5, 6]);
@@ -571,8 +575,11 @@ function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDelet
       setPending(true);
       setError(null);
 
-      const fromStart = new Date(`${fromDate}T00:00:00`);
-      const toEnd = new Date(`${toDate}T23:59:59`);
+      const fromStart = new Date(fromDate);
+      fromStart.setHours(0, 0, 0, 0);
+
+      const toEnd = new Date(toDate);
+      toEnd.setHours(23, 59, 59, 999);
 
       // 1) Get all sessions of this class in the range
       const { data, error: selectError } = await supabase
@@ -666,22 +673,40 @@ function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDelet
           {/* From date */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-text-secondary">Από ημερομηνία</label>
-            <input
-              type="date"
+            <DatePicker
+              selected={fromDate}
+              onChange={(d) => setFromDate(d)}
+              dateFormat="dd/MM/yyyy"
+              locale={el}
+              placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
               className="w-full rounded-md bg-background border border-white/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
+              wrapperClassName="w-full"
+              showMonthDropdown
+              showYearDropdown
+              dropdownMode="select"
+              scrollableYearDropdown
+              yearDropdownItemNumber={80}
+              maxDate={toDate ?? undefined}
             />
           </div>
 
           {/* To date */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-text-secondary">Έως ημερομηνία</label>
-            <input
-              type="date"
+            <DatePicker
+              selected={toDate}
+              onChange={(d) => setToDate(d)}
+              dateFormat="dd/MM/yyyy"
+              locale={el}
+              placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
               className="w-full rounded-md bg-background border border-white/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
+              wrapperClassName="w-full"
+              showMonthDropdown
+              showYearDropdown
+              dropdownMode="select"
+              scrollableYearDropdown
+              yearDropdownItemNumber={80}
+              minDate={fromDate ?? undefined}
             />
           </div>
 

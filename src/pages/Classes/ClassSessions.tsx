@@ -1,3 +1,5 @@
+import DatePicker from 'react-datepicker';
+import {el} from 'date-fns/locale/el';
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
@@ -267,7 +269,7 @@ export default function ClassSessionsPage() {
         {/* DESKTOP / TABLE VIEW */}
         <div className="hidden md:block">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-sm">
+            <table className="w-full min-w-205 text-sm">
               <thead className="bg-secondary-background/60">
                 <tr className="text-left">
                   <Th className="w-8">
@@ -709,9 +711,9 @@ function CreateSessionModal({
   setError: (s: string | null) => void;
 }) {
   const [classId, setClassId] = useState(classes[0]?.id ?? '');
-  const [date, setDate] = useState<string>('');
-  const [startTime, setStartTime] = useState<string>('');
-  const [endTime, setEndTime] = useState<string>('');
+  const [date, setDate] = useState<Date | null>(null);
+  const [startTime, setStartTime] = useState<string>('18:00');
+  const [endTime, setEndTime] = useState<string>('19:00');
   const [capacity, setCapacity] = useState<number>(20);
   const [cancelBeforeHours, setCancelBeforeHours] = useState<string>('');
   const [busy, setBusy] = useState(false);
@@ -743,8 +745,8 @@ function CreateSessionModal({
       return;
     }
 
-    const startsIso = new Date(`${date}T${startTime}`).toISOString();
-    const endsIso = new Date(`${date}T${endTime}`).toISOString();
+    const startsIso = dateAndTimeToUtcIso(date, startTime);
+    const endsIso = dateAndTimeToUtcIso(date, endTime);
 
     if (new Date(endsIso) <= new Date(startsIso)) {
       alert('Η ώρα λήξης πρέπει να είναι μετά την ώρα έναρξης.');
@@ -827,11 +829,19 @@ function CreateSessionModal({
       </FormRow>
 
       <FormRow label="Ημερομηνία *">
-        <input
+        <DatePicker
+          selected={date}
+          onChange={(d) => setDate(d)}
+          dateFormat="dd/MM/yyyy"
+          locale={el}
+          placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
           className="input"
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
+          wrapperClassName="w-full"
+          showMonthDropdown
+          showYearDropdown
+          dropdownMode="select"
+          scrollableYearDropdown
+          yearDropdownItemNumber={80}
         />
       </FormRow>
 
@@ -898,13 +908,9 @@ function EditSessionModal({
   setError: (s: string | null) => void;
 }) {
   const [classId, setClassId] = useState(row.class_id);
-  const [date, setDate] = useState<string>(() => isoToDateInput(row.starts_at));
-  const [startTime, setStartTime] = useState<string>(() =>
-    isoToTimeInput(row.starts_at),
-  );
-  const [endTime, setEndTime] = useState<string>(() =>
-    isoToTimeInput(row.ends_at),
-  );
+  const [date, setDate] = useState<Date | null>(() => new Date(row.starts_at));
+  const [startTime, setStartTime] = useState<string>(() => isoToTimeInput(row.starts_at));
+  const [endTime, setEndTime] = useState<string>(() => isoToTimeInput(row.ends_at));
   const [capacity, setCapacity] = useState<number>(row.capacity ?? 20);
   const [cancelBeforeHours, setCancelBeforeHours] = useState<string>(
     row.cancel_before_hours != null ? String(row.cancel_before_hours) : '',
@@ -938,8 +944,8 @@ function EditSessionModal({
       return;
     }
 
-    const startsIso = new Date(`${date}T${startTime}`).toISOString();
-    const endsIso = new Date(`${date}T${endTime}`).toISOString();
+    const startsIso = dateAndTimeToUtcIso(date, startTime);
+    const endsIso = dateAndTimeToUtcIso(date, endTime);
 
     if (new Date(endsIso) <= new Date(startsIso)) {
       alert('Η ώρα λήξης πρέπει να είναι μετά την ώρα έναρξης.');
@@ -1022,11 +1028,19 @@ function EditSessionModal({
       </FormRow>
 
       <FormRow label="Ημερομηνία *">
-        <input
+        <DatePicker
+          selected={date}
+          onChange={(d) => setDate(d)}
+          dateFormat="dd/MM/yyyy"
+          locale={el}
+          placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
           className="input"
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
+          wrapperClassName="w-full"
+          showMonthDropdown
+          showYearDropdown
+          dropdownMode="select"
+          scrollableYearDropdown
+          yearDropdownItemNumber={80}
         />
       </FormRow>
 
@@ -1083,21 +1097,19 @@ function EditSessionModal({
 
 /* helpers */
 
-function isoToDateInput(iso: string) {
-  const d = new Date(iso);
-  const pad = (n: number) => n.toString().padStart(2, '0');
-  const yyyy = d.getFullYear();
-  const mm = pad(d.getMonth() + 1);
-  const dd = pad(d.getDate());
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 function isoToTimeInput(iso: string) {
   const d = new Date(iso);
   const pad = (n: number) => n.toString().padStart(2, '0');
   const hh = pad(d.getHours());
   const mi = pad(d.getMinutes());
   return `${hh}:${mi}`;
+}
+
+function dateAndTimeToUtcIso(dateOnly: Date, hhmm: string) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(dateOnly);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
 }
 
 function formatDateTime(iso: string) {

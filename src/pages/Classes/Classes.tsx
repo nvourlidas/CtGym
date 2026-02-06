@@ -191,7 +191,7 @@ export default function ClassesPage() {
         {/* DESKTOP / TABLE VIEW */}
         <div className="hidden md:block">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
+            <table className="w-full min-w-180 text-sm">
               <thead className="bg-secondary-background/60">
                 <tr className="text-left">
                   <Th>Τίτλος</Th>
@@ -226,7 +226,7 @@ export default function ClassesPage() {
                     >
                       <Td className="font-medium">{c.title}</Td>
                       <Td className="text-text-secondary align-top">
-                        <div className="max-w-xs whitespace-normal break-words text-xs leading-snug">
+                        <div className="max-w-xs whitespace-normal wrap-break-word text-xs leading-snug">
                           {c.description ?? '—'}
                         </div>
                       </Td>
@@ -367,7 +367,7 @@ export default function ClassesPage() {
                   </span>
                 </div>
 
-                <div className="mt-2 text-xs text-text-secondary whitespace-normal break-words leading-snug">
+                <div className="mt-2 text-xs text-text-secondary whitespace-normal wrap-break-word leading-snug">
                   {c.description ?? '—'}
                 </div>
               </div>
@@ -601,7 +601,7 @@ function CreateClassModal({
                   type="number"
                   min={0}
                   step={0.5}
-                  className="input max-w-[120px]"
+                  className="input max-w-30"
                   value={dropInPrice ?? ''}
                   onChange={(e) =>
                     setDropInPrice(
@@ -618,7 +618,7 @@ function CreateClassModal({
                   type="number"
                   min={0}
                   step={0.5}
-                  className="input max-w-[120px]"
+                  className="input max-w-30"
                   value={memberDropInPrice ?? ''}
                   onChange={(e) =>
                     setMemberDropInPrice(
@@ -760,7 +760,7 @@ function EditClassModal({
                   type="number"
                   min={0}
                   step={0.5}
-                  className="input max-w-[120px]"
+                  className="input max-w-30"
                   value={dropInPrice ?? ''}
                   onChange={(e) =>
                     setDropInPrice(
@@ -777,7 +777,7 @@ function EditClassModal({
                   type="number"
                   min={0}
                   step={0.5}
-                  className="input max-w-[120px]"
+                  className="input max-w-30"
                   value={memberDropInPrice ?? ''}
                   onChange={(e) =>
                     setMemberDropInPrice(

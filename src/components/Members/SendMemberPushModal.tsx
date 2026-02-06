@@ -182,7 +182,7 @@ export default function SendMemberPushModal({
           <div className="block">
             <div className="mb-1 text-sm opacity-80">Μήνυμα</div>
             <textarea
-              className="input min-h-[120px] resize-none"
+              className="input min-h-30 resize-none"
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Π.χ. Μην ξεχάσεις το σημερινό μάθημα στις 18:00 💪"

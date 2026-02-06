@@ -74,7 +74,7 @@ export default function ResetPasswordPage() {
         hasSession === false && !success && !pending;
 
     return (
-        <div className="min-h-screen flex flex-col items-center justify-center bg-background bg-gradient-to-br from-background via-background/80 to-slate-950 text-slate-100 px-4">
+        <div className="min-h-screen flex flex-col items-center justify-center bg-background bg-linear-to-br from-background via-background/80 to-slate-950 text-slate-100 px-4">
             {/* BIG LOGO OUTSIDE CARD - SAME AS LOGIN */}
             <div className="flex flex-col items-center mb-8 text-center">
                 <img

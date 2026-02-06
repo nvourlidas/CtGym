@@ -268,7 +268,7 @@ export default function Plans() {
 
             {/* Desktop table */}
             <div className="hidden md:block overflow-x-auto">
-              <table className="min-w-[900px] w-full text-sm">
+              <table className="min-w-225 w-full text-sm">
                 <thead className="bg-secondary-background/60">
                   <tr className="text-left">
                     <Th>Ονομασία</Th>

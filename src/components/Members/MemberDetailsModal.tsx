@@ -768,7 +768,7 @@ function MembershipDebtModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-xl rounded-lg border border-white/10 bg-secondary-background text-text-primary shadow-2xl">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <h3 className="text-sm font-semibold">Οφειλή Συνδρομών</h3>
@@ -939,7 +939,7 @@ function DropinDebtModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-xl rounded-lg border border-white/10 bg-secondary-background text-text-primary shadow-2xl">
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <h3 className="text-sm font-semibold">Οφειλή Drop-in</h3>

@@ -76,6 +76,7 @@ export const NAV: NavEntry[] = [
     children: [
       { label: 'Εμφάνιση εφαρμογής', to: '/themesettings', icon: Palette },
       { label: 'Πληροφορίες Γυμναστηρίου', to: '/gyminfo', icon: Info },
+      { label: 'Συνδρομή Γυμναστηρίου', to: '/billing', icon: CreditCard },
     ],
   },
 ];

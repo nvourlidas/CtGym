@@ -27,13 +27,16 @@ import BulkBookings from './pages/Classes/AdminBulkBookingsPage';
 import ForgotPassword from './pages/ForgotPasswordPage'
 import FinancePage from './pages/FinancePage'
 import WorkoutTemplatesPage from './pages/workouts/WorkoutTemplatesPage';
+import BillingPage from './pages/BillingPage';
 
 //test program
 import ProgramsPage2 from './pages/Classes/ProgramsPage2';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
-  { path: 'reset-password', element: <ForgotPassword /> },
+  { path: '/forgot-password', element: <ForgotPassword /> },
+  { path: '/reset-password', element: <ResetPasswordPage /> },
   {
     path: '/',
     element: (
@@ -56,7 +59,8 @@ const router = createBrowserRouter([
       { path: 'gyminfo', element: <GymInfo /> },
       { path: 'bulkbookings', element: <BulkBookings /> },
       { path: 'finances', element: <FinancePage /> },
-      { path: 'workouttemplates', element: <WorkoutTemplatesPage /> }
+      { path: 'workouttemplates', element: <WorkoutTemplatesPage /> },
+      { path: 'billing', element: <BillingPage /> },
     ],
   },
 ]);

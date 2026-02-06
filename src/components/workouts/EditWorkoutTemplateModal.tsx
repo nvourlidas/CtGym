@@ -573,7 +573,7 @@ export default function EditWorkoutTemplateModal({ open, templateId, onClose, on
                       Αναζήτηση…
                     </div>
                   ) : (
-                    <div className="space-y-2 max-h-[520px] overflow-auto pr-1">
+                    <div className="space-y-2 max-h-130 overflow-auto pr-1">
                       {results.map((r) => (
                         <button
                           key={r.wger_id}
