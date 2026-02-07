@@ -9,8 +9,10 @@ import {
   Info,
   Grid2X2Check,
   ClockCheck,
-  EuroIcon
+  EuroIcon,
+  QrCode,
 } from 'lucide-react';
+
 
 export type NavEntry =
   | { type: 'section'; title: string }
@@ -31,6 +33,7 @@ export const NAV: NavEntry[] = [
   { type: 'item', label: 'Τμήματα', to: '/classes', icon: Layers },
   { type: 'item', label: 'Κατηγορίες', to: '/categories', icon: Folder },
   { type: 'item', label: 'Γυμναστές', to: '/coaches', icon: ContactRound },
+  { type: 'item', label: 'QR Check-in', to: '/qrpage', icon: QrCode },
 
 
 

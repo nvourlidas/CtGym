@@ -28,6 +28,7 @@ import ForgotPassword from './pages/ForgotPasswordPage'
 import FinancePage from './pages/FinancePage'
 import WorkoutTemplatesPage from './pages/workouts/WorkoutTemplatesPage';
 import BillingPage from './pages/BillingPage';
+import SessionQrPage from './pages/SessionQrPage';
 
 //test program
 import ProgramsPage2 from './pages/Classes/ProgramsPage2';
@@ -61,6 +62,7 @@ const router = createBrowserRouter([
       { path: 'finances', element: <FinancePage /> },
       { path: 'workouttemplates', element: <WorkoutTemplatesPage /> },
       { path: 'billing', element: <BillingPage /> },
+      { path: 'qrpage', element: <SessionQrPage /> },
     ],
   },
 ]);
