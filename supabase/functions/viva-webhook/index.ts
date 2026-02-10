@@ -1,30 +1,54 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-function json(status: number, data: unknown) {
-  return new Response(JSON.stringify(data), {
-    status,
+const ENV = (Deno.env.get("VIVA_ENV") ?? "demo").toLowerCase();
+const IS_PROD = ENV === "prod";
+
+const VERIFICATION_KEY = ENV === "demo"
+  ? (Deno.env.get("VIVA_DEMO_WEBHOOK_VERIFICATION_KEY") ?? "")
+  : (Deno.env.get("VIVA_PROD_WEBHOOK_VERIFICATION_KEY") ?? "");
+
+const WEBHOOK_SECRET = ENV === "demo"
+  ? (Deno.env.get("VIVA_DEMO_WEBHOOK_SECRET") ?? "")
+  : (Deno.env.get("VIVA_PROD_WEBHOOK_SECRET") ?? "");
+
+function okJson(body: unknown = { ok: true }) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
     headers: { "Content-Type": "application/json" },
   });
 }
 
-function okJson(extraHeaders: Record<string, string> = {}) {
-  return new Response(JSON.stringify({ ok: true }), {
-    status: 200,
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-  });
+function parseMerchantTrns(merchantTrns: string | null | undefined) {
+  const s = merchantTrns ?? "";
+  const tenantMatch = s.match(/tenant=([0-9a-fA-F-]{36})/);
+  const planMatch = s.match(/plan=([^;]+)/);
+  return {
+    tenant_id: tenantMatch?.[1] ?? null,
+    plan_id: planMatch?.[1] ?? null,
+  };
 }
 
-async function hmacSha256Hex(secret: string, body: Uint8Array) {
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function addDaysISO(days: number) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+async function hmacHex(secret: string, body: Uint8Array, hash: "SHA-256" | "SHA-1") {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
+    { name: "HMAC", hash },
     false,
     ["sign"],
   );
 
-  // ✅ Force a real ArrayBuffer (not SharedArrayBuffer) to satisfy TS + crypto.subtle
-  const data = new Uint8Array(body).slice().buffer;
+  // ✅ force real ArrayBuffer
+  const data: ArrayBuffer = new Uint8Array(body).slice().buffer;
 
   const sig = await crypto.subtle.sign("HMAC", key, data);
 
@@ -40,101 +64,48 @@ function timingSafeEqualHex(a: string, b: string) {
   return out === 0;
 }
 
-function parseMerchantTrns(merchantTrns: string | null | undefined) {
-  const s = merchantTrns ?? "";
-  const tenantMatch = s.match(/tenant=([0-9a-fA-F-]{36})/);
-  const planMatch = s.match(/plan=([^;]+)/);
-  return {
-    tenant_id: tenantMatch?.[1] ?? null,
-    plan_id: planMatch?.[1] ?? null,
-  };
-}
-
-function addDaysISO(days: number) {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-
 Deno.serve(async (req) => {
-  const verificationKey = Deno.env.get("VIVA_WEBHOOK_VERIFICATION_KEY") ?? "";
-
-  // Viva verification request
-  if (req.method === "POST") {
-    const bodyText = await req.text();
-
-    if (bodyText === verificationKey) {
-      return new Response(
-        verificationKey,
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      );
-    }
-
-    // Re-create raw body for later signature verification
-    req = new Request(req.url, {
-      method: "POST",
-      headers: req.headers,
-      body: bodyText,
-    });
+  // ✅ Viva URL verification
+  if (req.method === "GET" || req.method === "HEAD") {
+    return okJson({ key: VERIFICATION_KEY });
   }
 
-  // ✅ Viva webhook URL verification can be GET/HEAD/OPTIONS and unsigned POST.
-  // Return JSON 200 with no auth required.
-  if (
-    req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS"
-  ) {
-    return okJson({
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, GET, OPTIONS, HEAD",
-      "Access-Control-Allow-Headers":
-        "Content-Type, Viva-Signature-256, Viva-Delivery-Id",
-    });
-  }
-
-  if (req.method !== "POST") return json(405, { error: "Method not allowed" });
-
-  const sig256 = req.headers.get("Viva-Signature-256") ?? "";
-
-  // ✅ Viva sometimes verifies with unsigned POST (no signature). Accept & return 200 JSON.
-  if (!sig256) return okJson();
-
-  const secret = Deno.env.get("VIVA_WEBHOOK_SECRET") ?? "";
-  if (!secret) return json(500, { error: "Missing VIVA_WEBHOOK_SECRET" });
-
-  const deliveryId = req.headers.get("Viva-Delivery-Id") ??
-    req.headers.get("Viva-Delivery-ID") ??
-    "";
-
-  // Read raw body once (used for signature + JSON parse)
-  const raw = new Uint8Array(await req.arrayBuffer());
-
-  const computed = await hmacSha256Hex(secret, raw);
-  if (!timingSafeEqualHex(sig256.toLowerCase(), computed.toLowerCase())) {
-    return json(401, { error: "Invalid signature" });
-  }
-
-  let payload: any;
-  try {
-    payload = JSON.parse(new TextDecoder().decode(raw));
-  } catch {
-    return json(400, { error: "Invalid JSON payload" });
-  }
+  if (req.method !== "POST") return okJson({ ok: true });
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const sb = createClient(supabaseUrl, serviceKey);
 
-  const eventId = deliveryId ||
-    String(
-      payload?.EventId ?? payload?.eventId ?? payload?.OrderCode ??
-        crypto.randomUUID(),
-    );
+  const raw = new Uint8Array(await req.arrayBuffer());
 
-  // Idempotency (also helps with Viva retries)
+  // Viva signature headers (support both)
+  const sig256 = req.headers.get("Viva-Signature-256") ?? "";
+  const sig1 = req.headers.get("Viva-Signature") ?? "";
+  const deliveryId =
+    req.headers.get("Viva-Delivery-Id") ??
+    req.headers.get("Viva-Delivery-ID") ??
+    "";
+
+  // Parse JSON
+  let payload: any = null;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(raw));
+  } catch {
+    await sb.from("payment_webhook_events").insert({
+      provider: "viva",
+      event_id: deliveryId || `invalid-json-${crypto.randomUUID()}`,
+      raw: { rawText: new TextDecoder().decode(raw).slice(0, 5000) },
+      ok: false,
+      error: "Invalid JSON payload",
+    });
+    return okJson({ ok: true });
+  }
+
+  const eventId =
+    deliveryId ||
+    String(payload?.MessageId ?? payload?.EventId ?? payload?.eventId ?? crypto.randomUUID());
+
+  // Idempotency row
   const { data: eventRow, error: insErr } = await sb
     .from("payment_webhook_events")
     .insert({
@@ -147,60 +118,99 @@ Deno.serve(async (req) => {
     .single();
 
   if (insErr) {
-    // Unique violation => already processed
-    if ((insErr as any).code === "23505") {
-      return json(200, { ok: true, duplicate: true });
-    }
-    return json(500, {
-      error: "webhook_events insert failed",
-      details: insErr.message,
-    });
+    if ((insErr as any).code === "23505") return okJson({ ok: true, duplicate: true });
+    return okJson({ ok: true });
   }
 
-  // Extract tenant/plan from MerchantTrns (we set this when creating the order)
-  const merchantTrns = payload?.MerchantTrns ??
+  // Signature verify
+  if (!WEBHOOK_SECRET) {
+    await sb.from("payment_webhook_events").update({
+      processed_at: new Date().toISOString(),
+      ok: false,
+      error: "Missing WEBHOOK_SECRET",
+    }).eq("id", eventRow.id);
+    return okJson({ ok: true });
+  }
+
+  const hasAnySig = !!sig256 || !!sig1;
+
+  // If missing signature:
+  // - DEMO: allow processing so you can keep testing
+  // - PROD: do NOT process (but return 200 to stop retries)
+  if (!hasAnySig) {
+    const msg = "Missing Viva-Signature header(s)";
+    await sb.from("payment_webhook_events").update({
+      processed_at: new Date().toISOString(),
+      ok: !IS_PROD, // demo true, prod false
+      error: IS_PROD ? msg : null,
+    }).eq("id", eventRow.id);
+
+    if (IS_PROD) return okJson({ ok: true }); // do not process in prod
+    // DEMO: continue processing without signature
+  } else {
+    let valid = false;
+
+    if (sig256) {
+      const computed256 = await hmacHex(WEBHOOK_SECRET, raw, "SHA-256");
+      valid = timingSafeEqualHex(sig256.toLowerCase(), computed256.toLowerCase());
+    } else if (sig1) {
+      const computed1 = await hmacHex(WEBHOOK_SECRET, raw, "SHA-1");
+      valid = timingSafeEqualHex(sig1.toLowerCase(), computed1.toLowerCase());
+    }
+
+    if (!valid) {
+      await sb.from("payment_webhook_events").update({
+        processed_at: new Date().toISOString(),
+        ok: false,
+        error: "Invalid signature",
+      }).eq("id", eventRow.id);
+
+      return okJson({ ok: true });
+    }
+  }
+
+  // ✅ Viva details are inside EventData
+  const ed = payload?.EventData ?? payload?.eventData ?? {};
+
+  const merchantTrns =
+    ed?.MerchantTrns ??
+    ed?.merchantTrns ??
+    payload?.MerchantTrns ??
     payload?.merchantTrns ??
-    payload?.Order?.MerchantTrns ??
-    payload?.order?.merchantTrns;
+    null;
 
   const { tenant_id, plan_id } = parseMerchantTrns(merchantTrns);
 
   if (!tenant_id || !plan_id) {
-    await sb
-      .from("payment_webhook_events")
-      .update({
-        processed_at: new Date().toISOString(),
-        ok: false,
-        error: "Missing tenant_id/plan_id in MerchantTrns",
-      })
-      .eq("id", eventRow.id);
+    await sb.from("payment_webhook_events").update({
+      processed_at: new Date().toISOString(),
+      ok: false,
+      error: "Missing tenant_id/plan_id in MerchantTrns",
+    }).eq("id", eventRow.id);
 
-    // Always 200 so Viva stops retrying; we already logged it.
-    return json(200, { ok: true });
+    return okJson({ ok: true });
   }
 
-  // Viva event type: your dashboard dropdown shows these ids:
-  // 1796 = New Payment, 1798 = Transaction Failed, 1797 = Payment Reversal
-  const eventTypeId = Number(
-    payload?.EventTypeId ?? payload?.eventTypeId ?? payload?.EventType ?? 0,
-  );
+  const eventTypeId = Number(payload?.EventTypeId ?? payload?.eventTypeId ?? 0);
 
-  const amountCents = Number(
-    payload?.Amount ?? payload?.amount ?? payload?.Order?.Amount ?? 0,
-  );
-  const txnId = payload?.TransactionId ??
-    payload?.transactionId ??
+  // Amount is euros in your EventData -> cents
+  const amountEuro = Number(ed?.Amount ?? ed?.amount ?? 0);
+  const amountCents = Math.round(amountEuro * 100);
+
+  const txnId =
+    ed?.TransactionId ??
+    ed?.transactionId ??
+    ed?.OrderCode ??
+    payload?.TransactionId ??
     payload?.OrderCode ??
-    payload?.orderCode ??
     null;
 
   try {
     if (eventTypeId === 1796) {
-      // ✅ Payment succeeded -> activate/renew for 30 days from today
       const periodStart = todayISO();
       const periodEnd = addDaysISO(30);
 
-      await sb.from("tenant_payments").insert({
+      const payIns = await sb.from("tenant_payments").insert({
         tenant_id,
         plan_id,
         period_start: periodStart,
@@ -208,11 +218,10 @@ Deno.serve(async (req) => {
         amount_cents: amountCents,
         currency: "EUR",
         method: "card",
-        provider: "viva",
-        provider_txn_id: txnId ? String(txnId) : null,
-        provider_event_id: eventId,
-        raw_payload: payload,
+        reference: txnId ? String(txnId) : null,
       });
+
+      if (payIns.error) throw new Error(`tenant_payments insert failed: ${payIns.error.message}`);
 
       const { error: rpcErr } = await sb.rpc("activate_tenant_subscription", {
         p_tenant_id: tenant_id,
@@ -220,74 +229,27 @@ Deno.serve(async (req) => {
         p_period_start: periodStart,
         p_period_end: periodEnd,
       });
-
       if (rpcErr) throw rpcErr;
-
-      await sb
-        .from("tenant_subscriptions")
-        .update({
-          last_payment_status: "succeeded",
-          last_payment_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("tenant_id", tenant_id);
-    } else if (eventTypeId === 1798) {
-      // ✅ Payment failed -> past_due with 7-day grace (your DB fn)
-      const { error: rpcErr } = await sb.rpc("set_tenant_past_due", {
-        p_tenant_id: tenant_id,
-      });
+    } else if (eventTypeId === 1798 || eventTypeId === 1797) {
+      const { error: rpcErr } = await sb.rpc("set_tenant_past_due", { p_tenant_id: tenant_id });
       if (rpcErr) throw rpcErr;
-
-      await sb
-        .from("tenant_subscriptions")
-        .update({
-          last_payment_status: "failed",
-          last_payment_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("tenant_id", tenant_id);
-    } else if (eventTypeId === 1797) {
-      // ✅ Reversal/chargeback -> mark past_due immediately (safe default)
-      const { error: rpcErr } = await sb.rpc("set_tenant_past_due", {
-        p_tenant_id: tenant_id,
-      });
-      if (rpcErr) throw rpcErr;
-
-      await sb
-        .from("tenant_subscriptions")
-        .update({
-          last_payment_status: "reversed",
-          last_payment_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("tenant_id", tenant_id);
-    } else {
-      // Unknown event type: log it, but don't fail webhook.
-      // (Still mark processed ok so Viva stops retrying.)
     }
 
-    await sb
-      .from("payment_webhook_events")
-      .update({
-        processed_at: new Date().toISOString(),
-        ok: true,
-        tenant_id,
-      })
-      .eq("id", eventRow.id);
+    await sb.from("payment_webhook_events").update({
+      processed_at: new Date().toISOString(),
+      ok: true,
+      tenant_id,
+    }).eq("id", eventRow.id);
 
-    return json(200, { ok: true });
+    return okJson({ ok: true });
   } catch (e: any) {
-    await sb
-      .from("payment_webhook_events")
-      .update({
-        processed_at: new Date().toISOString(),
-        ok: false,
-        tenant_id,
-        error: e?.message ?? String(e),
-      })
-      .eq("id", eventRow.id);
+    await sb.from("payment_webhook_events").update({
+      processed_at: new Date().toISOString(),
+      ok: false,
+      tenant_id,
+      error: e?.message ?? String(e),
+    }).eq("id", eventRow.id);
 
-    // Return 200 anyway to avoid endless retries; you can inspect payment_webhook_events.
-    return json(200, { ok: true });
+    return okJson({ ok: true });
   }
 });

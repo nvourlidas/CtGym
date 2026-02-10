@@ -453,11 +453,11 @@ function BulkBookingsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3">
-      <div className="w-full max-w-lg rounded-xl border border-white/15 bg-secondary-background p-4 shadow-xl">
+      <div className="w-full max-w-lg rounded-xl border border-border/15 bg-secondary-background p-4 shadow-xl">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
-            <h3 className="text-sm font-semibold text-white">Μαζικές κρατήσεις</h3>
-            <p className="text-[11px] text-white/60">
+            <h3 className="text-sm font-semibold text-text-primary">Μαζικές κρατήσεις</h3>
+            <p className="text-[11px] text-text-primary/60">
               Θα δημιουργηθούν κρατήσεις για όλα τα sessions στο εύρος ημερομηνιών που
               είναι στην επιλεγμένη ημέρα και ξεκινάνε στην επιλεγμένη ώρα.
             </p>
@@ -465,7 +465,7 @@ function BulkBookingsModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-xs text-white/60 hover:text-white"
+            className="text-xs text-text-primary/60 hover:text-text-primary"
             disabled={running}
           >
             ✕
@@ -475,7 +475,7 @@ function BulkBookingsModal({
         {resultMsg && (
           <div
             className={`mb-3 rounded-md px-3 py-2 text-[11px] ${resultMsg.type === 'success'
-              ? 'bg-emerald-900/40 text-emerald-100 border border-emerald-500/40'
+              ? 'bg-emerald-900/40 text-emerald-500 border border-emerald-500/40'
               : 'bg-red-900/40 text-red-100 border border-red-500/40'
               }`}
           >
@@ -485,15 +485,15 @@ function BulkBookingsModal({
 
         {/* Member picker */}
         <div className="mb-3">
-          <div className="mb-1 text-[11px] text-white/70">Μέλος</div>
+          <div className="mb-1 text-[11px] text-text-primary/70">Μέλος</div>
           <input
-            className="w-full rounded-md bg-slate-900/80 border border-white/15 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-full rounded-md bg-bulk-bg/20 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
             placeholder="Αναζήτηση μέλους…"
             value={memberSearch}
             onChange={(e) => setMemberSearch(e.target.value)}
             disabled={running}
           />
-          <div className="mt-2 max-h-36 overflow-y-auto rounded-md border border-white/10 bg-slate-950/60 p-1">
+          <div className="mt-2 max-h-36 overflow-y-auto rounded-md border border-border/10 bg-bulk-bg/20 p-1">
             {filteredMembers.slice(0, 50).map((m) => {
               const selected = m.id === memberId;
               return (
@@ -503,29 +503,29 @@ function BulkBookingsModal({
                   onClick={() => setMemberId(m.id)}
                   disabled={running}
                   className={`w-full rounded-md px-3 py-2 text-left text-xs ${selected
-                    ? 'bg-primary/20 border border-primary/40 text-white'
-                    : 'bg-transparent hover:bg-white/5 text-white/90'
+                    ? 'bg-primary/20 border border-primary/40 text-text-primary'
+                    : 'bg-transparent hover:bg-border/5 text-text-primary/90'
                     }`}
                 >
                   <div className="font-medium">
                     {m.full_name || m.email || m.id}
                   </div>
                   {m.email && (
-                    <div className="text-[11px] text-white/50">{m.email}</div>
+                    <div className="text-[11px] text-text-primary/50">{m.email}</div>
                   )}
                 </button>
               );
             })}
             {filteredMembers.length === 0 && (
-              <div className="px-3 py-2 text-xs text-white/40 italic">
+              <div className="px-3 py-2 text-xs text-text-primary/40 italic">
                 Δεν βρέθηκαν μέλη.
               </div>
             )}
           </div>
 
           {selectedMember && (
-            <div className="mt-2 text-[11px] text-white/60">
-              Επιλεγμένο: <span className="font-semibold text-white">{selectedMember.full_name || selectedMember.email || selectedMember.id}</span>
+            <div className="mt-2 text-[11px] text-text-primary/60">
+              Επιλεγμένο: <span className="font-semibold text-text-primary">{selectedMember.full_name || selectedMember.email || selectedMember.id}</span>
             </div>
           )}
         </div>
@@ -533,9 +533,9 @@ function BulkBookingsModal({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Class */}
           <div>
-            <div className="mb-1 text-[11px] text-white/70">Τμήμα</div>
+            <div className="mb-1 text-[11px] text-text-primary/70">Τμήμα</div>
             <select
-              className="w-full rounded-md bg-slate-900/80 border border-white/15 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded-md bg-bulk-bg/20 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
               value={classId}
               onChange={(e) => setClassId(e.target.value)}
               disabled={running}
@@ -548,7 +548,7 @@ function BulkBookingsModal({
               ))}
             </select>
             {selectedClass && (
-              <div className="mt-1 text-[11px] text-white/50">
+              <div className="mt-1 text-[11px] text-text-primary/50">
                 Drop-in: {selectedClass.drop_in_enabled ? 'Ναι' : 'Όχι'}
               </div>
             )}
@@ -556,9 +556,9 @@ function BulkBookingsModal({
 
           {/* Weekday */}
           <div>
-            <div className="mb-1 text-[11px] text-white/70">Ημέρα εβδομάδας</div>
+            <div className="mb-1 text-[11px] text-text-primary/70">Ημέρα εβδομάδας</div>
             <select
-              className="w-full rounded-md bg-slate-900/80 border border-white/15 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded-md bg-bulk-bg/20 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
               value={weekdayIdx}
               onChange={(e) => setWeekdayIdx(Number(e.target.value))}
               disabled={running}
@@ -573,10 +573,10 @@ function BulkBookingsModal({
 
           {/* Start time */}
           <div>
-            <div className="mb-1 text-[11px] text-white/70">Ώρα έναρξης</div>
+            <div className="mb-1 text-[11px] text-text-primary/70">Ώρα έναρξης</div>
             <input
               type="time"
-              className="w-full rounded-md bg-slate-900/80 border border-white/15 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded-md bg-bulk-bg/20 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
               value={normalizeHHMM(startTime)}
               onChange={(e) => setStartTime(e.target.value)}
               disabled={running}
@@ -585,10 +585,10 @@ function BulkBookingsModal({
 
           {/* Date range */}
           <div>
-            <div className="mb-1 text-[11px] text-white/70">Από</div>
+            <div className="mb-1 text-[11px] text-text-primary/70">Από</div>
             <input
               type="date"
-              className="w-full rounded-md bg-slate-900/80 border border-white/15 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded-md bg-bulk-bg/20 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
               disabled={running}
@@ -596,10 +596,10 @@ function BulkBookingsModal({
           </div>
 
           <div className="md:col-span-2">
-            <div className="mb-1 text-[11px] text-white/70">Έως</div>
+            <div className="mb-1 text-[11px] text-text-primary/70">Έως</div>
             <input
               type="date"
-              className="w-full rounded-md bg-slate-900/80 border border-white/15 px-3 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded-md bg-bulk-bg/20 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
               disabled={running}
@@ -608,15 +608,15 @@ function BulkBookingsModal({
         </div>
 
         {/* Drop-in fallback */}
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-white/10 bg-slate-950/50 px-3 py-2">
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-border/10 bg-bulk-bg/20 px-3 py-2">
           <div>
-            <div className="text-[12px] text-white/90 font-semibold">Fallback σε Drop-in</div>
-            <div className="text-[11px] text-white/60">
+            <div className="text-[12px] text-text-primary/90 font-semibold">Fallback σε Drop-in</div>
+            <div className="text-[11px] text-text-primary/60">
               Αν δεν υπάρχει συνδρομή, κάνε κράτηση ως drop-in (μόνο αν επιτρέπεται).
             </div>
           </div>
 
-          <label className="inline-flex items-center gap-2 text-xs text-white/80">
+          <label className="inline-flex items-center gap-2 text-xs text-text-primary/80">
             <input
               type="checkbox"
               checked={allowDropInFallback}
@@ -627,38 +627,38 @@ function BulkBookingsModal({
           </label>
         </div>
         {!canUseDropInFallback && allowDropInFallback && (
-          <div className="mt-1 text-[11px] text-amber-200">
+          <div className="mt-1 text-[11px] text-accent">
             Το Τμήμα δεν επιτρέπει drop-in — το fallback δεν θα χρησιμοποιηθεί.
           </div>
         )}
 
         {/* Preview */}
-        <div className="mt-3 rounded-md border border-white/10 bg-slate-950/50 px-3 py-2">
+        <div className="mt-3 rounded-md border border-border/10 bg-bulk-bg/20 px-3 py-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-[11px] text-white/70">Προεπισκόπηση</div>
+            <div className="text-[11px] text-text-primary/70">Προεπισκόπηση</div>
             <button
               type="button"
               onClick={buildPreview}
               disabled={running || loadingPreview}
-              className="rounded-md border border-white/20 px-2 py-1 text-[11px] text-white/80 hover:bg-white/10 disabled:opacity-50"
+              className="rounded-md border border-border/20 px-2 py-1 text-[11px] text-text-primary/80 hover:bg-white/10 disabled:opacity-50"
             >
               {loadingPreview ? 'Υπολογισμός…' : 'Υπολογισμός'}
             </button>
           </div>
 
           {preview && (
-            <div className="mt-2 text-[11px] text-white/70 space-y-1">
+            <div className="mt-2 text-[11px] text-text-primary/70 space-y-1">
               <div>
-                Sessions που ταιριάζουν: <span className="font-semibold text-white">{preview.matchingCount}</span>
+                Sessions που ταιριάζουν: <span className="font-semibold text-text-primary">{preview.matchingCount}</span>
               </div>
               <div>
-                Ήδη κλεισμένα: <span className="font-semibold text-white">{preview.alreadyBookedCount}</span>
+                Ήδη κλεισμένα: <span className="font-semibold text-text-primary">{preview.alreadyBookedCount}</span>
               </div>
               <div>
-                Θα δημιουργηθούν: <span className="font-semibold text-white">{preview.toCreateCount}</span>
+                Θα δημιουργηθούν: <span className="font-semibold text-text-primary">{preview.toCreateCount}</span>
               </div>
               {preview.toCreateCount > 0 && (
-                <div className="mt-2 text-[11px] text-white/50">
+                <div className="mt-2 text-[11px] text-text-primary/50">
                   Πρώτα 5:{" "}
                   {preview.sessionsToCreate.slice(0, 5).map((s) => isoToLocalHHMM(s.starts_at)).join(', ')}
                 </div>
@@ -669,9 +669,9 @@ function BulkBookingsModal({
 
         {/* Progress */}
         {running && (
-          <div className="mt-3 text-[11px] text-white/70">
-            Εκτέλεση: <span className="font-semibold text-white">{progress.done}</span> /{' '}
-            <span className="font-semibold text-white">{progress.total}</span>
+          <div className="mt-3 text-[11px] text-text-primary/70">
+            Εκτέλεση: <span className="font-semibold text-text-primary">{progress.done}</span> /{' '}
+            <span className="font-semibold text-text-primary">{progress.total}</span>
           </div>
         )}
 
@@ -681,7 +681,7 @@ function BulkBookingsModal({
             type="button"
             onClick={onClose}
             disabled={running}
-            className="rounded-md border border-white/20 px-3 py-1.5 text-[12px] text-white/80 hover:bg-white/10 disabled:opacity-50"
+            className="rounded-md border border-border/20 px-3 py-1.5 text-[12px] text-text-primary/80 hover:bg-border/10 disabled:opacity-50"
           >
             Κλείσιμο
           </button>
@@ -1124,14 +1124,14 @@ export default function AdminBulkBookingsPage() {
       {/* MAIN LAYOUT – responsive */}
       <div className="flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-6">
         {/* SIDEBAR: MEMBERS – full width on mobile, fixed width on desktop */}
-        <aside className="w-full md:w-70 md:h-[calc(100vh)] order-2 md:order-1 flex flex-col rounded-xl border border-white/10 bg-secondary-background/70 p-4">
-          <h2 className="text-sm font-semibold text-white mb-2">Μέλη</h2>
-          <p className="text-[11px] text-white/60 mb-3">
+        <aside className="w-full md:w-70 md:h-[calc(100vh)] order-2 md:order-1 flex flex-col rounded-xl border border-border/10 bg-secondary-background/70 p-4">
+          <h2 className="text-sm font-semibold text-text-primary mb-2">Μέλη</h2>
+          <p className="text-[11px] text-text-primary/60 mb-3">
             Σύρε ένα μέλος και άφησέ το πάνω σε μάθημα για να δημιουργήσεις κράτηση (κυρίως σε desktop).
           </p>
 
           <input
-            className="w-full rounded-md bg-slate-900/80 border border-white/15 px-3 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-full rounded-md bg-secondary-background border border-border/15 px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
             placeholder="Αναζήτηση μέλους…"
             value={memberSearch}
             onChange={(e) => setMemberSearch(e.target.value)}
@@ -1139,11 +1139,11 @@ export default function AdminBulkBookingsPage() {
 
           <div className="mt-3 flex-1 overflow-y-auto pr-1 space-y-1">
             {membersLoading && (
-              <div className="text-xs text-white/60">Φόρτωση μελών…</div>
+              <div className="text-xs text-text-primary/60">Φόρτωση μελών…</div>
             )}
 
             {!membersLoading && filteredMembers.length === 0 && (
-              <div className="text-xs text-white/40 italic">
+              <div className="text-xs text-text-primary/40 italic">
                 Δεν βρέθηκαν μέλη.
               </div>
             )}
@@ -1155,14 +1155,14 @@ export default function AdminBulkBookingsPage() {
                   type="button"
                   draggable
                   onDragStart={(e) => handleMemberDragStart(e, m.id)}
-                  className="w-full rounded-md bg-slate-900/80 border border-white/10 px-3 py-2 text-left text-xs text-white hover:bg-white/5 cursor-grab active:cursor-grabbing"
+                  className="w-full rounded-md bg-bulk-bg/20 border border-border/10 px-3 py-2 text-left text-xs text-text-primary hover:bg-white/5 cursor-grab active:cursor-grabbing"
                   title="Σύρε για να κλείσεις θέση (σε desktop)"
                 >
                   <div className="font-medium">
                     {m.full_name || m.email || m.id}
                   </div>
                   {m.email && (
-                    <div className="text-[11px] text-white/60">{m.email}</div>
+                    <div className="text-[11px] text-text-primary/60">{m.email}</div>
                   )}
                 </button>
               ))}
@@ -1170,32 +1170,32 @@ export default function AdminBulkBookingsPage() {
         </aside>
 
         {/* MAIN: WEEK CALENDAR – first on mobile */}
-        <main className="order-1 md:order-2 flex-1 flex flex-col rounded-xl border border-white/10 bg-secondary-background/70 p-3 md:p-4">
+        <main className="order-1 md:order-2 flex-1 flex flex-col rounded-xl border border-border/10 bg-secondary-background/70 p-3 md:p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 gap-2">
             <div>
-              <h1 className="text-sm font-semibold text-white">Πρόγραμμα εβδομάδας</h1>
-              <p className="text-[11px] text-white/60">{weekLabel}</p>
+              <h1 className="text-sm font-semibold text-text-primary">Πρόγραμμα εβδομάδας</h1>
+              <p className="text-[11px] text-text-primary/60">{weekLabel}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => handleWeekChange('prev')}
-                className="rounded-md border border-white/20 px-2 py-1 text-xs text-white/80 hover:bg-white/10"
+                className="rounded-md border border-border/20 px-2 py-1 text-xs text-text-primary/80 hover:bg-border/10"
               >
                 ◀ Προηγούμενη
               </button>
               <button
                 type="button"
                 onClick={() => handleWeekChange('this')}
-                className="rounded-md border border-white/20 px-2 py-1 text-xs text-white/80 hover:bg-white/10"
+                className="rounded-md border border-border/20 px-2 py-1 text-xs text-text-primary/80 hover:bg-border/10"
               >
                 Σήμερα
               </button>
               <button
                 type="button"
                 onClick={() => handleWeekChange('next')}
-                className="rounded-md border border-white/20 px-2 py-1 text-xs text-white/80 hover:bg-white/10"
+                className="rounded-md border border-border/20 px-2 py-1 text-xs text-text-primary/80 hover:bg-border/10"
               >
                 Επόμενη ▶
               </button>
@@ -1204,7 +1204,7 @@ export default function AdminBulkBookingsPage() {
               <button
                 type="button"
                 onClick={() => requireActiveSubscription(() => setBulkModalOpen(true))}
-                className="rounded-md bg-amber-400 px-2.5 py-1 text-xs font-semibold text-slate-900 hover:bg-amber-300"
+                className="rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-slate-900 hover:bg-amber-300"
                 title="Δημιουργία κρατήσεων για ένα μέλος σε εύρος ημερομηνιών"
               >
                 Μαζικές κρατήσεις
@@ -1215,7 +1215,7 @@ export default function AdminBulkBookingsPage() {
           {feedback && (
             <div
               className={`mb-3 flex items-start justify-between rounded-md px-3 py-2 text-[11px] ${feedback.type === 'success'
-                ? 'bg-emerald-900/40 text-emerald-100 border border-emerald-500/40'
+                ? 'bg-emerald-900/40 text-white border border-emerald-500/40'
                 : 'bg-red-900/40 text-red-100 border border-red-500/40'
                 }`}
             >
@@ -1239,14 +1239,14 @@ export default function AdminBulkBookingsPage() {
               return (
                 <div
                   key={label}
-                  className="flex flex-col rounded-lg border border-white/10 bg-slate-950/60 p-2"
+                  className="flex flex-col rounded-lg border border-border/10 bg-secondary-background p-2"
                 >
-                  <div className="border-b border-white/10 pb-1 mb-1 flex items-baseline justify-between gap-2">
+                  <div className="border-b border-border/10 pb-1 mb-1 flex items-baseline justify-between gap-2">
                     <div>
-                      <div className="text-[11px] font-semibold text-white/90">
+                      <div className="text-[11px] font-semibold text-text-primary/90">
                         {label}
                       </div>
-                      <div className="text-[10px] text-white/50">
+                      <div className="text-[10px] text-text-primary/50">
                         {formatDateDMY(dayDate)}
                       </div>
                     </div>
@@ -1254,17 +1254,17 @@ export default function AdminBulkBookingsPage() {
 
                   <div className="flex-1 space-y-2 overflow-y-auto pr-1">
                     {sessionsLoading && idx === 0 && (
-                      <div className="text-[11px] text-white/60">Φόρτωση μαθημάτων…</div>
+                      <div className="text-[11px] text-text-primary/60">Φόρτωση μαθημάτων…</div>
                     )}
 
                     {!sessionsLoading && daySessions.length === 0 && (
-                      <div className="text-[11px] text-white/30 italic">Χωρίς μαθήματα.</div>
+                      <div className="text-[11px] text-text-primary/30 italic">Χωρίς μαθήματα.</div>
                     )}
 
                     {daySessions.map((s) => (
                       <div
                         key={s.id}
-                        className="rounded-md bg-slate-900/80 border border-white/15 p-2 text-[11px] text-white/90 space-y-1"
+                        className="rounded-md bg-bulk-bg/20 border border-border/15 p-2 text-[11px] text-text-primary/90 space-y-1"
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => requireActiveSubscription(() => handleDropOnSession(e, s.id))}
                       >
@@ -1272,13 +1272,13 @@ export default function AdminBulkBookingsPage() {
                           <span className="font-semibold truncate">
                             {getSessionClass(s)?.title ?? 'Μάθημα'}
                           </span>
-                          <span className="text-[10px] text-white/70 whitespace-nowrap">
+                          <span className="text-[10px] text-text-primary/70 whitespace-nowrap">
                             {formatTimeRange(s.starts_at, s.ends_at)}
                           </span>
                         </div>
 
                         <div className="flex items-center justify-between gap-1">
-                          <div className="text-[10px] text-white/70">
+                          <div className="text-[10px] text-text-primary/70">
                             Κρατήσεις:{' '}
                             <span className="font-semibold">{s.bookings?.length ?? 0}</span>
                           </div>
@@ -1296,7 +1296,7 @@ export default function AdminBulkBookingsPage() {
                           </button>
                         </div>
 
-                        <div className="text-[10px] text-white/40">
+                        <div className="text-[10px] text-text-primary/40">
                           Ρίξε μέλος εδώ για κράτηση (desktop)
                         </div>
 
@@ -1330,7 +1330,7 @@ export default function AdminBulkBookingsPage() {
       {/* MODAL: ask for drop-in fallback */}
       {dropInPrompt && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3">
-          <div className="w-full max-w-sm rounded-xl border border-white/15 bg-secondary-background p-4 shadow-xl">
+          <div className="w-full max-w-sm rounded-xl border border-border/15 bg-secondary-background p-4 shadow-xl">
             {(() => {
               const member = members.find((m) => m.id === dropInPrompt.memberId);
               const session = sessions.find((s) => s.id === dropInPrompt.sessionId);
@@ -1345,10 +1345,10 @@ export default function AdminBulkBookingsPage() {
 
               return (
                 <>
-                  <h3 className="text-sm font-semibold text-white mb-2">
+                  <h3 className="text-sm font-semibold text-text-primary mb-2">
                     Κράτηση ως drop-in;
                   </h3>
-                  <p className="text-[12px] text-white/80 mb-2">
+                  <p className="text-[12px] text-text-primary/80 mb-2">
                     Το μέλος{' '}
                     <span className="font-semibold">
                       {member?.full_name || member?.email || '—'}
@@ -1356,7 +1356,7 @@ export default function AdminBulkBookingsPage() {
                     δεν έχει κατάλληλη ενεργή συνδρομή για το μάθημα{' '}
                     <span className="font-semibold">{cls?.title ?? '—'}</span>.
                   </p>
-                  <p className="text-[11px] text-white/60 mb-3">
+                  <p className="text-[11px] text-text-primary/60 mb-3">
                     {when && <span>{when}</span>}
                     {cls?.drop_in_price != null && (
                       <>
@@ -1370,7 +1370,7 @@ export default function AdminBulkBookingsPage() {
                     <button
                       type="button"
                       onClick={() => setDropInPrompt(null)}
-                      className="rounded-md border border-white/25 px-3 py-1.5 text-[12px] text-white/80 hover:bg-white/10"
+                      className="rounded-md border border-border/25 px-3 py-1.5 text-[12px] text-text-primary/80 hover:bg-white/10"
                       disabled={dropInLoading}
                     >
                       Ακύρωση
@@ -1394,11 +1394,11 @@ export default function AdminBulkBookingsPage() {
       {/* MODAL: session details with all booked members */}
       {detailsSessionId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3">
-          <div className="w-full max-w-md rounded-xl border border-white/15 bg-secondary-background p-4 shadow-xl">
+          <div className="w-full max-w-md rounded-xl border border-border/15 bg-secondary-background p-4 shadow-xl">
             {(() => {
               const session = sessions.find((s) => s.id === detailsSessionId);
               if (!session) {
-                return <div className="text-sm text-white">Το μάθημα δεν βρέθηκε.</div>;
+                return <div className="text-sm text-text-primary">Το μάθημα δεν βρέθηκε.</div>;
               }
 
               const cls = getSessionClass(session);
@@ -1419,28 +1419,28 @@ export default function AdminBulkBookingsPage() {
                 <>
                   <div className="flex items-start justify-between mb-2">
                     <div>
-                      <h3 className="text-sm font-semibold text-white">
+                      <h3 className="text-sm font-semibold text-text-primary">
                         {cls?.title ?? 'Μάθημα'}
                       </h3>
-                      <p className="text-[11px] text-white/60">{when}</p>
+                      <p className="text-[11px] text-text-primary/60">{when}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setDetailsSessionId(null)}
-                      className="text-xs text-white/60 hover:text-white"
+                      className="text-xs text-text-primary/60 hover:text-text-primary"
                     >
                       ✕
                     </button>
                   </div>
 
-                  <p className="text-[11px] text-white/60 mb-2">
+                  <p className="text-[11px] text-text-primary/60 mb-2">
                     Σύνολο κρατήσεων:{' '}
-                    <span className="font-semibold text-white">{sortedBookings.length}</span>
+                    <span className="font-semibold text-text-primary">{sortedBookings.length}</span>
                   </p>
 
                   <div className="max-h-72 overflow-y-auto space-y-1 mt-1">
                     {sortedBookings.length === 0 && (
-                      <div className="text-[12px] text-white/50 italic">
+                      <div className="text-[12px] text-text-primary/50 italic">
                         Δεν υπάρχουν κρατήσεις για αυτό το μάθημα.
                       </div>
                     )}
@@ -1453,7 +1453,7 @@ export default function AdminBulkBookingsPage() {
                       return (
                         <div
                           key={b.id}
-                          className="rounded-md border border-white/15 bg-slate-900/70 px-3 py-2 text-[11px] text-white/90"
+                          className="rounded-md border border-border/15 bg-bulk-bg/20 px-3 py-2 text-[11px] text-text-primary/90"
                         >
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex-1 min-w-0">
@@ -1463,8 +1463,8 @@ export default function AdminBulkBookingsPage() {
                             <div className="flex items-center gap-1">
                               <span
                                 className={`px-2 py-0.5 rounded-full text-[10px] ${isDropIn
-                                  ? 'bg-amber-500/20 text-amber-200 border border-amber-500/40'
-                                  : 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/40'
+                                  ? 'bg-amber-500/20 text-warning border border-amber-500/40'
+                                  : 'bg-emerald-500/20 text-success border border-emerald-500/40'
                                   }`}
                               >
                                 {isDropIn ? 'Drop-in' : 'Συνδρομή'}
@@ -1485,11 +1485,11 @@ export default function AdminBulkBookingsPage() {
                             </div>
                           </div>
                           {b.profiles?.email && (
-                            <div className="text-[10px] text-white/60">{b.profiles.email}</div>
+                            <div className="text-[10px] text-text-primary/60">{b.profiles.email}</div>
                           )}
 
                           {isDropIn && (
-                            <div className="mt-1 text-[10px] text-white/70">
+                            <div className="mt-1 text-[10px] text-text-primary/70">
                               Τιμή: {b.drop_in_price ?? 0}€ ·{' '}
                               {b.drop_in_paid ? 'Πληρωμένο' : 'Οφειλή'}
                             </div>

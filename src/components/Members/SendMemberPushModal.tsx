@@ -110,9 +110,9 @@ export default function SendMemberPushModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl">
+      <div className="w-full max-w-lg rounded-md border border-border/10 bg-secondary-background text-text-primary shadow-xl">
         {/* Header */}
-        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-border/10 flex items-center justify-between">
           <div>
             <div className="font-semibold text-sm">Αποστολή Push Ειδοποίησης</div>
             {tenantName && (
@@ -123,7 +123,7 @@ export default function SendMemberPushModal({
           </div>
           <button
             onClick={onClose}
-            className="rounded px-2 py-1 hover:bg-white/5 text-sm"
+            className="rounded px-2 py-1 hover:bg-border/5 text-sm"
           >
             ✕
           </button>
@@ -134,7 +134,7 @@ export default function SendMemberPushModal({
           {/* Recipient mode */}
           <div className="text-xs text-text-secondary">
             <div className="mb-1">Παραλήπτες</div>
-            <div className="inline-flex rounded-md border border-white/10 overflow-hidden">
+            <div className="inline-flex rounded-md border border-border/10 overflow-hidden">
               <button
                 type="button"
                 onClick={() => setRecipientMode('selected')}
@@ -160,7 +160,7 @@ export default function SendMemberPushModal({
             </div>
 
             {recipientMode === 'selected' && selectedCount === 0 && (
-              <div className="mt-1 text-[11px] text-amber-300">
+              <div className="mt-1 text-[11px] text-accent">
                 Δεν έχεις επιλέξει μέλη. Επίλεξε κάποια από τη λίστα ή άλλαξε
                 σε &quot;Όλα τα μέλη&quot;.
               </div>
@@ -195,14 +195,14 @@ export default function SendMemberPushModal({
             </div>
           )}
           {successMsg && (
-            <div className="text-xs text-emerald-400">
+            <div className="text-xs text-emerald-500">
               {successMsg}
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-white/10 flex justify-end gap-2">
+        <div className="px-4 py-3 border-t border-border/10 flex justify-end gap-2">
           <button
             type="button"
             className="btn-secondary"

@@ -311,9 +311,9 @@ export default function MemberDetailsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-3xl rounded-xl border border-white/10 bg-secondary-background text-text-primary shadow-2xl">
+      <div className="w-full max-w-3xl rounded-xl border border-border/10 bg-secondary-background text-text-primary shadow-2xl">
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-white/10 px-6 py-4">
+        <div className="flex items-start justify-between border-b border-border/10 px-6 py-4">
           <div>
             <h2 className="text-lg font-semibold">
               Μέλος: {member.full_name ?? '—'}
@@ -321,14 +321,14 @@ export default function MemberDetailsModal({
           </div>
           <button
             onClick={onClose}
-            className="rounded px-2 py-1 text-sm text-text-secondary hover:bg-white/5"
+            className="rounded px-2 py-1 text-sm text-text-secondary hover:bg-border/5"
           >
             ✕
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-white/10 px-6">
+        <div className="border-b border-border/10 px-6">
           <nav className="flex space-x-4 text-sm">
             <button
               onClick={() => setActiveTab('details')}
@@ -594,7 +594,7 @@ export default function MemberDetailsModal({
                           if (!guard()) return;
                           setShowMembershipDebtModal(true);
                         }}
-                        className="text-left rounded-lg border border-white/10 bg-black/10 p-4 hover:border-primary/60 hover:bg-primary/5 transition cursor-pointer"
+                        className="text-left rounded-lg border border-border/10 bg-black/10 p-4 hover:border-primary/60 hover:bg-primary/5 transition cursor-pointer"
                       >
                         <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                           Οφειλή Συνδρομών
@@ -614,7 +614,7 @@ export default function MemberDetailsModal({
                           if (!guard()) return;
                           setShowDropinDebtModal(true);
                         }}
-                        className="text-left rounded-lg border border-white/10 bg-black/10 p-4 hover:border-primary/60 hover:bg-primary/5 transition cursor-pointer"
+                        className="text-left rounded-lg border border-border/10 bg-black/10 p-4 hover:border-primary/60 hover:bg-primary/5 transition cursor-pointer"
                       >
                         <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                           Οφειλή Drop-in
@@ -635,7 +635,7 @@ export default function MemberDetailsModal({
                       Συνολικό Κόστος
                     </h3>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                      <div className="rounded-lg border border-white/10 bg-black/10 p-4">
+                      <div className="rounded-lg border border-border/10 bg-black/10 p-4">
                         <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                           Σύνολο Συνδρομών
                         </div>
@@ -644,7 +644,7 @@ export default function MemberDetailsModal({
                         </div>
                       </div>
 
-                      <div className="rounded-lg border border-white/10 bg-black/10 p-4">
+                      <div className="rounded-lg border border-border/10 bg-black/10 p-4">
                         <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                           Σύνολο Drop-in
                         </div>
@@ -653,7 +653,7 @@ export default function MemberDetailsModal({
                         </div>
                       </div>
 
-                      <div className="rounded-lg border border-white/10 bg-black/10 p-4">
+                      <div className="rounded-lg border border-border/10 bg-black/10 p-4">
                         <div className="text-xs font-semibold uppercase tracking-wide text-text-secondary">
                           Σύνολο (Όλα)
                         </div>
@@ -676,7 +676,7 @@ export default function MemberDetailsModal({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end border-t border-white/10 px-6 py-3">
+        <div className="flex justify-end border-t border-border/10 px-6 py-3">
           <button
             onClick={onClose}
             className="btn-secondary"
@@ -795,12 +795,12 @@ function MembershipDebtModal({
 
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-xl rounded-lg border border-white/10 bg-secondary-background text-text-primary shadow-2xl">
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+      <div className="w-full max-w-xl rounded-lg border border-border/10 bg-secondary-background text-text-primary shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border/10 px-4 py-3">
           <h3 className="text-sm font-semibold">Οφειλή Συνδρομών</h3>
           <button
             onClick={onClose}
-            className="rounded px-2 py-1 text-sm text-text-secondary hover:bg-white/5"
+            className="rounded px-2 py-1 text-sm text-text-secondary hover:bg-border/5"
           >
             ✕
           </button>
@@ -826,7 +826,7 @@ function MembershipDebtModal({
               {rows.map((r) => (
                 <div
                   key={r.id}
-                  className="rounded border border-white/10 bg-black/10 p-3"
+                  className="rounded border border-border/10  p-3"
                 >
                   <div className="text-xs text-text-secondary mb-1">
                     Συνδρομή μέλους
@@ -848,7 +848,7 @@ function MembershipDebtModal({
                   <input
                     type="number"
                     step="0.01"
-                    className="w-full rounded border border-white/20 bg-black/20 px-2 py-1 text-sm"
+                    className="w-full rounded border border-border/20 bg-black/10 px-2 py-1 text-sm"
                     value={r.debt}
                     onChange={(e) => onChangeDebt(r.id, e.target.value)}
                   />
@@ -969,12 +969,12 @@ function DropinDebtModal({
 
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-xl rounded-lg border border-white/10 bg-secondary-background text-text-primary shadow-2xl">
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+      <div className="w-full max-w-xl rounded-lg border border-border/10 bg-secondary-background text-text-primary shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border/10 px-4 py-3">
           <h3 className="text-sm font-semibold">Οφειλή Drop-in</h3>
           <button
             onClick={onClose}
-            className="rounded px-2 py-1 text-sm text-text-secondary hover:bg-white/5"
+            className="rounded px-2 py-1 text-sm text-text-secondary hover:bg-border/5"
           >
             ✕
           </button>
@@ -1000,7 +1000,7 @@ function DropinDebtModal({
               {rows.map((r) => (
                 <div
                   key={r.id}
-                  className="rounded border border-white/10 bg-black/10 p-3 flex flex-col gap-1"
+                  className="rounded border border-border/10 bg-black/5 p-3 flex flex-col gap-1"
                 >
                   <div className="text-xs text-text-secondary">
                     {r.sessionTitle ?? 'Drop-in χωρίς τίτλο'}

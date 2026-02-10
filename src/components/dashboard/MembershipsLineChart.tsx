@@ -111,7 +111,7 @@ export function MembershipsLineChart() {
   }, [tenantId]);
 
   return (
-    <div className="rounded-xl border border-white/10 bg-secondary-background/60 p-4 shadow-sm">
+    <div className="rounded-xl border border-border/10 bg-secondary-background/60 p-4 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-base font-semibold text-text-primary">
           Συνδρομές ανά μήνα (τελευταίοι 12 μήνες)
@@ -137,17 +137,18 @@ export function MembershipsLineChart() {
             >
               <CartesianGrid
                 strokeDasharray="3 3"
-                stroke="rgba(148,163,184,0.2)"
+                stroke="var(--color-text-primary)"
+                opacity={0.25}
               />
               <XAxis
                 dataKey="label"
-                tick={{ fontSize: 11, fill: '#fff' }}
+                tick={{ fontSize: 11, fill: 'var(--color-text-primary)' }}
                 axisLine={{ stroke: 'var(--color-text-muted)' }}
                 tickLine={false}
               />
               <YAxis
                 allowDecimals={false}
-                tick={{ fontSize: 11, fill: '#fff' }}
+                tick={{ fontSize: 11, fill: 'var(--color-text-primary)' }}
                 axisLine={{ stroke: 'rgba(148,163,184,0.3)' }}
                 tickLine={false}
               />
@@ -155,6 +156,7 @@ export function MembershipsLineChart() {
                 contentStyle={{
                   backgroundColor: 'var(--color-primary)',
                   border: '1px solid rgba(148,163,184,0.3)',
+                  color: '#FFF',
                   borderRadius: 8,
                   fontSize: 12,
                 }}

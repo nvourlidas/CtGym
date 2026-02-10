@@ -7,13 +7,32 @@ import { NAV, type NavEntry } from '../_nav';
 import type { LucideIcon } from 'lucide-react';
 import logo from '../assets/CTGYM.YELLOW 1080x1080.svg';
 
-
 type Tenant = { name: string };
+type ThemeMode = 'light' | 'dark';
+
+function getInitialTheme(): ThemeMode {
+  const saved = localStorage.getItem('theme');
+  if (saved === 'dark' || saved === 'light') return saved;
+  // default
+  return 'dark';
+}
+
+function applyTheme(mode: ThemeMode) {
+  document.documentElement.dataset.theme = mode; // matches :root[data-theme="dark"]
+  localStorage.setItem('theme', mode);
+}
 
 export default function AppShell() {
   const { profile, subscription } = useAuth();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // ✅ Theme toggle state (persisted)
+  const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   useEffect(() => {
     (async () => {
@@ -26,7 +45,6 @@ export default function AppShell() {
       setTenant(data ?? null);
     })();
   }, [profile?.tenant_id]);
-
 
   const subscriptionBanner = useMemo(() => {
     if (!subscription || profile?.role !== 'admin') return null;
@@ -47,17 +65,27 @@ export default function AppShell() {
     );
 
     if (daysLeft < 0) {
-      return { type: 'expired' as const, daysLeft, message: 'Η συνδρομή σας έχει λήξει. Οι λειτουργίες είναι περιορισμένες.' };
+      return {
+        type: 'expired' as const,
+        daysLeft,
+        message: 'Η συνδρομή σας έχει λήξει. Οι λειτουργίες είναι περιορισμένες.',
+      };
     }
 
     if (daysLeft <= 7) {
-      return { type: 'warning' as const, daysLeft, message: `Η συνδρομή σας λήγει σε ${daysLeft} ημέρες.` };
+      return {
+        type: 'warning' as const,
+        daysLeft,
+        message: `Η συνδρομή σας λήγει σε ${daysLeft} ημέρες.`,
+      };
     }
 
     return null;
   }, [subscription, profile?.role]);
 
-
+  const toggleTheme = () => {
+    setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+  };
 
   return (
     <div className="min-h-screen bg-background text-text-primary flex">
@@ -97,6 +125,7 @@ export default function AppShell() {
             </NavLink>
           </div>
         )}
+
         <header className="h-14 sticky top-0 z-10 bg-secondary-background text-text-primary border-b border-white/10">
           <div className="h-full px-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -105,16 +134,33 @@ export default function AppShell() {
                 onClick={() => setSidebarOpen(true)}
                 aria-label="Open sidebar"
               >
-                <svg width="20" height="20" viewBox="0 0 24 24">
+                <svg width="20" height="20" viewBox="0 0 24 24" >
                   <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
               </button>
-              <div className="font-semibold flex justify-center gap-1"><img src={logo} className='w-35'></img></div>
+
+              <div className="font-semibold flex justify-center gap-1">
+                <img src={logo}  className="w-28 sm:w-32 md:w-36 lg:w-42"/>
+              </div>
+
               <div className="hidden sm:block text-sm opacity-60">
                 {tenant?.name ? `• ${tenant.name}` : '• —'}
               </div>
             </div>
-            <UserMenu />
+
+            <div className="flex items-center gap-2">
+              {/* ✅ Theme toggle */}
+              <button
+                onClick={toggleTheme}
+                className="h-9 rounded-md border border-border/10 px-3 text-sm hover:bg-border/5"
+                aria-label="Toggle theme"
+                title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+              >
+                {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+              </button>
+
+              <UserMenu />
+            </div>
           </div>
         </header>
 
@@ -255,7 +301,7 @@ function NavItem({
         [
           'rounded-md px-3 py-2 text-md transition-colors flex items-center gap-2',
           nested ? 'ml-1' : '',
-          isActive ? 'bg-primary/70 text-text-primary' : 'opacity-80 hover:opacity-100 hover:bg-secondary/10',
+          isActive ? 'bg-primary/90 text-white' : 'opacity-80 hover:opacity-100 hover:bg-secondary/10',
         ].join(' ')
       }
     >
@@ -264,7 +310,6 @@ function NavItem({
     </NavLink>
   );
 }
-
 
 function UserMenu() {
   const { session, profile } = useAuth();
@@ -279,19 +324,19 @@ function UserMenu() {
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="h-9 rounded-md border border-white/10 px-3 text-sm hover:bg-white/5"
+        className="h-9 rounded-md border border-border/10 px-3 text-sm hover:bg-border/5"
       >
         {profile?.full_name || session?.user?.email || 'Account'}
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-56 rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-lg">
+        <div className="absolute right-0 mt-2 w-56 rounded-md border border-border/10 bg-secondary-background text-text-primary shadow-lg">
           <div className="px-3 py-2 text-sm">
             <div className="font-medium">{profile?.full_name || '—'}</div>
             <div className="opacity-70">{session?.user?.email}</div>
             <div className="mt-1 text-[10px] uppercase opacity-60">{profile?.role}</div>
           </div>
-          <div className="border-t border-white/10" />
-          <button onClick={signOut} className="w-full text-left px-3 py-2 text-sm hover:bg-white/5">
+          <div className="border-t border-border/10" />
+          <button onClick={signOut} className="w-full text-left px-3 py-2 text-sm hover:bg-border/5">
             Sign out
           </button>
         </div>

@@ -198,11 +198,11 @@ export function CalendarMonth({
       : [];
 
   return (
-    <div className="w-full rounded-md border border-white/10 bg-secondary-background/60">
+    <div className="w-full rounded-md border border-border/10 bg-secondary-background/60">
       {header && (
-        <div className="px-2 sm:px-3 py-2 border-b border-white/10 flex flex-wrap items-center gap-2">
+        <div className="px-2 sm:px-3 py-2 border-b border-border/10 flex flex-wrap items-center gap-2">
           <button
-            className="h-8 w-8 rounded-md border border-white/10 hover:bg-white/5"
+            className="h-8 w-8 rounded-md border border-border/10 hover:bg-white/5"
             onClick={goPrev}
             aria-label="Prev"
           >
@@ -210,14 +210,14 @@ export function CalendarMonth({
           </button>
 
           <button
-            className="h-8 rounded-md border border-white/10 px-2 hover:bg-white/5 text-xs sm:text-sm"
+            className="h-8 rounded-md border border-border/10 px-2 hover:bg-white/5 text-xs sm:text-sm"
             onClick={goToday}
           >
             Σήμερα
           </button>
 
           <button
-            className="h-8 w-8 rounded-md border border-white/10 hover:bg-white/5"
+            className="h-8 w-8 rounded-md border border-border/10 hover:bg-white/5"
             onClick={goNext}
             aria-label="Next"
           >
@@ -236,8 +236,8 @@ export function CalendarMonth({
               onClick={() => setViewMode('day')}
               className={`h-8 px-3 rounded-md border text-xs sm:text-sm ${
                 viewMode === 'day'
-                  ? 'bg-primary/70 border-primary/70'
-                  : 'border-white/10 hover:bg-white/5'
+                  ? 'bg-primary/90 border-primary/70 text-white' 
+                  : 'border-border/10 hover:bg-border/5'
               }`}
             >
               Ημέρα
@@ -246,8 +246,8 @@ export function CalendarMonth({
               onClick={() => setViewMode('month')}
               className={`h-8 px-3 rounded-md border text-xs sm:text-sm ${
                 viewMode === 'month'
-                  ? 'bg-primary/70 border-primary/70'
-                  : 'border-white/10 hover:bg-white/5'
+                  ? 'bg-primary/90 border-primary/70 text-white'
+                  : 'border-border/10 hover:bg-border/5'
               }`}
             >
               Μήνας
@@ -290,7 +290,7 @@ export function CalendarMonth({
                 <button
                   key={s.id}
                   onClick={() => onSessionClick?.(s)}
-                  className="w-full text-left truncate rounded-md border border-white/10 px-3 py-2 hover:bg-white/5"
+                  className="w-full text-left truncate rounded-md border border-border/10 px-3 py-2 hover:bg-border/5"
                   title={`${sessionTitle(s)} • ${fmtHM(s.starts_at)}–${fmtHM(
                     s.ends_at,
                   )}`}
@@ -318,7 +318,7 @@ export function CalendarMonth({
             </div>
 
             <div className={height ? 'h-[calc(100%-22px)] overflow-auto' : ''}>
-              <div className="grid grid-cols-1 sm:grid-cols-7 gap-2 bg-white/10 rounded-md overflow-hidden">
+              <div className="grid grid-cols-1 sm:grid-cols-7 gap-2 bg-border/10 rounded-md overflow-hidden">
                 {days.map((day, idx) => {
                   const key = ymdLocal(day);
                   const isOtherMonth =
@@ -346,7 +346,7 @@ export function CalendarMonth({
                           className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${
                             isToday
                               ? 'bg-primary/80 text-white'
-                              : 'bg-transparent text-white/70'
+                              : 'bg-transparent text-text-primary/70'
                           }`}
                         >
                           {day.getDate()}
@@ -363,7 +363,7 @@ export function CalendarMonth({
                           <button
                             key={s.id}
                             onClick={() => onSessionClick?.(s)}
-                            className="w-full text-left truncate rounded-md border border-white/10 px-2 py-1 hover:bg-white/5"
+                            className="w-full text-left truncate rounded-md border border-border/10 px-2 py-1 hover:bg-border/5"
                             title={`${sessionTitle(s)} • ${fmtHM(
                               s.starts_at,
                             )}–${fmtHM(s.ends_at)}`}

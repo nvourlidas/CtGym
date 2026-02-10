@@ -56,7 +56,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background bg-linear-to-br from-background via-background/80 to-slate-950 text-slate-100 px-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#253649] bg-linear-to-br from-[#253649] via-[#253649]/80 to-slate-950 text-slate-100 px-4">
       {/* BIG LOGO OUTSIDE CARD */}
       <div className="flex flex-col items-center mb-8 text-center">
         {/* Change src to your logo path */}

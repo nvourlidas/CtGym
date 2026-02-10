@@ -264,14 +264,14 @@ export default function BookingsPage() {
       {/* Filters */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
-          className="h-9 w-full sm:w-64 rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
+          className="h-9 w-full sm:w-64 rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
           placeholder="Αναζήτηση κρατήσεων…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
 
         <select
-          className="h-9 w-full sm:w-auto rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
+          className="h-9 w-full sm:w-auto rounded-md border border-border/10 bg-secondary-background px-3 text-sm"
           value={classFilter}
           onChange={(e) => setClassFilter(e.target.value)}
         >
@@ -284,7 +284,7 @@ export default function BookingsPage() {
         </select>
 
         <select
-          className="h-9 w-full sm:w-auto rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
+          className="h-9 w-full sm:w-auto rounded-md border border-border/10 bg-secondary-background px-3 text-sm"
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
         >
@@ -297,7 +297,7 @@ export default function BookingsPage() {
         </select>
 
         <select
-          className="h-9 w-full sm:w-auto rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
+          className="h-9 w-full sm:w-auto rounded-md border border-border/10 bg-secondary-background px-3 text-sm"
           value={bookingTypeFilter}
           onChange={(e) => setBookingTypeFilter(e.target.value)}
         >
@@ -308,7 +308,7 @@ export default function BookingsPage() {
 
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <select
-            className="h-9 w-full sm:w-auto rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
+            className="h-9 w-full sm:w-auto rounded-md border border-border/10 bg-secondary-background px-3 text-sm"
             value={dateFilterMode}
             onChange={(e) => setDateFilterMode(e.target.value as DateFilterMode)}
           >
@@ -320,7 +320,7 @@ export default function BookingsPage() {
           {dateFilterMode === 'custom' && (
             <input
               type="date"
-              className="h-9 w-full sm:w-auto rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
+              className="h-9 w-full sm:w-auto rounded-md border border-border/10 bg-secondary-background px-3 text-sm"
               value={customDate}
               onChange={(e) => setCustomDate(e.target.value)}
             />
@@ -342,7 +342,7 @@ export default function BookingsPage() {
         </div>
       )}
 
-      <div className="rounded-md border border-white/10 overflow-hidden">
+      <div className="rounded-md border border-border/10 overflow-hidden">
         {/* Loading / empty states */}
         {loading && (
           <div className="px-3 py-4 text-sm opacity-60">Loading…</div>
@@ -409,7 +409,7 @@ export default function BookingsPage() {
                         <span className="inline-flex items-center gap-2 text-[11px] px-2 py-1 rounded-full bg-white/5">
                           {b.session.classes.class_categories.color && (
                             <span
-                              className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                              className="inline-block h-2.5 w-2.5 rounded-full border border-border/20"
                               style={{
                                 backgroundColor:
                                   b.session.classes.class_categories.color,
@@ -476,7 +476,7 @@ export default function BookingsPage() {
                     return (
                       <tr
                         key={b.id}
-                        className="border-t border-white/10 hover:bg-secondary/10"
+                        className="border-t border-border/10 hover:bg-secondary/10"
                       >
                         <Td>{b.profile?.full_name ?? b.user_id}</Td>
                         <Td>
@@ -500,7 +500,7 @@ export default function BookingsPage() {
                             <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5">
                               {b.session.classes.class_categories.color && (
                                 <span
-                                  className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                                  className="inline-block h-2.5 w-2.5 rounded-full border border-border/20"
                                   style={{
                                     backgroundColor:
                                       b.session.classes.class_categories.color,
@@ -523,8 +523,8 @@ export default function BookingsPage() {
                                 className={
                                   'inline-flex items-center rounded-full px-2 py-0.5 border ' +
                                   (isDropIn
-                                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
-                                    : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300')
+                                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-500'
+                                    : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-500')
                                 }
                               >
                                 {isDropIn ? 'Drop-in' : 'Μέλος'}
@@ -565,7 +565,7 @@ export default function BookingsPage() {
             </div>
 
             {/* Pagination footer */}
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 py-2 text-xs text-text-secondary border-t border-border/10">
               <div>
                 Εμφάνιση <span className="font-semibold">{startIdx}</span>
                 {filtered.length > 0 && (
@@ -579,7 +579,7 @@ export default function BookingsPage() {
                 <div className="flex items-center gap-1">
                   <span>Γραμμές ανά σελίδα:</span>
                   <select
-                    className="bg-transparent border border-white/10 rounded px-1 py-0.5"
+                    className="bg-transparent border border-border/10 rounded px-1 py-0.5"
                     value={pageSize}
                     onChange={(e) => setPageSize(Number(e.target.value))}
                   >
@@ -590,7 +590,7 @@ export default function BookingsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                    className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     disabled={page === 1}
                   >
@@ -601,7 +601,7 @@ export default function BookingsPage() {
                     <span className="font-semibold">{pageCount}</span>
                   </span>
                   <button
-                    className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                    className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
                     onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                     disabled={page === pageCount}
                   >
@@ -679,7 +679,7 @@ function IconButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 hover:bg-secondary/20 disabled:opacity-50"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/10 hover:bg-secondary/20 disabled:opacity-50"
       aria-label={label}
       title={label}
     >
@@ -900,8 +900,8 @@ function CreateBookingModal({
           </button>
 
           {memberDropdownOpen && (
-            <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
-              <div className="p-2 border-b border-white/10">
+            <div className="absolute z-50 mt-1 w-full rounded-md border border-border/15 bg-secondary-background shadow-lg">
+              <div className="p-2 border-b border-border/10">
                 <input
                   autoFocus
                   className="input h-9! text-sm!"
@@ -954,8 +954,8 @@ function CreateBookingModal({
           </button>
 
           {sessionDropdownOpen && (
-            <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
-              <div className="p-2 border-b border-white/10 space-y-2">
+            <div className="absolute z-50 mt-1 w-full rounded-md border border-border/15 bg-secondary-background shadow-lg">
+              <div className="p-2 border-b border-border/10 space-y-2">
                 <input
                   className="input h-9! text-sm!"
                   placeholder="Αναζήτηση (τίτλος, ώρα)..."
@@ -973,7 +973,7 @@ function CreateBookingModal({
                   {sessionDate && (
                     <button
                       type="button"
-                      className="px-2 py-1 rounded border border-white/20 hover:bg-white/5"
+                      className="px-2 py-1 rounded border border-border/20 hover:bg-white/5"
                       onClick={() => setSessionDate('')}
                     >
                       Καθαρισμός
@@ -1092,8 +1092,8 @@ function EditBookingModal({
 function Modal({ title, children, onClose }: any) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl">
-        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+      <div className="w-full max-w-lg rounded-md border border-border/10 bg-secondary-background text-text-primary shadow-xl">
+        <div className="px-4 py-3 border-b border-border/10 flex items-center justify-between">
           <div className="font-semibold">{title}</div>
           <button
             onClick={onClose}
@@ -1146,19 +1146,19 @@ function renderStatusBadge(status: string | null) {
   switch (s) {
     case 'booked':
       label = 'Κρατήθηκε';
-      cls += ' border-sky-500/40 bg-sky-500/10 text-sky-300';
+      cls += ' border-sky-500/40 bg-sky-500/10 text-sky-500';
       break;
     case 'checked_in':
       label = 'Παρουσία';
-      cls += ' border-emerald-500/40 bg-emerald-500/10 text-emerald-300';
+      cls += ' border-emerald-500/40 bg-emerald-500/10 text-emerald-500';
       break;
     case 'canceled':
       label = 'Ακυρώθηκε';
-      cls += ' border-rose-500/40 bg-rose-500/10 text-rose-300';
+      cls += ' border-rose-500/40 bg-rose-500/10 text-rose-500';
       break;
     case 'no_show':
       label = 'Δεν προσήλθε';
-      cls += ' border-amber-500/40 bg-amber-500/10 text-amber-300';
+      cls += ' border-amber-500/40 bg-accent/10 text-accent';
       break;
   }
 

@@ -219,7 +219,7 @@ export default function ClassSessionsPage() {
     <div className="p-6">
       <div className="mb-4 flex items-center gap-3 flex-wrap">
         <select
-          className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm"
+          className="h-9 rounded-md border border-border/10 bg-secondary-background px-3 text-sm"
           value={qClass}
           onChange={(e) => setQClass(e.target.value)}
         >
@@ -278,7 +278,7 @@ export default function ClassSessionsPage() {
         </div>
       )}
 
-      <div className="rounded-md border border-white/10 overflow-hidden">
+      <div className="rounded-md border border-border/10 overflow-hidden">
         {/* DESKTOP / TABLE VIEW */}
         <div className="hidden md:block">
           <div className="overflow-x-auto">
@@ -288,7 +288,7 @@ export default function ClassSessionsPage() {
                   <Th className="w-8">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded-sm border border-white/30 bg-transparent accent-primary hover:border-primary/70 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/60"
+                      className="h-4 w-4 rounded-sm border border-border/30 bg-transparent accent-primary hover:border-primary/70 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/60"
                       checked={allPageSelected && pageIds.length > 0}
                       onChange={() => {
                         setSelectedIds((prev) => {
@@ -337,12 +337,12 @@ export default function ClassSessionsPage() {
                     return (
                       <tr
                         key={s.id}
-                        className="border-t border-white/10 hover:bg-secondary/10"
+                        className="border-t border-border/10 hover:bg-secondary/10"
                       >
                         <Td className="w-8">
                           <input
                             type="checkbox"
-                            className="h-4 w-4 rounded-sm border border-white/30 bg-transparent accent-primary hover:border-primary/70 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/60"
+                            className="h-4 w-4 rounded-sm border border-border/30 bg-transparent accent-primary hover:border-primary/70 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/60"
                             checked={selectedIds.includes(s.id)}
                             onChange={() =>
                               setSelectedIds((prev) =>
@@ -361,7 +361,7 @@ export default function ClassSessionsPage() {
                                 <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/5">
                                   {cls.class_categories.color && (
                                     <span
-                                      className="inline-block h-2 w-2 rounded-full border border-white/20"
+                                      className="inline-block h-2 w-2 rounded-full border border-border/20"
                                       style={{
                                         backgroundColor:
                                           cls.class_categories.color,
@@ -441,7 +441,7 @@ export default function ClassSessionsPage() {
               return (
                 <div
                   key={s.id}
-                  className="border-t border-white/10 bg-secondary/5 px-3 py-3"
+                  className="border-t border-border/10 bg-secondary/5 px-3 py-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -453,7 +453,7 @@ export default function ClassSessionsPage() {
                           <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/5">
                             {cls.class_categories.color && (
                               <span
-                                className="inline-block h-2 w-2 rounded-full border border-white/20"
+                                className="inline-block h-2 w-2 rounded-full border border-border/20"
                                 style={{
                                   backgroundColor: cls.class_categories.color,
                                 }}
@@ -468,7 +468,7 @@ export default function ClassSessionsPage() {
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 rounded-sm border border-white/30 bg-transparent accent-primary hover:border-primary/70 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/60"
+                        className="h-4 w-4 rounded-sm border border-border/30 bg-transparent accent-primary hover:border-primary/70 cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/60"
                         checked={selectedIds.includes(s.id)}
                         onChange={() =>
                           setSelectedIds((prev) =>
@@ -538,7 +538,7 @@ export default function ClassSessionsPage() {
 
         {/* Pagination footer */}
         {!loading && filtered.length > 0 && (
-          <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
+          <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-border/10">
             <div>
               Εμφάνιση <span className="font-semibold">{startIdx}</span>
               {filtered.length > 0 && (
@@ -552,7 +552,7 @@ export default function ClassSessionsPage() {
               <div className="flex items-center gap-1">
                 <span>Γραμμές ανά σελίδα:</span>
                 <select
-                  className="bg-transparent border border-white/10 rounded px-1 py-0.5"
+                  className="bg-transparent border border-border/10 rounded px-1 py-0.5"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                 >
@@ -563,7 +563,7 @@ export default function ClassSessionsPage() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                  className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
                 >
@@ -574,7 +574,7 @@ export default function ClassSessionsPage() {
                   <span className="font-semibold">{pageCount}</span>
                 </span>
                 <button
-                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                  className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
                   onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                   disabled={page === pageCount}
                 >
@@ -666,8 +666,8 @@ function FilterChip({
       type="button"
       onClick={onClick}
       className={`px-3 h-8 rounded-full text-xs font-medium transition border ${active
-        ? 'bg-accent text-black border-black'
-        : 'bg-secondary-background text-text-secondary border-white/10 hover:border-white/30'
+        ? 'bg-accent text-black border-accent/70'
+        : 'bg-secondary-background text-text-secondary border-border/10 hover:border-border/30'
         }`}
     >
       {label}
@@ -824,8 +824,8 @@ function CreateSessionModal({
           </button>
 
           {classDropdownOpen && (
-            <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
-              <div className="p-2 border-b border-white/10">
+            <div className="absolute z-50 mt-1 w-full rounded-md border border-border/15 bg-secondary-background shadow-lg">
+              <div className="p-2 border-b border-border/10">
                 <input
                   autoFocus
                   className="input h-9! text-sm!"
@@ -1022,8 +1022,8 @@ function EditSessionModal({
           </button>
 
           {classDropdownOpen && (
-            <div className="absolute z-50 mt-1 w-full rounded-md border border-white/15 bg-secondary-background shadow-lg">
-              <div className="p-2 border-b border-white/10">
+            <div className="absolute z-50 mt-1 w-full rounded-md border border-border/15 bg-secondary-background shadow-lg">
+              <div className="p-2 border-b border-border/10">
                 <input
                   autoFocus
                   className="input h-9! text-sm!"
@@ -1196,8 +1196,8 @@ function startOfMonth(d: Date) {
 function Modal({ title, children, onClose }: any) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl">
-        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+      <div className="w-full max-w-lg rounded-md border border-border/10 bg-secondary-background text-text-primary shadow-xl">
+        <div className="px-4 py-3 border-b border-border/10 flex items-center justify-between">
           <div className="font-semibold">{title}</div>
           <button
             onClick={onClose}
@@ -1237,7 +1237,7 @@ function IconButton({
       type="button"
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 hover:bg-secondary/20 disabled:opacity-40"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/10 hover:bg-secondary/20 disabled:opacity-40"
       aria-label={label}
       title={label}
     >

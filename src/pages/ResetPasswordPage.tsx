@@ -81,7 +81,7 @@ export default function ResetPasswordPage() {
 
   if (checking) {
     return (
-      <div className="min-h-screen bg-background text-white grid place-items-center px-6">
+      <div className="min-h-screen bg-[#253649] text-white grid place-items-center px-6">
         <div className="text-sm text-white/80">Έλεγχος συνδέσμου…</div>
       </div>
     );
@@ -89,7 +89,7 @@ export default function ResetPasswordPage() {
 
   if (!hasSession) {
     return (
-      <div className="min-h-screen bg-background text-white grid place-items-center px-6">
+      <div className="min-h-screen bg-[#253649] text-white grid place-items-center px-6">
         <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-[#1f2f40] p-6 shadow">
           <h1 className="text-xl font-semibold mb-2">Ο σύνδεσμος δεν είναι ενεργός</h1>
           <p className="text-sm text-white/70 mb-4">
@@ -109,7 +109,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-white grid place-items-center px-6">
+    <div className="min-h-screen bg-[#253649] text-white grid place-items-center px-6">
       <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-[#1f2f40] p-6 shadow">
         <div className="flex items-center gap-2 mb-4">
           <div className="h-10 w-10 rounded-xl bg-white/10 grid place-items-center">
@@ -167,7 +167,7 @@ export default function ResetPasswordPage() {
           <button
             type="submit"
             disabled={!canSubmit}
-            className="w-full rounded-full bg-accent` text-[#020617] font-semibold py-3 disabled:opacity-60"
+            className="w-full rounded-full bg-accent` text-white font-semibold py-3 disabled:opacity-60"
           >
             {busy ? 'Αποθήκευση…' : 'Αλλαγή κωδικού'}
           </button>

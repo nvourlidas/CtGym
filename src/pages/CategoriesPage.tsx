@@ -119,11 +119,11 @@ export default function CategoriesPage() {
       </div>
 
       {/* Top bar: search + form */}
-      <div className="rounded-md border border-white/10 bg-secondary-background p-4 space-y-4">
+      <div className="rounded-md border border-border/10 bg-secondary-background p-4 space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {/* Search */}
           <input
-            className="h-9 w-full max-w-xs rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
+            className="h-9 w-full max-w-xs rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
             placeholder="Αναζήτηση κατηγοριών…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
@@ -137,7 +137,7 @@ export default function CategoriesPage() {
             <div className="flex-1 w-full sm:w-52">
               <label className="block text-xs mb-1 text-text-secondary">Όνομα</label>
               <input
-                className="h-9 w-full rounded-md border border-white/10 bg-background px-3 text-sm placeholder:text-text-secondary"
+                className="h-9 w-full rounded-md border border-border/10 bg-background px-3 text-sm placeholder:text-text-secondary"
                 placeholder="π.χ. Personal"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -149,7 +149,7 @@ export default function CategoriesPage() {
                 <label className="block text-xs mb-1 text-text-secondary">Χρώμα</label>
                 <input
                   type="color"
-                  className="h-9 w-12 rounded border border-white/10 bg-background cursor-pointer"
+                  className="h-9 w-12 rounded border border-border/10 bg-background cursor-pointer"
                   value={color}
                   onChange={(e) => setColor(e.target.value)}
                 />
@@ -170,7 +170,7 @@ export default function CategoriesPage() {
       </div>
 
       {/* List */}
-      <div className="rounded-md border border-white/10 overflow-hidden">
+      <div className="rounded-md border border-border/10 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-secondary-background/60">
             <tr className="text-left">
@@ -201,7 +201,7 @@ export default function CategoriesPage() {
               filtered.map((cat) => (
                 <tr
                   key={cat.id}
-                  className="border-t border-white/10 hover:bg-secondary/10"
+                  className="border-t border-border/10 hover:bg-secondary/10"
                 >
                   <td className="px-3 py-2 text-text-primary font-medium">
                     {cat.name}
@@ -210,7 +210,7 @@ export default function CategoriesPage() {
                     {cat.color ? (
                       <span className="inline-flex items-center gap-2">
                         <span
-                          className="inline-block h-3 w-3 rounded-full border border-white/20"
+                          className="inline-block h-3 w-3 rounded-full border border-border/20"
                           style={{ backgroundColor: cat.color }}
                         />
                         <span className="text-xs text-text-secondary">

@@ -2,12 +2,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Content-Type": "application/json",
 };
 
-function res(status: number, data: unknown, extraHeaders: Record<string, string> = {}) {
+function res(
+  status: number,
+  data: unknown,
+  extraHeaders: Record<string, string> = {},
+) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { ...corsHeaders, ...extraHeaders },
@@ -42,11 +47,23 @@ function getVivaBases() {
 }
 
 async function getAccessToken() {
-  const clientId = Deno.env.get("VIVA_CLIENT_ID") ?? "";
-  const clientSecret = Deno.env.get("VIVA_CLIENT_SECRET") ?? "";
+  const env = (Deno.env.get("VIVA_ENV") ?? "demo").toLowerCase();
+  const isProd = env === "prod";
+
+  const clientId = isProd
+    ? (Deno.env.get("VIVA_PROD_CLIENT_ID") ?? "")
+    : (Deno.env.get("VIVA_DEMO_CLIENT_ID") ?? "");
+
+  const clientSecret = isProd
+    ? (Deno.env.get("VIVA_PROD_CLIENT_SECRET") ?? "")
+    : (Deno.env.get("VIVA_DEMO_CLIENT_SECRET") ?? "");
 
   if (!clientId || !clientSecret) {
-    throw new Error("Missing Viva OAuth credentials: VIVA_CLIENT_ID or VIVA_CLIENT_SECRET");
+    throw new Error(
+      `Missing Viva OAuth credentials for ${isProd ? "PROD" : "DEMO"} (VIVA_${
+        isProd ? "PROD" : "DEMO"
+      }_CLIENT_ID / VIVA_${isProd ? "PROD" : "DEMO"}_CLIENT_SECRET)`,
+    );
   }
 
   const { accountsBase } = getVivaBases();
@@ -66,13 +83,7 @@ async function getAccessToken() {
     throw new Error(`Viva token request failed (${tokenRes.status}): ${text}`);
   }
 
-  let json: any;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(`Viva token response was not JSON: ${text}`);
-  }
-
+  const json = JSON.parse(text);
   if (!json?.access_token) {
     throw new Error(`Viva token missing access_token: ${text}`);
   }
@@ -95,7 +106,9 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
     if (!supabaseUrl) throw new Error("Missing SUPABASE_URL secret");
-    if (!serviceKey) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY secret");
+    if (!serviceKey) {
+      throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY secret");
+    }
 
     const sb = createClient(supabaseUrl, serviceKey);
 
@@ -168,7 +181,9 @@ Deno.serve(async (req) => {
       throw new Error(`Create order response was not JSON: ${orderText}`);
     }
 
-    const orderCode = String(orderJson?.orderCode ?? orderJson?.OrderCode ?? "");
+    const orderCode = String(
+      orderJson?.orderCode ?? orderJson?.OrderCode ?? "",
+    );
     if (!orderCode) throw new Error(`No orderCode returned: ${orderText}`);
 
     const checkoutUrl = `${checkoutBase}${encodeURIComponent(orderCode)}`;

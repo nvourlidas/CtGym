@@ -270,7 +270,7 @@ export default function SendMemberEmailModal({
           textToHtml(
             `Γεια σου ${friendlyName || ''},\n\n` +
               `Θα σταλεί στο email σου (${memberEmail}) το επίσημο email επαναφοράς κωδικού από το σύστημα.\n` +
-              `Το περιεχόμενο του email ορίζεται από το Supabase Auth και δεν μπορεί να τροποποιηθεί από εδώ.\n\n` +
+              `Το περιεχόμενο του email ορίζεται από το Cloudtec Auth και δεν μπορεί να τροποποιηθεί από εδώ.\n\n` +
               `${safeTenantName}`,
           ),
         );
@@ -384,15 +384,15 @@ export default function SendMemberEmailModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl">
+      <div className="w-full max-w-2xl rounded-md border border-border/10 bg-secondary-background text-text-primary shadow-xl">
         {/* Header */}
-        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-border/10 flex items-center justify-between">
           <div className="font-semibold">
             {step === 1 ? 'Αποστολή Email σε Μέλη' : 'Επιβεβαίωση Email'}
           </div>
           <button
             onClick={onClose}
-            className="rounded px-2 py-1 hover:bg-white/5"
+            className="rounded px-2 py-1 hover:bg-border/5"
           >
             ✕
           </button>
@@ -445,7 +445,7 @@ export default function SendMemberEmailModal({
                 </div>
                 {!hasSelectedMembers &&
                   recipientMode === 'selected' && (
-                    <div className="text-[11px] text-amber-300">
+                    <div className="text-[11px] text-accent">
                       Δεν έχεις επιλέξει μέλη στον πίνακα. Μπορείς είτε να
                       επιστρέψεις και να επιλέξεις, είτε να στείλεις σε όλα τα
                       ενεργά μέλη.
@@ -465,7 +465,7 @@ export default function SendMemberEmailModal({
                     className={`text-left rounded-md border px-3 py-2 transition ${
                       emailType === 'custom'
                         ? 'border-primary bg-primary/10'
-                        : 'border-white/10 hover:bg-white/5'
+                        : 'border-border/10 hover:bg-border/5'
                     }`}
                   >
                     <div className="font-semibold text-sm">Custom email</div>
@@ -480,7 +480,7 @@ export default function SendMemberEmailModal({
                     className={`text-left rounded-md border px-3 py-2 transition ${
                       emailType === 'bookings'
                         ? 'border-primary bg-primary/10'
-                        : 'border-white/10 hover:bg-white/5'
+                        : 'border-border/10 hover:bg-border/5'
                     }`}
                   >
                     <div className="font-semibold text-sm">
@@ -490,7 +490,7 @@ export default function SendMemberEmailModal({
                       Email για το εβδομαδιαίο πρόγραμμα προπονήσεων ενός
                       μέλους.
                     </div>
-                    <div className="mt-1 text-[10px] text-amber-300">
+                    <div className="mt-1 text-[10px] text-accent">
                       Απαιτεί ακριβώς ένα επιλεγμένο μέλος.
                     </div>
                   </button>
@@ -502,7 +502,7 @@ export default function SendMemberEmailModal({
                     className={`text-left rounded-md border px-3 py-2 transition ${
                       emailType === 'password_reset'
                         ? 'border-primary bg-primary/10'
-                        : 'border-white/10 hover:bg-white/5'
+                        : 'border-border/10 hover:bg-border/5'
                     }`}
                   >
                     <div className="font-semibold text-sm">
@@ -512,7 +512,7 @@ export default function SendMemberEmailModal({
                       Στέλνει email επαναφοράς κωδικού μέσω Supabase στη διεύθυνση
                       του μέλους.
                     </div>
-                    <div className="mt-1 text-[10px] text-amber-300">
+                    <div className="mt-1 text-[10px] text-accent">
                       Απαιτεί ακριβώς ένα επιλεγμένο μέλος. Θα επιβεβαιώσεις την
                       αποστολή στο επόμενο βήμα.
                     </div>
@@ -533,7 +533,7 @@ export default function SendMemberEmailModal({
                       className={`rounded-md border px-3 py-1 transition ${
                         weekOffset === -1
                           ? 'border-primary bg-primary/10'
-                          : 'border-white/10 hover:bg-white/5'
+                          : 'border-border/10 hover:bg-border/5'
                       }`}
                     >
                       Προηγούμενη εβδομάδα
@@ -544,7 +544,7 @@ export default function SendMemberEmailModal({
                       className={`rounded-md border px-3 py-1 transition ${
                         weekOffset === 0
                           ? 'border-primary bg-primary/10'
-                          : 'border-white/10 hover:bg-white/5'
+                          : 'border-border/10 hover:bg-border/5'
                       }`}
                     >
                       Τρέχουσα εβδομάδα
@@ -555,7 +555,7 @@ export default function SendMemberEmailModal({
                       className={`rounded-md border px-3 py-1 transition ${
                         weekOffset === 1
                           ? 'border-primary bg-primary/10'
-                          : 'border-white/10 hover:bg-white/5'
+                          : 'border-border/10 hover:bg-border/5'
                       }`}
                     >
                       Επόμενη εβδομάδα
@@ -609,9 +609,8 @@ export default function SendMemberEmailModal({
                   </div>
                   <p className="text-text-secondary">
                     Το παρακάτω κείμενο είναι ενδεικτικό. Το πραγματικό email
-                    επαναφοράς κωδικού αποστέλλεται από το Supabase Auth και
-                    το περιεχόμενό του ρυθμίζεται από το project σου στο
-                    Supabase.
+                    επαναφοράς κωδικού αποστέλλεται από τo Cloudtec Auth και
+                    το περιεχόμενό έιναι προκαθορισμένο από τη Cloudtec, δεν μπορεί να τροποποιηθεί από εδώ.
                   </p>
                   <div className="space-y-1 mt-2">
                     <label className="text-sm opacity-80">Θέμα (ενδεικτικό)</label>
@@ -648,7 +647,7 @@ export default function SendMemberEmailModal({
                     <label className="text-sm opacity-80">
                       Κείμενο Email
                     </label>
-                    <div className="ct-quill border border-white/10 rounded-md bg-secondary-background">
+                    <div className="ct-quill border border-border/10 rounded-md bg-secondary-background">
                       <ReactQuill
                         theme="snow"
                         value={body}
@@ -663,7 +662,7 @@ export default function SendMemberEmailModal({
         </div>
 
         {/* FOOTER BUTTONS */}
-        <div className="px-4 py-3 border-t border-white/10 flex justify-end gap-2 text-sm">
+        <div className="px-4 py-3 border-t border-border/10 flex justify-end gap-2 text-sm">
           {step === 1 ? (
             <>
               <button className="btn-secondary" onClick={onClose}>

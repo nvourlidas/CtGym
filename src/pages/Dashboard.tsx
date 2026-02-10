@@ -40,10 +40,10 @@ function Section({
   return (
     <section className="space-y-3">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-sm font-semibold tracking-wide uppercase text-white/80">
+        <h2 className="text-sm font-semibold tracking-wide uppercase text-text-primary/80">
           {title}
         </h2>
-        {subtitle && <p className="text-xs text-white/50">{subtitle}</p>}
+        {subtitle && <p className="text-xs text-text-muted">{subtitle}</p>}
       </div>
       {children}
     </section>
@@ -117,8 +117,8 @@ export default function Dashboard() {
       </Section>
 
       <Section title="Ημερολόγιο">
-        <div className="rounded-md border border-white/10 bg-secondary-background/60 mt-2">
-          <div className="px-4 py-3 border-b border-white/10">
+        <div className="rounded-md border border-border/10 bg-secondary-background/60 mt-2">
+          <div className="px-4 py-3 border-b border-border/10">
             <h2 className="text-sm font-semibold opacity-80">Ημερολόγιο</h2>
           </div>
           <div className="p-3">

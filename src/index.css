@@ -1,42 +1,92 @@
-/* src/index.css */
 @import "tailwindcss";
 
-/* Global theme tokens (Tailwind v4) */
+/* =========================================================
+   🌞 LIGHT THEME (default)
+   ========================================================= */
 @theme {
+  /* Brand */
   --color-primary: #2f55d4;
   --color-secondary: #64748b;
-  --color-accent: #ffc947;
-  --color-success: #16a34a;
+  --color-accent: #FF8C00;
+  --color-success: #00693E;
+  --color-warning: #FF8C00;
   --color-danger: #bf2e2e;
 
-  --color-background: #253649;
-  --color-secondary-background: #1f2d3d;
+  /* Surfaces */
+  --color-background: #f6f7fb;
+  --color-secondary-background: #ffffff;
   --color-surface: #ffffff;
 
-  --color-text-primary: #e5e7eb;
-  --color-text-secondary: #94a3b8;
+  /* Text */
+  --color-text-primary: #0f172a;
+  --color-text-secondary: #475569;
+
+  /* Border */
+  --color-border: #0f172a;
+
+  --color-bulk-bg: #6CB4EE;
 }
 
-.gym-calendar .fc-theme-standard td{
-  border-color: rgba(255, 255, 255, 0.08); 
+/* =========================================================
+   🌙 DARK THEME (overrides)
+   ========================================================= */
+:root[data-theme="dark"] {
+  /* Brand (can stay same or tweak) */
+  --color-primary: #4c6fff;
+  --color-secondary: #94a3b8;
+  --color-accent: #ffc947;
+  --color-success: #03C03C;
+  --color-warning: #ffc947;
+  --color-danger: #ef4444;
+
+  /* Surfaces */
+  --color-background: #253649;
+  --color-secondary-background: #1f2d3d;
+  --color-surface: #0b1220;
+
+  /* Text */
+  --color-text-primary: #e5e7eb;
+  --color-text-secondary: #94a3b8;
+
+    /* Border */
+  --color-border: #e5e7eb;
+
+  --color-bulk-bg: #3B3C36;
+}
+
+/* =========================================================
+   🗓 FullCalendar adjustments per theme
+   ========================================================= */
+:root[data-theme="dark"] .gym-calendar .fc-theme-standard td {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+:root:not([data-theme="dark"]) .gym-calendar .fc-theme-standard td {
+  border-color: rgba(15, 23, 42, 0.12);
 }
 
 .gym-calendar .fc-theme-standard th {
-  border: 0 !important;         
+  border: 0 !important;
 }
 
 .gym-calendar .fc-theme-standard .fc-scrollgrid,
 .gym-calendar .fc-theme-standard .fc-scrollgrid table {
   border: 0 !important;
 }
+
+/* =========================================================
+   🔧 Shared utilities (auto-theme via tokens)
+   ========================================================= */
 @layer utilities {
   .input {
-    @apply h-9 w-full rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary;
+    @apply h-9 w-full rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary;
   }
+
   .btn-primary {
     @apply h-9 rounded-md px-3 text-sm bg-primary text-white hover:bg-primary/90;
   }
+
   .btn-secondary {
-    @apply h-9 rounded-md px-3 text-sm border border-white/10 hover:bg-white/5;
+    @apply h-9 rounded-md px-3 text-sm border border-border/10 hover:bg-border/5;
   }
 }

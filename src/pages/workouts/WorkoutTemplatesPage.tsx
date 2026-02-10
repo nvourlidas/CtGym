@@ -119,7 +119,7 @@ export default function WorkoutTemplatesPage() {
     <div className="p-6">
       <div className="mb-4 flex items-center gap-3">
         <input
-          className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
+          className="h-9 rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
           placeholder="Αναζήτηση templates…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -133,7 +133,7 @@ export default function WorkoutTemplatesPage() {
         </button>
       </div>
 
-      <div className="rounded-md border border-white/10 overflow-hidden">
+      <div className="rounded-md border border-border/10 overflow-hidden">
         {/* DESKTOP TABLE */}
         <div className="hidden md:block">
           <div className="overflow-x-auto">
@@ -172,7 +172,7 @@ export default function WorkoutTemplatesPage() {
                     return (
                       <tr
                         key={w.id}
-                        className="border-t border-white/10 hover:bg-secondary/10"
+                        className="border-t border-border/10 hover:bg-secondary/10"
                       >
                         <Td className="font-medium">{w.name ?? '—'}</Td>
                         <Td className="text-text-secondary">
@@ -232,7 +232,7 @@ export default function WorkoutTemplatesPage() {
               return (
                 <div
                   key={w.id}
-                  className="border-t border-white/10 bg-secondary/5 px-3 py-3"
+                  className="border-t border-border/10 bg-secondary/5 px-3 py-3"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -278,7 +278,7 @@ export default function WorkoutTemplatesPage() {
 
         {/* Pagination footer */}
         {!loading && filtered.length > 0 && (
-          <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
+          <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-border/10">
             <div>
               Εμφάνιση <span className="font-semibold">{startIdx}</span>
               {filtered.length > 0 && (
@@ -293,7 +293,7 @@ export default function WorkoutTemplatesPage() {
               <div className="flex items-center gap-1">
                 <span>Γραμμές ανά σελίδα:</span>
                 <select
-                  className="bg-transparent border border-white/10 rounded px-1 py-0.5"
+                  className="bg-transparent border border-border/10 rounded px-1 py-0.5"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                 >
@@ -305,7 +305,7 @@ export default function WorkoutTemplatesPage() {
 
               <div className="flex items-center gap-2">
                 <button
-                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                  className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
                 >
@@ -316,7 +316,7 @@ export default function WorkoutTemplatesPage() {
                   <span className="font-semibold">{pageCount}</span>
                 </span>
                 <button
-                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                  className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
                   onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                   disabled={page === pageCount}
                 >
@@ -393,7 +393,7 @@ function IconButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 hover:bg-secondary/20"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/10 hover:bg-secondary/20"
       aria-label={label}
       title={label}
     >
@@ -437,8 +437,8 @@ function DeleteButton({ id, onDeleted, guard }: { id: string; onDeleted: () => v
 function Modal({ title, children, onClose }: any) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl">
-        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+      <div className="w-full max-w-lg rounded-md border border-border/10 bg-secondary-background text-text-primary shadow-xl">
+        <div className="px-4 py-3 border-b border-border/10 flex items-center justify-between">
           <div className="font-semibold">{title}</div>
           <button onClick={onClose} className="rounded px-2 py-1 hover:bg-white/5">
             ✕
@@ -564,14 +564,14 @@ function AssignTemplateModal({
           />
 
           {memberOpen && (
-            <div className="absolute z-50 mt-1 w-full max-h-56 overflow-auto rounded-md border border-white/10 bg-secondary-background shadow-xl">
-              <div className="sticky top-0 bg-secondary-background border-b border-white/10 px-3 py-2 flex items-center justify-between">
+            <div className="absolute z-50 mt-1 w-full max-h-56 overflow-auto rounded-md border border-border/10 bg-secondary-background shadow-xl">
+              <div className="sticky top-0 bg-secondary-background border-b border-border/10 px-3 py-2 flex items-center justify-between">
                 <div className="text-xs text-text-secondary">
                   {filteredMembers.length} αποτελέσματα
                 </div>
                 <button
                   type="button"
-                  className="text-xs px-2 py-1 rounded border border-white/10 hover:bg-secondary/20"
+                  className="text-xs px-2 py-1 rounded border border-border/10 hover:bg-secondary/20"
                   onClick={() => setMemberOpen(false)}
                 >
                   Κλείσιμο
@@ -610,7 +610,7 @@ function AssignTemplateModal({
           <div className="mt-2 flex items-center gap-2">
             <button
               type="button"
-              className="text-xs px-2 py-1 rounded border border-white/10 hover:bg-secondary/20"
+              className="text-xs px-2 py-1 rounded border border-border/10 hover:bg-secondary/20"
               onClick={() => {
                 setMemberId('');
                 setMemberQuery('');

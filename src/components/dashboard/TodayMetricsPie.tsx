@@ -30,7 +30,7 @@ function utcMidnightISO(d: Date) {
 
 function LegendRow({ color, label, value }: { color: string; label: string; value: number }) {
   return (
-    <div className="flex items-center justify-between text-xs text-white/70">
+    <div className="flex items-center justify-between text-xs text-text-primary/80">
       <div className="flex items-center gap-2">
         <span
           className="inline-block h-2.5 w-2.5 rounded-full"
@@ -38,7 +38,7 @@ function LegendRow({ color, label, value }: { color: string; label: string; valu
         />
         <span>{label}</span>
       </div>
-      <span className="font-semibold text-white/90">{value}</span>
+      <span className="font-semibold text-text-primary/90">{value}</span>
     </div>
   )
 }
@@ -188,20 +188,20 @@ export default function TodayBookingsPieWidget({ tenantId }: Props) {
   }
 
   return (
-    <div className="rounded-md border border-white/10 bg-secondary-background/60 p-4">
+    <div className="rounded-md border border-border/10 bg-secondary-background/60 p-4">
       <div className="mb-3 flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold opacity-80">
             Παρουσίες & Κρατήσεις Σήμερα
           </h3>
-          <p className="mt-1 text-xs text-white/60">
+          <p className="mt-1 text-xs text-text-primary">
             Συνεδρίες σήμερα:{' '}
-            <span className="font-semibold text-white/90">
+            <span className="font-semibold ">
               {loading ? '…' : data.sessions}
             </span>
             {' · '}
             Κρατήσεις σήμερα:{' '}
-            <span className="font-semibold text-white/90">
+            <span className="font-semibold ">
               {loading ? '…' : data.totalBookings}
             </span>
           </p>
@@ -214,7 +214,7 @@ export default function TodayBookingsPieWidget({ tenantId }: Props) {
       </div>
 
       {!hasBookings && !loading && !error && (
-        <p className="text-xs text-white/50">
+        <p className="text-xs text-text-primary/50">
           Δεν υπάρχουν κρατήσεις σήμερα.
         </p>
       )}

@@ -189,7 +189,7 @@ export default function ClassesPage() {
     <div className="p-6">
       <div className="mb-4 flex items-center gap-3">
         <input
-          className="h-9 rounded-md border border-white/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
+          className="h-9 rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
           placeholder="Αναζήτηση τμημάτων…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -202,7 +202,7 @@ export default function ClassesPage() {
         </button>
       </div>
 
-      <div className="rounded-md border border-white/10 overflow-hidden">
+      <div className="rounded-md border border-border/10 overflow-hidden">
         {/* DESKTOP / TABLE VIEW */}
         <div className="hidden md:block">
           <div className="overflow-x-auto">
@@ -237,7 +237,7 @@ export default function ClassesPage() {
                   paginated.map((c) => (
                     <tr
                       key={c.id}
-                      className="border-t border-white/10 hover:bg-secondary/10"
+                      className="border-t border-border/10 hover:bg-secondary/10"
                     >
                       <Td className="font-medium">{c.title}</Td>
                       <Td className="text-text-secondary align-top">
@@ -250,7 +250,7 @@ export default function ClassesPage() {
                           <span className="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full bg-white/5">
                             {c.class_categories.color && (
                               <span
-                                className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                                className="inline-block h-2.5 w-2.5 rounded-full border border-border/20"
                                 style={{
                                   backgroundColor: c.class_categories.color,
                                 }}
@@ -332,7 +332,7 @@ export default function ClassesPage() {
             paginated.map((c) => (
               <div
                 key={c.id}
-                className="border-t border-white/10 bg-secondary/5 px-3 py-3"
+                className="border-t border-border/10 bg-secondary/5 px-3 py-3"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -369,7 +369,7 @@ export default function ClassesPage() {
                     <span className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-white/5">
                       {c.class_categories.color && (
                         <span
-                          className="inline-block h-2.5 w-2.5 rounded-full border border-white/20"
+                          className="inline-block h-2.5 w-2.5 rounded-full border border-border/20"
                           style={{
                             backgroundColor: c.class_categories.color,
                           }}
@@ -411,7 +411,7 @@ export default function ClassesPage() {
 
         {/* Shared pagination footer */}
         {!loading && filtered.length > 0 && (
-          <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-white/10">
+          <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-border/10">
             <div>
               Εμφάνιση <span className="font-semibold">{startIdx}</span>
               {filtered.length > 0 && (
@@ -425,7 +425,7 @@ export default function ClassesPage() {
               <div className="flex items-center gap-1">
                 <span>Γραμμές ανά σελίδα:</span>
                 <select
-                  className="bg-transparent border border-white/10 rounded px-1 py-0.5"
+                  className="bg-transparent border border-border/10 rounded px-1 py-0.5"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                 >
@@ -436,7 +436,7 @@ export default function ClassesPage() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                  className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
                 >
@@ -447,7 +447,7 @@ export default function ClassesPage() {
                   <span className="font-semibold">{pageCount}</span>
                 </span>
                 <button
-                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                  className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
                   onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                   disabled={page === pageCount}
                 >
@@ -850,8 +850,8 @@ function EditClassModal({
 function Modal({ title, children, onClose }: any) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl">
-        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+      <div className="w-full max-w-lg rounded-md border border-border/10 bg-secondary-background text-text-primary shadow-xl">
+        <div className="px-4 py-3 border-b border-border/10 flex items-center justify-between">
           <div className="font-semibold">{title}</div>
           <button
             onClick={onClose}
@@ -887,7 +887,7 @@ function IconButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 hover:bg-secondary/20"
+      className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/10 hover:bg-secondary/20"
       aria-label={label}
       title={label}
     >

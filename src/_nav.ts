@@ -74,7 +74,7 @@ export const NAV: NavEntry[] = [
   
   {
     type: 'group',
-    label: 'Settings',
+    label: 'Ρυθμίσεις',
     icon: Settings,
     children: [
       { label: 'Εμφάνιση εφαρμογής', to: '/themesettings', icon: Palette },

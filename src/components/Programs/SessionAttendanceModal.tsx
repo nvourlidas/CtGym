@@ -159,7 +159,7 @@ export default function SessionAttendanceModal({
           return (
             <div
               key={b.id}
-              className="rounded-md border border-white/10 px-2 py-1 text-sm"
+              className="rounded-md border border-border/10 px-2 py-1 text-sm"
               title={p?.full_name || b.user_id}
             >
               <div className="flex items-center justify-between gap-2">
@@ -172,7 +172,7 @@ export default function SessionAttendanceModal({
                   <span
                     className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] ${isDropIn
                       ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                      : "bg-emerald-500/15 text-emerald-300 border border-emerald-500/40"
+                      : "bg-emerald-500/15 text-emerald-500 border border-emerald-500/40"
                       }`}
                   >
                     {isDropIn ? "Drop-in" : "Μέλος"}
@@ -197,9 +197,9 @@ export default function SessionAttendanceModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="w-full max-w-5xl rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl">
+      <div className="w-full max-w-5xl rounded-md border border-border/10 bg-secondary-background text-text-primary shadow-xl">
         {/* header */}
-        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-border/10 flex items-center justify-between">
           <div className="space-y-0.5">
             <div className="font-semibold">
               {sessionTitle ?? "Class session"}
@@ -230,7 +230,7 @@ export default function SessionAttendanceModal({
             <button
               disabled={!checkinToken}
               onClick={() => setQrOpen(true)}
-              className="rounded px-2 py-1 hover:bg-white/5 disabled:opacity-40"
+              className="rounded px-2 py-1 hover:bg-border/5 disabled:opacity-40"
               title="QR check-in"
             >
               <QrCode className="w-7 h-6" />
@@ -239,7 +239,7 @@ export default function SessionAttendanceModal({
             {/* Close button */}
             <button
               onClick={onClose}
-              className="rounded px-2 py-1 hover:bg-white/5"
+              className="rounded px-2 py-1 hover:bg-border/5"
             >
               ✕
             </button>

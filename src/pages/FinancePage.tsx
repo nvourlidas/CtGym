@@ -548,7 +548,7 @@ function FinanceCategoriesModal({
       </p>
 
       {/* New category form */}
-      <div className="mb-4 rounded-md border border-white/10 bg-secondary/10 p-3 text-xs">
+      <div className="mb-4 rounded-md border border-border/10 bg-secondary/10 p-3 text-xs">
         <div className="mb-2 text-[0.70rem] font-semibold uppercase tracking-wide opacity-70">
           Νέα Κατηγορία
         </div>
@@ -577,7 +577,7 @@ function FinanceCategoriesModal({
                 type="color"
                 value={newColor || '#22c55e'}
                 onChange={(e) => setNewColor(e.target.value)}
-                className="h-8 w-10 rounded border border-white/20 bg-transparent"
+                className="h-8 w-10 rounded border border-border/20 bg-transparent"
               />
               <input
                 value={newColor}
@@ -601,7 +601,7 @@ function FinanceCategoriesModal({
       </div>
 
       {/* Existing categories */}
-      <div className="overflow-hidden rounded-md border border-white/10 bg-secondary/10">
+      <div className="overflow-hidden rounded-md border border-border/10 bg-secondary/10">
         <div className="max-h-72 overflow-auto">
           <table className="min-w-full text-left text-xs">
             <thead className="bg-secondary-background/60 text-[0.70rem] uppercase tracking-wide text-text-secondary">
@@ -629,7 +629,7 @@ function FinanceCategoriesModal({
                 return (
                   <tr
                     key={cat.id}
-                    className="border-t border-white/10 hover:bg-secondary/10"
+                    className="border-t border-border/10 hover:bg-secondary/10"
                   >
                     <td className="px-3 py-2 align-middle text-[0.75rem]">
                       {isEditing ? (
@@ -672,7 +672,7 @@ function FinanceCategoriesModal({
                             type="color"
                             value={editColor || '#22c55e'}
                             onChange={(e) => setEditColor(e.target.value)}
-                            className="h-6 w-8 rounded border border-white/20 bg-transparent"
+                            className="h-6 w-8 rounded border border-border/20 bg-transparent"
                           />
                           <input
                             value={editColor}
@@ -686,7 +686,7 @@ function FinanceCategoriesModal({
                           <span>{cat.color ?? '—'}</span>
                           {cat.color && (
                             <span
-                              className="inline-block h-3 w-3 rounded-full border border-white/20"
+                              className="inline-block h-3 w-3 rounded-full border border-border/20"
                               style={{ backgroundColor: cat.color }}
                             />
                           )}
@@ -719,7 +719,7 @@ function FinanceCategoriesModal({
                             <button
                               type="button"
                               onClick={() => startEdit(cat)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 hover:bg-secondary/20"
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/10 hover:bg-secondary/20"
                             >
                               <Pencil className="h-3 w-3" />
                             </button>
@@ -1022,7 +1022,7 @@ export default function FinancePage() {
       onClick={() => handleDatePresetChange(value)}
       className={`rounded-full border px-3 py-1 text-[0.70rem] ${datePreset === value
         ? 'bg-primary text-white border-primary'
-        : 'border-white/15 text-text-secondary hover:bg-secondary/30'
+        : 'border-border/15 text-text-secondary hover:bg-secondary/30'
         }`}
     >
       {label}
@@ -1045,8 +1045,8 @@ export default function FinancePage() {
     <div className="p-6">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-slate-50">Οικονομικά</h1>
-          <p className="mt-1 text-xs text-slate-400">
+          <h1 className="text-xl font-semibold text-text-primary">Οικονομικά</h1>
+          <p className="mt-1 text-xs text-text-secondary">
             Παρακολούθηση εσόδων / εξόδων για το γυμναστήριό σου.
           </p>
         </div>
@@ -1055,14 +1055,14 @@ export default function FinancePage() {
           <button
             type="button"
             onClick={() => setShowCategoriesModal(true)}
-            className="rounded-md border border-slate-600 bg-slate-900/60 px-4 py-2 text-xs font-medium text-slate-100 hover:bg-slate-800"
+            className="rounded-md border border-border/10 bg-secondary-background px-4 py-2 text-xs font-medium text-text-primary hover:bg-secondary/30"
           >
             Κατηγορίες
           </button>
           <button
             type="button"
             onClick={openCreateModal}
-            className="rounded-md bg-accent px-4 py-2 text-xs font-semibold text-slate-900 shadow hover:bg-amber-300"
+            className="rounded-md bg-accent px-4 py-2 text-xs font-semibold text-slate-900 shadow hover:bg-accent/80"
           >
             + Νέα Κίνηση
           </button>
@@ -1070,10 +1070,10 @@ export default function FinancePage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-4 rounded-xl border border-slate-700 bg-slate-900/80 p-4 text-xs text-slate-100">
+      <div className="mb-4 rounded-xl border border-border bg-secondary-background p-4 text-xs text-slate-100">
         {/* Date presets */}
         <div className="mb-3">
-          <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-slate-400">
+          <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-text-primary">
             Περίοδος
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1087,7 +1087,7 @@ export default function FinancePage() {
 
         <div className="grid gap-3 md:grid-cols-4">
           <div>
-            <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-slate-400">
+            <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-text-primary">
               Από
             </div>
             <DatePicker
@@ -1096,7 +1096,7 @@ export default function FinancePage() {
               dateFormat="dd/MM/yyyy"
               locale={el}
               placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
-              className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-2 text-xs text-slate-50 focus:outline-none focus:ring-2 focus:ring-amber-400/70"
+              className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
               wrapperClassName="w-full"
               showMonthDropdown
               showYearDropdown
@@ -1117,7 +1117,7 @@ export default function FinancePage() {
               dateFormat="dd/MM/yyyy"
               locale={el}
               placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
-              className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-2 text-xs text-slate-50 focus:outline-none focus:ring-2 focus:ring-amber-400/70"
+              className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
               wrapperClassName="w-full"
               showMonthDropdown
               showYearDropdown
@@ -1140,7 +1140,7 @@ export default function FinancePage() {
                 dateFormat="MM/yyyy"
                 locale={el}
                 placeholderText="ΜΜ/ΕΕΕΕ"
-                className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-2 text-xs text-slate-50 focus:outline-none focus:ring-2 focus:ring-amber-400/70"
+                className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
                 wrapperClassName="w-full"
                 showMonthYearPicker
               />
@@ -1152,7 +1152,7 @@ export default function FinancePage() {
               Τύπος
             </div>
             <select
-              className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-2 text-xs text-slate-50 focus:outline-none focus:ring-2 focus:ring-amber-400/70"
+              className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
               value={kindFilter}
               onChange={handleKindFilterChange}
             >
@@ -1167,7 +1167,7 @@ export default function FinancePage() {
               Κατηγορία
             </div>
             <select
-              className="w-full rounded-md border border-slate-700 bg-slate-800 px-2 py-2 text-xs text-slate-50 focus:outline-none focus:ring-2 focus:ring-amber-400/70"
+              className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
               value={categoryFilter}
               onChange={handleCategoryFilterChange}
             >
@@ -1184,8 +1184,8 @@ export default function FinancePage() {
 
       {/* Summary */}
       <div className="mb-4 grid gap-3 md:grid-cols-4">
-        <div className="rounded-xl border border-emerald-500/40 bg-slate-900/80 p-4 text-xs text-emerald-100">
-          <div className="text-[0.70rem] uppercase tracking-wide text-emerald-300/80">
+        <div className="rounded-xl border border-success/60 bg-secondary-background p-4 text-xs text-success/80">
+          <div className="text-[0.70rem] uppercase tracking-wide text-success/80">
             Σύνολο Εσόδων
           </div>
           <div className="mt-2 text-lg font-semibold">
@@ -1193,8 +1193,8 @@ export default function FinancePage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-rose-500/40 bg-slate-900/80 p-4 text-xs text-rose-100">
-          <div className="text-[0.70rem] uppercase tracking-wide text-rose-300/80">
+        <div className="rounded-xl border border-danger/60 bg-secondary-background p-4 text-xs text-danger/80">
+          <div className="text-[0.70rem] uppercase tracking-wide text-danger/80">
             Σύνολο Εξόδων
           </div>
           <div className="mt-2 text-lg font-semibold">
@@ -1202,12 +1202,12 @@ export default function FinancePage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-slate-600 bg-slate-900/80 p-4 text-xs text-slate-100">
-          <div className="text-[0.70rem] uppercase tracking-wide text-slate-300/80">
+        <div className="rounded-xl border border-success/60 bg-secondary-background p-4 text-xs text-success/80">
+          <div className="text-[0.70rem] uppercase tracking-wide text-success/80">
             Καθαρό Αποτέλεσμα
           </div>
           <div
-            className={`mt-2 text-lg font-semibold ${net >= 0 ? 'text-emerald-300' : 'text-rose-300'
+            className={`mt-2 text-lg font-semibold ${net >= 0 ? 'text-success/80' : 'text-danger/80'
               }`}
           >
             {formatCurrency(net)}
@@ -1215,8 +1215,8 @@ export default function FinancePage() {
         </div>
 
 
-        <div className="rounded-xl border border-amber-500/40 bg-slate-900/80 p-4 text-xs text-amber-100">
-          <div className="text-[0.70rem] uppercase tracking-wide text-amber-300/80">
+        <div className="rounded-xl border border-warning/60 bg-secondary-background p-4 text-xs text-warning/80">
+          <div className="text-[0.70rem] uppercase tracking-wide text-warning/80">
             Συνολικά Χρέη
           </div>
 
@@ -1232,10 +1232,10 @@ export default function FinancePage() {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-slate-700 bg-slate-900/80">
+      <div className="overflow-hidden rounded-xl border border-border/10 bg-secondary-background">
         <div className="max-h-125 overflow-auto">
-          <table className="min-w-full text-left text-xs text-slate-100">
-            <thead className="bg-slate-800/90 text-[0.70rem] uppercase tracking-wide text-slate-400">
+          <table className="min-w-full text-left text-xs text-text-primary">
+            <thead className="bg-secondary-background text-[0.70rem] uppercase tracking-wide text-text-secondary">
               <tr>
                 <th className="px-4 py-2">Ημερομηνία</th>
                 <th className="px-4 py-2">Τίτλος</th>
@@ -1251,7 +1251,7 @@ export default function FinancePage() {
                 <tr>
                   <td
                     colSpan={7}
-                    className="px-4 py-4 text-center text-xs text-slate-400"
+                    className="px-4 py-4 text-center text-xs text-text-secondary"
                   >
                     Φόρτωση δεδομένων...
                   </td>
@@ -1262,7 +1262,7 @@ export default function FinancePage() {
                 <tr>
                   <td
                     colSpan={7}
-                    className="px-4 py-4 text-center text-xs text-slate-400"
+                    className="px-4 py-4 text-center text-xs text-text-secondary"
                   >
                     Δεν βρέθηκαν κινήσεις για τα επιλεγμένα φίλτρα.
                   </td>
@@ -1276,20 +1276,20 @@ export default function FinancePage() {
                   return (
                     <tr
                       key={tx.id}
-                      className="border-t border-slate-800 hover:bg-slate-800/60"
+                      className="border-t border-border/10 hover:bg-border/10"
                     >
-                      <td className="px-4 py-2 align-middle text-[0.75rem] text-slate-200">
+                      <td className="px-4 py-2 align-middle text-[0.75rem] text-text-secondary">
                         {formatDateDMY(tx.tx_date)}
                       </td>
                       <td className="px-4 py-2 align-middle text-[0.75rem]">
                         {tx.title}
                       </td>
-                      <td className="px-4 py-2 align-middle text-[0.75rem] text-slate-300">
+                      <td className="px-4 py-2 align-middle text-[0.75rem] text-text-secondary">
                         {cat ? (
                           <div className="flex items-center gap-2">
                             {cat.color && (
                               <span
-                                className="inline-block h-3 w-3 rounded-full border border-white/20"
+                                className="inline-block h-3 w-3 rounded-full border border-border/20"
                                 style={{ backgroundColor: cat.color }}
                               />
                             )}
@@ -1302,23 +1302,23 @@ export default function FinancePage() {
                       <td className="px-4 py-2 align-middle text-[0.75rem]">
                         <span
                           className={`rounded-full px-2 py-0.5 text-[0.65rem] font-semibold ${tx.kind === 'income'
-                            ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/40'
-                            : 'bg-rose-500/10 text-rose-300 border border-rose-500/40'
+                            ? 'bg-emerald-500/10 text-success border border-emerald-500/40'
+                            : 'bg-rose-500/10 text-danger/60 border border-rose-500/40'
                             }`}
                         >
                           {tx.kind === 'income' ? 'Έσοδο' : 'Έξοδο'}
                         </span>
                       </td>
-                      <td className="px-4 py-2 align-middle text-right text-[0.75rem]">
+                      <td className="px-4 py-2 align-middle text-right text-[0.75rem] font-semibold">
                         <span
                           className={
-                            tx.kind === 'income' ? 'text-emerald-300' : 'text-rose-300'
+                            tx.kind === 'income' ? 'text-success' : 'text-danger'
                           }
                         >
                           {formatCurrency(tx.amount ?? 0)}
                         </span>
                       </td>
-                      <td className="px-4 py-2 align-middle text-[0.75rem] text-slate-300">
+                      <td className="px-4 py-2 align-middle text-[0.75rem] text-text-secondary">
                         {tx.notes ?? '-'}
                       </td>
                       <td className="px-4 py-2 align-middle text-right">
@@ -1326,14 +1326,14 @@ export default function FinancePage() {
                           <button
                             type="button"
                             onClick={() => openEditModal(tx)}
-                            className="rounded-md border border-slate-600 bg-slate-800/80 p-1.5 text-slate-100 hover:bg-slate-700"
+                            className="rounded-md border border-border bg-slate-800/80 p-1.5 text-slate-100 hover:bg-slate-700"
                           >
                             <Pencil className="h-3 w-3" />
                           </button>
                           <button
                             type="button"
                             onClick={() => handleDelete(tx.id)}
-                            className="rounded-md border border-rose-600/80 bg-rose-900/40 p-1.5 text-rose-200 hover:bg-rose-800/80"
+                            className="rounded-md border border-rose-600/80 bg-danger p-1.5 text-white hover:bg-rose-800/80"
                           >
                             <Trash2 className="h-3 w-3" />
                           </button>
@@ -1348,7 +1348,7 @@ export default function FinancePage() {
 
         {/* 🔹 Pagination footer */}
         {!loading && transactions.length > 0 && (
-          <div className="flex items-center justify-between px-4 py-2 text-xs text-slate-400 border-t border-slate-800">
+          <div className="flex items-center justify-between px-4 py-2 text-xs text-text-secondary border-t border-border/10">
             <div>
               Εμφάνιση{' '}
               <span className="font-semibold">{startIdx}</span>
@@ -1363,7 +1363,7 @@ export default function FinancePage() {
               <div className="flex items-center gap-1">
                 <span>Γραμμές ανά σελίδα:</span>
                 <select
-                  className="bg-transparent border border-white/10 rounded px-1 py-0.5"
+                  className="bg-transparent border border-border/10 rounded px-1 py-0.5"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                 >
@@ -1374,7 +1374,7 @@ export default function FinancePage() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                  className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page === 1}
                 >
@@ -1385,7 +1385,7 @@ export default function FinancePage() {
                   <span className="font-semibold">{pageCount}</span>
                 </span>
                 <button
-                  className="px-2 py-1 rounded border border-white/10 disabled:opacity-40"
+                  className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
                   onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
                   disabled={page === pageCount}
                 >
@@ -1430,8 +1430,8 @@ export default function FinancePage() {
 function Modal({ title, children, onClose }: any) {
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg rounded-md border border-white/10 bg-secondary-background text-text-primary shadow-xl">
-        <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
+      <div className="w-full max-w-lg rounded-md border border-border/10 bg-secondary-background text-text-primary shadow-xl">
+        <div className="px-4 py-3 border-b border-border/10 flex items-center justify-between">
           <div className="font-semibold">{title}</div>
           <button
             onClick={onClose}

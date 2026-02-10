@@ -193,9 +193,9 @@ export default function SessionQrPage() {
         : fmtDateEL(new Date().toISOString());
 
     return (
-        <div className="min-h-[100dvh] bg-primary-background text-white flex flex-col">
+        <div className="min-h-dvh bg-primary-background text-text-primary flex flex-col">
             {/* Top bar */}
-            <div className="sticky top-0 z-10 bg-primary-background/80 backdrop-blur border-b border-white/10">
+            <div className="sticky top-0 z-10 bg-primary-background/80 backdrop-blur border-b border-border/10">
                 <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between gap-3">
                     <div>
                         <div className="text-sm opacity-70">Σήμερα</div>
@@ -204,7 +204,7 @@ export default function SessionQrPage() {
 
                     <button
                         onClick={() => tenantId && loadTodaySessions(tenantId)}
-                        className="rounded-lg px-3 py-2 text-sm bg-white/10 hover:bg-white/15 border border-white/10"
+                        className="rounded-lg px-3 py-2 text-sm bg-white/10 hover:bg-white/15 border border-border/10"
                     >
                         Ανανέωση
                     </button>
@@ -214,7 +214,7 @@ export default function SessionQrPage() {
             <div className="w-full flex-1 px-4 py-5">
                 <div className="max-w-md mx-auto space-y-4">
                     {/* Navigation */}
-                    <div className="bg-secondary-background border border-white/10 rounded-2xl p-4">
+                    <div className="bg-secondary-background border border-border/10 rounded-2xl p-4">
                         {loading ? (
                             <div className="text-sm opacity-70 py-2">Φόρτωση σημερινών sessions…</div>
                         ) : error ? (
@@ -227,7 +227,7 @@ export default function SessionQrPage() {
                                     <div className="text-sm font-semibold">{headerDate}</div>
 
                                     {isActiveNow && (
-                                        <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-200">
+                                        <span className="text-xs px-2 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-500">
                                             Ενεργό τώρα
                                         </span>
                                     )}
@@ -240,8 +240,8 @@ export default function SessionQrPage() {
                                         className={[
                                             "flex-1 rounded-xl px-3 py-3 text-sm border",
                                             canPrev
-                                                ? "bg-white/10 hover:bg-white/15 border-white/10"
-                                                : "bg-white/5 border-white/5 opacity-50 cursor-not-allowed",
+                                                ? "bg-white/10 hover:bg-white/15 border-border/10"
+                                                : "bg-white/5 border-border/5 opacity-50 cursor-not-allowed",
                                         ].join(" ")}
                                     >
                                         Προηγούμενο
@@ -257,8 +257,8 @@ export default function SessionQrPage() {
                                         className={[
                                             "flex-1 rounded-xl px-3 py-3 text-sm border",
                                             canNext
-                                                ? "bg-white/10 hover:bg-white/15 border-white/10"
-                                                : "bg-white/5 border-white/5 opacity-50 cursor-not-allowed",
+                                                ? "bg-white/10 hover:bg-white/15 border-border/10"
+                                                : "bg-white/5 border-border/5 opacity-50 cursor-not-allowed",
                                         ].join(" ")}
                                     >
                                         Επόμενο
@@ -279,7 +279,7 @@ export default function SessionQrPage() {
                     </div>
 
                     {/* QR Card */}
-                    <div className="bg-secondary-background border border-white/10 rounded-2xl shadow-xl p-5">
+                    <div className="bg-secondary-background border border-border/10 rounded-2xl shadow-xl p-5">
                         {!selected ? (
                             <div className="py-10 text-center text-sm opacity-70">
                                 Δεν υπάρχει επιλεγμένο session.

@@ -262,7 +262,7 @@ export default function ProgramsPage() {
 
         <div className="flex flex-wrap items-center gap-2 md:justify-end">
           {/* View Toggles */}
-          <div className="inline-flex rounded-md border border-white/10 overflow-hidden">
+          <div className="inline-flex rounded-md border border-border/10 overflow-hidden">
             <button
               onClick={() => setView('month')}
               className={`px-3 py-1 text-xs md:text-sm ${view === 'month'
@@ -311,7 +311,7 @@ export default function ProgramsPage() {
       </div>
 
       {/* Calendar Card */}
-      <div className="gym-calendar bg-secondary-background rounded-xl shadow-sm border border-white/10 p-3 md:p-4 text-text-primary">
+      <div className="gym-calendar bg-secondary-background rounded-xl shadow-sm border border-border/10 p-3 md:p-4 text-text-primary">
         {loading && (
           <div className="mb-2 text-xs md:text-sm text-text-secondary">
             Φόρτωση συνεδριών για το επιλεγμένο διάστημα…
@@ -379,12 +379,13 @@ export default function ProgramsPage() {
               dayCellClassNames={() => [
                 'bg-secondary-background/60',
                 'border',
-                'border-white/10',
+                'border-border/10',
                 'align-top',
               ]}
               eventClassNames={() => [
                 'bg-primary/80',
                 'border-none',
+                'text-white',
                 'text-[11px]',
                 'leading-tight',
                 'rounded-md',
@@ -656,7 +657,7 @@ function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDelet
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
       onClick={handleBackdropClick}
     >
-      <div className="w-full max-w-md rounded-xl bg-secondary-background border border-white/10 shadow-xl p-4 md:p-5">
+      <div className="w-full max-w-md rounded-xl bg-secondary-background border border-border/10 shadow-xl p-4 md:p-5">
         <h2 className="text-lg font-semibold text-text-primary mb-1">
           Διαγραφή Προγράμματος
         </h2>
@@ -674,7 +675,7 @@ function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDelet
           <div className="flex flex-col gap-1">
             <label className="text-xs text-text-secondary">Τμήμα (Class)</label>
             <select
-              className="w-full rounded-md bg-background border border-white/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
+              className="w-full rounded-md bg-background border border-border/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
               value={selectedClassId}
               onChange={(e) => setSelectedClassId(e.target.value)}
             >
@@ -696,7 +697,7 @@ function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDelet
               dateFormat="dd/MM/yyyy"
               locale={el}
               placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
-              className="w-full rounded-md bg-background border border-white/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
+              className="w-full rounded-md bg-background border border-border/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
               wrapperClassName="w-full"
               showMonthDropdown
               showYearDropdown
@@ -716,7 +717,7 @@ function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDelet
               dateFormat="dd/MM/yyyy"
               locale={el}
               placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
-              className="w-full rounded-md bg-background border border-white/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
+              className="w-full rounded-md bg-background border border-border/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
               wrapperClassName="w-full"
               showMonthDropdown
               showYearDropdown
@@ -740,7 +741,7 @@ function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDelet
                     onClick={() => toggleDay(d.value)}
                     className={`px-2 py-1 rounded-full text-[11px] border ${active
                       ? 'bg-primary text-white border-primary'
-                      : 'bg-background text-text-secondary border-white/15'
+                      : 'bg-background text-text-secondary border-border/15'
                       }`}
                     title={d.full}
                   >
@@ -758,7 +759,7 @@ function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDelet
           <div className="flex flex-col gap-1">
             <label className="text-xs text-text-secondary">Ώρα έναρξης συνεδρίας</label>
             <select
-              className="w-full rounded-md bg-background border border-white/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
+              className="w-full rounded-md bg-background border border-border/10 px-3 py-2 text-xs md:text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-primary/70"
               value={startTime}
               onChange={handleTimeSelectChange}
             >
@@ -780,7 +781,7 @@ function ProgramDeleteModal({ open, onClose, tenantId, onDeleted }: ProgramDelet
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
-              className="inline-flex items-center justify-center rounded-md border border-white/15 px-3 py-1.5 text-xs md:text-sm text-text-secondary hover:bg-white/5"
+              className="inline-flex items-center justify-center rounded-md border border-border/15 px-3 py-1.5 text-xs md:text-sm text-text-secondary hover:bg-white/5"
               onClick={onClose}
               disabled={pending}
             >
