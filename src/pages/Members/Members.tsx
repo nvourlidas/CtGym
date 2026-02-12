@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../auth';
-import MemberDetailsModal from '../components/Members/MemberDetailsModal';
-import SendMemberEmailModal from '../components/Members/SendMemberEmailModal';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../auth';
+import MemberDetailsModal from '../../components/Members/MemberDetailsModal';
+import SendMemberEmailModal from '../../components/Members/SendMemberEmailModal';
 import type { LucideIcon } from 'lucide-react';
 import { Eye, Pencil, Trash2, Loader2 } from 'lucide-react';
-import '../styles/quill-dark.css';
+import '../../styles/quill-dark.css';
 import DatePicker from 'react-datepicker';
 import { el } from 'date-fns/locale';
-import SendMemberPushModal from '../components/Members/SendMemberPushModal';
-import SubscriptionRequiredModal from '../components/SubscriptionRequiredModal';
+import SendMemberPushModal from '../../components/Members/SendMemberPushModal';
+import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
+import { useNavigate } from 'react-router-dom';
+
 
 type Member = {
   id: string;
@@ -68,6 +70,10 @@ export default function MembersPage() {
   const [q, setQ] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [editRow, setEditRow] = useState<Member | null>(null);
+
+
+  const navigate = useNavigate();
+  const tenantId = profile?.tenant_id; 
 
   // pagination state
   const [page, setPage] = useState(1);
@@ -375,11 +381,11 @@ export default function MembersPage() {
                         <Td>{m.phone ?? '—'}</Td>
                         <Td>
                           {totalDebt !== 0 ? (
-                            <span className="text-warning font-medium">
+                            <span className="text-warning font-semibold">
                               {formatMoney(totalDebt)}
                             </span>
                           ) : (
-                            <span className="text-success text-xs uppercase tracking-wide">
+                            <span className="text-success text-xs uppercase tracking-wide font-semibold">
                               0
                             </span>
                           )}
@@ -396,7 +402,11 @@ export default function MembersPage() {
                           <IconButton
                             icon={Eye}
                             label="Λεπτομέρειες"
-                            onClick={() => setDetailsMember(m)}
+                            onClick={() =>
+                              navigate(`/members/${m.id}`, {
+                                state: { member: m, tenantId, subscriptionInactive },
+                              })
+                            }
                           />
                           <IconButton
                             icon={Pencil}

@@ -349,10 +349,10 @@ export default function ProgramsPage() {
               droppable={false}
               eventResizableFromStart
               events={events}
-              dateClick={() => requireActiveSubscription(() => handleDateClick)}
-              eventClick={() => requireActiveSubscription(() =>handleEventClick)}
-              eventDrop={() => requireActiveSubscription(() =>handleEventDrop)}
-              eventResize={() => requireActiveSubscription(() =>handleEventResize)}
+              dateClick={(arg) => requireActiveSubscription(() => handleDateClick(arg))}
+              eventClick={(arg) => requireActiveSubscription(() => handleEventClick(arg))}
+              eventDrop={(info) => requireActiveSubscription(() => handleEventDrop(info))}
+              eventResize={(info) => requireActiveSubscription(() => handleEventResize(info))}
               datesSet={handleDatesSet}
               viewDidMount={(arg) => {
                 if (arg.view.type === 'dayGridMonth' && view !== 'month') setView('month');

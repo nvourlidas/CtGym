@@ -156,7 +156,7 @@ export default function AppShell() {
                 aria-label="Toggle theme"
                 title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
               >
-                {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
+                {theme === 'dark' ? '☀️ Φωτεινό' : '🌙 Σκοτεινό'}
               </button>
 
               <UserMenu />

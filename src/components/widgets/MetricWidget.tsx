@@ -9,6 +9,8 @@ import {
   Package,
   FileText,
   Euro,
+  Eye,
+  EyeOff,
   type LucideIcon,
 } from "lucide-react";
 
@@ -146,7 +148,7 @@ type Props = {
   tenantId: string;
 };
 
-export default function MetricWidget({ title, variant, query, tenantId }: Props) {
+export default function MetricWidget({id, title, variant, query, tenantId }: Props) {
   const payload = useMemo(() => parsePayload(query), [query]);
   const isRawSQL = !payload;
 
@@ -166,6 +168,37 @@ export default function MetricWidget({ title, variant, query, tenantId }: Props)
 
   const color = VARIANT_COLOR[variant];
   const IconCmp = VARIANT_ICON[variant] || Activity;
+
+
+const widgetKey = useMemo(() => {
+  // prefer explicit id if you have it
+  const base = id?.trim() || `${variant}:${title}`; // fallback
+  // make it safe for localStorage key
+  return base.replace(/\s+/g, "_").toLowerCase();
+}, [id, variant, title]);
+
+const REVENUE_VIS_KEY = useMemo(
+  () => `ctgym:metric:show:${widgetKey}`,
+  [widgetKey],
+);
+
+const [showValue, setShowValue] = useState<boolean>(() => {
+  if (typeof window === "undefined") return true;
+  const raw = window.localStorage.getItem(REVENUE_VIS_KEY);
+  if (raw === "0") return false;
+  if (raw === "1") return true;
+  return true;
+});
+
+
+useEffect(() => {
+  if (variant !== "revenue") return;
+  window.localStorage.setItem(REVENUE_VIS_KEY, showValue ? "1" : "0");
+}, [variant, showValue, REVENUE_VIS_KEY]);
+
+
+
+
 
   const [value, setValue] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -322,6 +355,7 @@ export default function MetricWidget({ title, variant, query, tenantId }: Props)
         borderLeft: `4px solid ${color}`,
       }}
     >
+      {/* LEFT SIDE */}
       <div className="flex items-center gap-3">
         <div
           className="flex h-10 w-10 items-center justify-center rounded-full"
@@ -329,15 +363,41 @@ export default function MetricWidget({ title, variant, query, tenantId }: Props)
         >
           <IconCmp className="h-5 w-5" />
         </div>
+
         <div>
-          <div className="text-2xl font-semibold leading-none">
+          <div
+            className={`text-2xl font-semibold leading-none transition ${variant === "revenue" && !showValue
+              ? "blur-sm select-none"
+              : ""
+              }`}
+          >
             {loading ? "…" : value ?? "--"}
           </div>
           <p className="text-xs text-muted-foreground mt-1">{title}</p>
         </div>
       </div>
 
-      {error && <span className="text-xs text-red-500">{error}</span>}
+      {/* RIGHT SIDE */}
+      <div className="flex items-center gap-3">
+        {variant === "revenue" && (
+          <button
+            type="button"
+            onClick={() => setShowValue((prev) => !prev)}
+            className="text-muted-foreground hover:text-foreground transition"
+          >
+            {showValue ? (
+              <Eye className="h-5 w-5" />
+            ) : (
+              <EyeOff className="h-5 w-5" />
+            )}
+          </button>
+        )}
+
+        {error && (
+          <span className="text-xs text-red-500">{error}</span>
+        )}
+      </div>
     </div>
   );
+
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import type { DragEvent } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
@@ -175,6 +175,29 @@ function BulkBookingsModal({
   const [fromDate, setFromDate] = useState<string>(defaultFrom);
   const [toDate, setToDate] = useState<string>(defaultTo);
 
+  const [classDropdownOpen, setClassDropdownOpen] = useState(false);
+  const [classSearch, setClassSearch] = useState('');
+  const classDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!classDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!classDropdownRef.current) return;
+      if (!classDropdownRef.current.contains(e.target as Node)) {
+        setClassDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handler);
+    return () => window.removeEventListener('mousedown', handler);
+  }, [classDropdownOpen]);
+
+  const filteredClasses = classes.filter((c) => {
+    if (!classSearch) return true;
+    return c.title.toLowerCase().includes(classSearch.toLowerCase());
+  });
+
+
+
   const [allowDropInFallback, setAllowDropInFallback] = useState<boolean>(false);
 
   const [preview, setPreview] = useState<BulkPreview | null>(null);
@@ -187,6 +210,7 @@ function BulkBookingsModal({
   });
 
   const [resultMsg, setResultMsg] = useState<Feedback>(null);
+
 
   useEffect(() => {
     if (!open) return;
@@ -534,19 +558,64 @@ function BulkBookingsModal({
           {/* Class */}
           <div>
             <div className="mb-1 text-[11px] text-text-primary/70">Τμήμα</div>
-            <select
-              className="w-full rounded-md bg-bulk-bg/20 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              value={classId}
-              onChange={(e) => setClassId(e.target.value)}
-              disabled={running}
-            >
-              <option value="">— Επιλογή Τμήματος —</option>
-              {classes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title}
-                </option>
-              ))}
-            </select>
+            <div ref={classDropdownRef} className="relative">
+              <button
+                type="button"
+                disabled={running}
+                onClick={() => setClassDropdownOpen((v) => !v)}
+                className="w-full rounded-md bg-bulk-bg/80 border border-border/15 px-3 py-2 text-xs text-text-primary flex items-center justify-between disabled:opacity-50"
+              >
+                <span className="truncate">
+                  {selectedClass ? selectedClass.title : '— Επιλογή Τμήματος —'}
+                </span>
+                <span className="ml-2 text-[10px] opacity-70">
+                  {classDropdownOpen ? '▲' : '▼'}
+                </span>
+              </button>
+
+              {classDropdownOpen && (
+                <div className="absolute z-50 mt-1 w-full rounded-md border border-border/15 bg-secondary-background shadow-lg">
+                  {/* Search */}
+                  <div className="p-2 border-b border-border/10">
+                    <input
+                      autoFocus
+                      className="w-full rounded-md bg-bulk-bg/80 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                      placeholder="Αναζήτηση τμήματος…"
+                      value={classSearch}
+                      onChange={(e) => setClassSearch(e.target.value)}
+                    />
+                  </div>
+
+                  {/* List */}
+                  <div className="max-h-60 overflow-y-auto">
+                    {filteredClasses.length === 0 && (
+                      <div className="px-3 py-2 text-xs text-text-secondary">
+                        Δεν βρέθηκαν τμήματα
+                      </div>
+                    )}
+
+                    {filteredClasses.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        className={
+                          'w-full px-3 py-2 text-left text-xs hover:bg-white/5 ' +
+                          (c.id === classId ? 'bg-white/10' : '')
+                        }
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setClassId(c.id);
+                          setClassDropdownOpen(false);
+                        }}
+                      >
+                        {c.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             {selectedClass && (
               <div className="mt-1 text-[11px] text-text-primary/50">
                 Drop-in: {selectedClass.drop_in_enabled ? 'Ναι' : 'Όχι'}
@@ -558,7 +627,7 @@ function BulkBookingsModal({
           <div>
             <div className="mb-1 text-[11px] text-text-primary/70">Ημέρα εβδομάδας</div>
             <select
-              className="w-full rounded-md bg-bulk-bg/20 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full rounded-md bg-bulk-bg/80 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
               value={weekdayIdx}
               onChange={(e) => setWeekdayIdx(Number(e.target.value))}
               disabled={running}

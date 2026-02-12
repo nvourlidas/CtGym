@@ -603,7 +603,7 @@ function FinanceCategoriesModal({
       {/* Existing categories */}
       <div className="overflow-hidden rounded-md border border-border/10 bg-secondary/10">
         <div className="max-h-72 overflow-auto">
-          <table className="min-w-full text-left text-xs">
+          <table className="min-w-full text-left text-xs no-scrollbar">
             <thead className="bg-secondary-background/60 text-[0.70rem] uppercase tracking-wide text-text-secondary">
               <tr>
                 <th className="px-3 py-2">Όνομα</th>
@@ -1233,8 +1233,8 @@ export default function FinancePage() {
 
       {/* Table */}
       <div className="overflow-hidden rounded-xl border border-border/10 bg-secondary-background">
-        <div className="max-h-125 overflow-auto">
-          <table className="min-w-full text-left text-xs text-text-primary">
+        <div className="max-h-125 overflow-auto no-scrollbar">
+          <table className="min-w-full text-left text-xs text-text-primary ">
             <thead className="bg-secondary-background text-[0.70rem] uppercase tracking-wide text-text-secondary">
               <tr>
                 <th className="px-4 py-2">Ημερομηνία</th>

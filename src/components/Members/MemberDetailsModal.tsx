@@ -137,15 +137,6 @@ export default function MemberDetailsModal({
     });
   }, [historyRows, historyFrom, historyTo]);
 
-  const historyPageCount = Math.max(
-    1,
-    Math.ceil(filteredHistoryRows.length / historyPageSize || 1),
-  );
-
-  const paginatedHistoryRows = useMemo(() => {
-    const start = (historyPage - 1) * historyPageSize;
-    return filteredHistoryRows.slice(start, start + historyPageSize);
-  }, [filteredHistoryRows, historyPage, historyPageSize]);
 
 
 
@@ -309,6 +300,60 @@ export default function MemberDetailsModal({
     setEconomicRefreshKey((key) => key + 1);
 
 
+  // ✅ Calendar state for history tab
+  const [historyMonthCursor, setHistoryMonthCursor] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+
+  const [historySelectedDay, setHistorySelectedDay] = useState<string>(() => {
+    // default selected day: today (yyyy-mm-dd)
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 10);
+  });
+
+  // --- helpers ---
+  function toYMD(d: Date) {
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 10);
+  }
+  function parseYMD(ymd: string) {
+    // ymd: yyyy-mm-dd (local)
+    const [y, m, day] = ymd.split('-').map(Number);
+    return new Date(y, m - 1, day);
+  }
+  function addMonths(d: Date, delta: number) {
+    return new Date(d.getFullYear(), d.getMonth() + delta, 1);
+  }
+  function isSameMonth(a: Date, b: Date) {
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+  }
+  function fmtMonthEL(d: Date) {
+    return d.toLocaleDateString('el-GR', { month: 'long', year: 'numeric' });
+  }
+  function fmtDayEL(ymd: string) {
+    const d = parseYMD(ymd);
+    return d.toLocaleDateString('el-GR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }
+
+  type BookingStatus = 'booked' | 'checked_in' | 'canceled' | 'no_show';
+  const STATUS_LABEL: Record<BookingStatus, string> = {
+    booked: 'Κράτηση',
+    checked_in: 'Checked in',
+    canceled: 'Ακυρώθηκε',
+    no_show: 'Απουσία',
+  };
+
+
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-3xl rounded-xl border border-border/10 bg-secondary-background text-text-primary shadow-2xl">
@@ -407,161 +452,266 @@ export default function MemberDetailsModal({
                 </div>
               )}
 
-              {/* Φίλτρα ημερομηνίας */}
+              {/* Filters (keep) */}
               <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between text-sm">
-                <div className="flex flex-wrap gap-3">
-                  <div className="flex flex-col">
-                    <label className="text-xs mb-1 text-text-secondary">
-                      Από ημερομηνία
-                    </label>
-                    <input
-                      type="date"
-                      className="rounded border border-white/20 bg-black/20 px-2 py-1 text-sm"
-                      value={historyFrom}
-                      onChange={(e) => setHistoryFrom(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex flex-col">
-                    <label className="text-xs mb-1 text-text-secondary">
-                      Έως ημερομηνία
-                    </label>
-                    <input
-                      type="date"
-                      className="rounded border border-white/20 bg-black/20 px-2 py-1 text-sm"
-                      value={historyTo}
-                      onChange={(e) => setHistoryTo(e.target.value)}
-                    />
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-2 text-xs text-text-secondary">
-                  <span>Γραμμές ανά σελίδα:</span>
-                  <select
-                    className="bg-transparent border border-white/20 rounded px-1 py-0.5"
-                    value={historyPageSize}
-                    onChange={(e) => setHistoryPageSize(Number(e.target.value))}
-                  >
-                    <option value={10}>10</option>
-                    <option value={25}>25</option>
-                    <option value={50}>50</option>
-                  </select>
+                {/* Removed page size / pagination because calendar */}
+                <div className="text-xs text-text-secondary">
+                  Επιλέξτε Ημερομηνία για να δείτε τις συνεδρίες.
                 </div>
               </div>
 
-              {/* Πίνακας */}
-              <div className="rounded-md border border-white/10 overflow-hidden max-h-[60vh] w-full">
-                <table className="w-full text-sm">
-                  <thead className="bg-secondary-background/60">
-                    <tr className="text-left">
-                      <th className="px-3 py-2 font-semibold">Τμήμα</th>
-                      <th className="px-3 py-2 font-semibold">Συνεδρία</th>
-                      <th className="px-3 py-2 font-semibold">Κατάσταση</th>
-                      <th className="px-3 py-2 font-semibold">Ημ. Κράτησης</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loadingHistory && (
-                      <tr>
-                        <td className="px-3 py-4 opacity-60" colSpan={4}>
-                          Loading…
-                        </td>
-                      </tr>
-                    )}
-
-                    {!loadingHistory && paginatedHistoryRows.length === 0 && (
-                      <tr>
-                        <td className="px-3 py-4 opacity-60" colSpan={4}>
-                          Δεν υπάρχουν κρατήσεις
-                        </td>
-                      </tr>
-                    )}
-
-                    {!loadingHistory &&
-                      paginatedHistoryRows.map((r) => (
-                        <tr
-                          key={r.id}
-                          className="border-t border-white/10 hover:bg-secondary/10"
-                        >
-                          <td className="px-3 py-2">
-                            {r.class_title ?? '—'}
-                          </td>
-                          <td className="px-3 py-2">
-                            {r.session_start
-                              ? `${new Date(
-                                r.session_start
-                              ).toLocaleDateString('el-GR')} • ${new Date(
-                                r.session_start
-                              ).toLocaleTimeString('el-GR', {
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}`
-                              : '—'}
-                          </td>
-                          <td className="px-3 py-2 capitalize">
-                            {r.status ?? 'booked'}
-                          </td>
-                          <td className="px-3 py-2">
-                            {formatDateTime(r.created_at)}
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Pagination footer */}
-              {!loadingHistory && filteredHistoryRows.length > 0 && (
-                <div className="flex items-center justify-between text-xs text-text-secondary">
-                  <div>
-                    Εμφάνιση{' '}
-                    <span className="font-semibold">
-                      {filteredHistoryRows.length === 0
-                        ? 0
-                        : (historyPage - 1) * historyPageSize + 1}
-                    </span>
-                    {' – '}
-                    <span className="font-semibold">
-                      {Math.min(
-                        historyPage * historyPageSize,
-                        filteredHistoryRows.length,
-                      )}
-                    </span>{' '}
-                    από{' '}
-                    <span className="font-semibold">
-                      {filteredHistoryRows.length}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      className="px-2 py-1 rounded border border-white/20 disabled:opacity-40"
-                      onClick={() =>
-                        setHistoryPage((p) => Math.max(1, p - 1))
-                      }
-                      disabled={historyPage === 1}
-                    >
-                      Προηγ.
-                    </button>
-                    <span>
-                      Σελίδα{' '}
-                      <span className="font-semibold">{historyPage}</span> από{' '}
-                      <span className="font-semibold">{historyPageCount}</span>
-                    </span>
-                    <button
-                      className="px-2 py-1 rounded border border-white/20 disabled:opacity-40"
-                      onClick={() =>
-                        setHistoryPage((p) =>
-                          Math.min(historyPageCount, p + 1),
-                        )
-                      }
-                      disabled={historyPage === historyPageCount}
-                    >
-                      Επόμενο
-                    </button>
-                  </div>
+              {loadingHistory && (
+                <div className="rounded-md border border-white/10 bg-black/10 p-4 text-sm opacity-70">
+                  Loading…
                 </div>
               )}
+
+              {!loadingHistory && filteredHistoryRows.length === 0 && (
+                <div className="rounded-md border border-white/10 bg-black/10 p-4 text-sm opacity-70">
+                  Δεν υπάρχουν κρατήσεις
+                </div>
+              )}
+
+              {!loadingHistory && filteredHistoryRows.length > 0 && (() => {
+                // Group rows by day (yyyy-mm-dd) using session_start if present, else created_at
+                const byDay = new Map<string, typeof filteredHistoryRows>();
+
+                for (const r of filteredHistoryRows) {
+                  const base = r.session_start ?? r.created_at;
+                  const d = new Date(base);
+                  const key = toYMD(d);
+                  const arr = byDay.get(key) ?? [];
+                  arr.push(r);
+                  byDay.set(key, arr);
+                }
+
+                // Ensure selected day exists; if not, select first day that has data in current month,
+                // else keep selection
+                const selectedHasData = byDay.has(historySelectedDay);
+                const monthDaysWithData = Array.from(byDay.keys())
+                  .map(parseYMD)
+                  .filter((d) => isSameMonth(d, historyMonthCursor))
+                  .map(toYMD)
+                  .sort();
+
+                const effectiveSelected =
+                  selectedHasData
+                    ? historySelectedDay
+                    : (monthDaysWithData[0] ?? historySelectedDay);
+
+                // Build calendar grid (6 weeks)
+                const firstOfMonth = new Date(historyMonthCursor.getFullYear(), historyMonthCursor.getMonth(), 1);
+                const start = new Date(firstOfMonth);
+                // Monday as start of week (el-GR vibe)
+                const day = start.getDay(); // 0 Sun ... 6 Sat
+                const mondayIndex = (day + 6) % 7; // convert so Monday=0
+                start.setDate(start.getDate() - mondayIndex);
+
+                const cells: Date[] = [];
+                for (let i = 0; i < 42; i++) {
+                  const d = new Date(start);
+                  d.setDate(start.getDate() + i);
+                  cells.push(d);
+                }
+
+                // status counts for a day
+                function getCounts(dayKey: string) {
+                  const rows = byDay.get(dayKey) ?? [];
+                  const counts: Record<BookingStatus, number> = {
+                    booked: 0,
+                    checked_in: 0,
+                    canceled: 0,
+                    no_show: 0,
+                  };
+                  for (const rr of rows) {
+                    const s = ((rr.status ?? 'booked') as BookingStatus);
+                    if (counts[s] !== undefined) counts[s] += 1;
+                  }
+                  return { rows, counts };
+                }
+
+                const { rows: selectedRows } = getCounts(effectiveSelected);
+
+                const STATUS_BADGE_CLASS: Record<BookingStatus, string> = {
+                  booked:
+                    'border-primary bg-primary/10 text-primary',
+                  checked_in:
+                    'border-success/40 bg-success/10 text-success',
+                  no_show:
+                    'border-warning/40 bg-warning/10 text-warning',
+                  canceled:
+                    'border-danger/40 bg-danger/10 text-danger',
+                }
+
+
+                return (
+                  <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
+                    {/* Calendar */}
+                    <div className="rounded-md border border-white/10 overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-2 bg-secondary-background/60">
+                        <button
+                          className="px-2 py-1 rounded border border-white/20 hover:bg-white/5"
+                          onClick={() => setHistoryMonthCursor((m) => addMonths(m, -1))}
+                          type="button"
+                        >
+                          ‹
+                        </button>
+
+                        <div className="text-sm font-semibold capitalize">
+                          {fmtMonthEL(historyMonthCursor)}
+                        </div>
+
+                        <button
+                          className="px-2 py-1 rounded border border-white/20 hover:bg-white/5"
+                          onClick={() => setHistoryMonthCursor((m) => addMonths(m, +1))}
+                          type="button"
+                        >
+                          ›
+                        </button>
+                      </div>
+
+                      {/* Weekday header */}
+                      <div className="grid grid-cols-7 gap-px bg-white/10">
+                        {['Δ', 'Τ', 'Τ', 'Π', 'Π', 'Σ', 'Κ'].map((w, idx) => (
+                          <div
+                            key={idx}
+                            className="bg-black/10 px-2 py-1 text-[11px] text-text-secondary text-center"
+                          >
+                            {w}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Day cells */}
+                      <div className="grid grid-cols-7 gap-px bg-border/10">
+                        {cells.map((d) => {
+                          const key = toYMD(d);
+                          const inMonth = isSameMonth(d, historyMonthCursor);
+                          const isSelected = key === effectiveSelected;
+                          const { counts } = getCounts(key);
+                          const total =
+                            counts.booked + counts.checked_in + counts.canceled + counts.no_show;
+
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => setHistorySelectedDay(key)}
+                              className={[
+                                'min-h-13.5 bg-black/10 px-2 py-1 text-left hover:bg-border/5',
+                                !inMonth ? 'opacity-40' : '',
+                                isSelected ? 'ring-2 ring-primary/60' : '',
+                              ].join(' ')}
+                              title={key}
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="text-xs">{d.getDate()}</div>
+                                {total > 0 && (
+                                  <div className="text-[11px] text-text-secondary">
+                                    {total}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* tiny status dots (no colors required; use opacity differences) */}
+                              {total > 0 && (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {counts.booked > 0 && (
+                                    <span className="h-1.5 w-1.5 rounded-full bg-primary" title="Booked" />
+                                  )}
+                                  {counts.checked_in > 0 && (
+                                    <span className="h-1.5 w-1.5 rounded-full bg-success" title="Checked in" />
+                                  )}
+                                  {counts.canceled > 0 && (
+                                    <span className="h-1.5 w-1.5 rounded-full bg-danger" title="Canceled" />
+                                  )}
+                                  {counts.no_show > 0 && (
+                                    <span className="h-1.5 w-1.5 rounded-full bg-warning" title="No show" />
+                                  )}
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="px-3 py-2 text-[11px] text-text-secondary border-t border-white/10">
+                        Dots: Κρατήθηκε / Checked in / Ακυρώθηκε / Απουσία
+                      </div>
+                    </div>
+
+                    {/* Selected day list */}
+                    <div className="rounded-md border border-white/10 overflow-hidden">
+                      <div className="px-3 py-2 bg-secondary-background/60">
+                        <div className="text-sm font-semibold">
+                          {fmtDayEL(effectiveSelected)}
+                        </div>
+                        <div className="text-xs text-text-secondary">
+                          {selectedRows.length} Συνεδρία(ες)
+                        </div>
+                      </div>
+
+                      {selectedRows.length === 0 ? (
+                        <div className="p-4 text-sm opacity-70">Καμία Συνεδρία.</div>
+                      ) : (
+                        <div className="divide-y divide-border/10">
+                          {selectedRows
+                            .slice()
+                            .sort((a, b) => {
+                              const aa = new Date(a.session_start ?? a.created_at).getTime();
+                              const bb = new Date(b.session_start ?? b.created_at).getTime();
+                              return aa - bb;
+                            })
+                            .map((r) => {
+                              const status = ((r.status ?? 'booked') as BookingStatus);
+                              const start = r.session_start ? new Date(r.session_start) : null;
+
+                              return (
+                                <div key={r.id} className="p-3 hover:bg-secondary/10">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                      <div className="text-sm font-semibold truncate">
+                                        {r.class_title ?? '—'}
+                                      </div>
+                                      <div className="text-xs text-text-secondary">
+                                        {start
+                                          ? `${start.toLocaleDateString('el-GR')} • ${start.toLocaleTimeString('el-GR', {
+                                            hour: '2-digit',
+                                            minute: '2-digit',
+                                          })}`
+                                          : '—'}
+                                      </div>
+                                    </div>
+
+                                    <div className="shrink-0">
+                                      <span
+                                        className={[
+                                          'text-xs px-2 py-1 rounded border capitalize',
+                                          STATUS_BADGE_CLASS[status] ??
+                                          'border-white/20 bg-black/20 text-text-secondary',
+                                        ].join(' ')}
+                                      >
+                                        {STATUS_LABEL[status] ?? status}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-2 text-[11px] text-text-secondary">
+                                    Κράτηση έγινε: {formatDateTime(r.created_at)}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           )}
+
 
 
           {/* ECONOMIC TAB */}
@@ -693,7 +843,7 @@ export default function MemberDetailsModal({
           memberId={member.id}
           onClose={() => setShowMembershipDebtModal(false)}
           onUpdated={triggerEconomicRefresh}
-          guard={guard} 
+          guard={guard}
         />
       )}
 
@@ -704,7 +854,7 @@ export default function MemberDetailsModal({
           memberId={member.id}
           onClose={() => setShowDropinDebtModal(false)}
           onUpdated={triggerEconomicRefresh}
-          guard={guard} 
+          guard={guard}
         />
       )}
     </div>

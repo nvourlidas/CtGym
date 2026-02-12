@@ -17,7 +17,11 @@ export default {
           secondary: '#4b5563',
         },
       },
-    }
+      screens: {
+        '3xl': '1620px',
+        '4xl': '2560px',
+      },
+    },
   },
   plugins: [],
 }

@@ -11,6 +11,7 @@ import {
   ClockCheck,
   EuroIcon,
   QrCode,
+  ClipboardList,
 } from 'lucide-react';
 
 
@@ -60,6 +61,7 @@ export const NAV: NavEntry[] = [
   },
 
   { type: 'item', label: 'Προπονήσεις', to: '/workouttemplates', icon: Dumbbell },
+  { type: 'item', label: 'Ερωτηματολόγια', to: '/questionnaires', icon: ClipboardList },
   {
     type: 'group',
     label: 'Συνδρομές',

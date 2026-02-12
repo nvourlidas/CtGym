@@ -8,9 +8,9 @@ import {
   CreditCard,
   History,
   XCircle,
-  ExternalLink,
   Sparkles,
 } from 'lucide-react';
+import PlanPickerModal from '../components/billing/PlanPickerModal';
 
 type PlanRow = {
   id: string;
@@ -29,7 +29,7 @@ type TenantSubscriptionRow = {
   current_period_end: string | null;
   grace_until: string | null;
   notes: string | null;
-  subscription_plans?: PlanRow | PlanRow[] | null; // depending on relationship shape
+  subscription_plans?: PlanRow | PlanRow[] | null;
 };
 
 type TenantPaymentRow = {
@@ -43,10 +43,7 @@ type TenantPaymentRow = {
   method: 'manual' | 'bank_transfer' | 'cash' | 'card' | 'open_banking';
   reference: string | null;
   marked_at: string;
-  subscription_plans?: {
-    id: string;
-    name: string;
-  } | null;
+  subscription_plans?: { id: string; name: string } | null;
 };
 
 function fmtDate(d: string | null | undefined) {
@@ -86,7 +83,6 @@ function isAllowedNow(sub: TenantSubscriptionRow | null) {
   if (end) {
     end.setHours(0, 0, 0, 0);
     if (end.getTime() >= today.getTime()) {
-      // active/trial/canceled are “allowed” until end
       if (sub.status === 'active' || sub.status === 'trial' || sub.status === 'canceled') return true;
     }
   }
@@ -100,7 +96,7 @@ function isAllowedNow(sub: TenantSubscriptionRow | null) {
 }
 
 export default function BillingPage() {
-  const { profile } = useAuth(); // profile.tenant_id, profile.role
+  const { profile } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [sub, setSub] = useState<TenantSubscriptionRow | null>(null);
@@ -111,6 +107,7 @@ export default function BillingPage() {
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutErr, setCheckoutErr] = useState<string | null>(null);
 
+  const [plansModalOpen, setPlansModalOpen] = useState(false);
 
   const currentPlan = useMemo(() => normalizePlan(sub?.subscription_plans), [sub]);
   const allowed = useMemo(() => isAllowedNow(sub), [sub]);
@@ -123,7 +120,6 @@ export default function BillingPage() {
       setErr(null);
 
       try {
-        // Subscription (read-only)
         const { data: subData, error: subError } = await supabase
           .from('tenant_subscriptions')
           .select(
@@ -140,7 +136,8 @@ export default function BillingPage() {
               name,
               includes_mobile,
               monthly_price_cents,
-              currency
+              currency,
+              is_active
             )
           `,
           )
@@ -149,7 +146,6 @@ export default function BillingPage() {
 
         if (subError) throw subError;
 
-        // Payment history (read-only)
         const { data: payData, error: payError } = await supabase
           .from('tenant_payments')
           .select(
@@ -176,7 +172,6 @@ export default function BillingPage() {
 
         if (payError) throw payError;
 
-        // Available plans (read-only)
         const { data: planData, error: planError } = await supabase
           .from('subscription_plans')
           .select('id,name,includes_mobile,monthly_price_cents,currency,is_active')
@@ -209,16 +204,13 @@ export default function BillingPage() {
     setCheckoutErr(null);
 
     try {
-      // Call Supabase Edge Function: viva-create-checkout
-      // NOTE: This function must have verify_jwt=false OR you must pass an access token.
       const { data, error } = await supabase.functions.invoke('viva-create-checkout', {
         body: {
           tenant_id: profile.tenant_id,
           plan_id: planId,
-          customer_email: profile?.email ?? null,
-          customer_full_name: profile?.full_name ?? null,
+          customer_email: (profile as any)?.email ?? null,
+          customer_full_name: (profile as any)?.full_name ?? null,
           request_lang: 'el',
-          // optional: where YOU want to send users back after checkout
           return_url: window.location.href,
         },
       });
@@ -228,7 +220,6 @@ export default function BillingPage() {
       const checkoutUrl = (data as any)?.checkoutUrl as string | undefined;
       if (!checkoutUrl) throw new Error('Δεν βρέθηκε checkout URL από Viva.');
 
-      // Redirect user to Viva hosted checkout (web)
       window.location.href = checkoutUrl;
     } catch (e: any) {
       console.error(e);
@@ -247,10 +238,28 @@ export default function BillingPage() {
             Προβολή πλάνου, κατάστασης συνδρομής και ιστορικού πληρωμών.
           </p>
         </div>
+
+        <button
+          onClick={() => setPlansModalOpen(true)}
+          className="inline-flex items-center gap-2 rounded-md border border-border/10 bg-secondary/10 hover:bg-secondary/20 px-3 py-2 text-sm font-semibold"
+        >
+          <Sparkles className="h-4 w-4 opacity-80" />
+          Δες πλάνα
+        </button>
       </div>
 
+      <PlanPickerModal
+        open={plansModalOpen}
+        plans={plans}
+        currentPlanId={sub?.plan_id ?? null}
+        busy={checkoutBusy}
+        error={checkoutErr}
+        onClose={() => setPlansModalOpen(false)}
+        onSubscribe={(planId) => startCheckout(planId)}
+      />
+
       {loading && (
-        <div className="rounded-md border border-white/10 p-4 text-sm opacity-70">Loading…</div>
+        <div className="rounded-md border border-border/10 p-4 text-sm opacity-70">Loading…</div>
       )}
 
       {!loading && err && (
@@ -262,14 +271,14 @@ export default function BillingPage() {
       {!loading && !err && (
         <>
           {/* Current subscription */}
-          <div className="rounded-md border border-white/10 bg-secondary/5 p-4">
+          <div className="rounded-md border border-border/10 bg-secondary/5 p-4">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <CreditCard className="h-4 w-4 opacity-80" />
               <span>Τρέχον πλάνο</span>
             </div>
 
             <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="rounded-md border border-white/10 bg-secondary-background/40 p-3">
+              <div className="rounded-md border border-border/10 bg-secondary-background/40 p-3">
                 <div className="text-xs text-text-secondary">Πλάνο</div>
                 <div className="mt-1 text-sm font-semibold">
                   {currentPlan?.name ?? (sub?.plan_id ? sub.plan_id : '—')}
@@ -282,7 +291,7 @@ export default function BillingPage() {
                 </div>
               </div>
 
-              <div className="rounded-md border border-white/10 bg-secondary-background/40 p-3">
+              <div className="rounded-md border border-border/10 bg-secondary-background/40 p-3">
                 <div className="text-xs text-text-secondary">Κατάσταση</div>
                 <div className="mt-1 flex items-center gap-2">
                   {allowed ? (
@@ -303,7 +312,7 @@ export default function BillingPage() {
                 </div>
               </div>
 
-              <div className="rounded-md border border-white/10 bg-secondary-background/40 p-3">
+              <div className="rounded-md border border-border/10 bg-secondary-background/40 p-3">
                 <div className="text-xs text-text-secondary">Περίοδος</div>
                 <div className="mt-1 text-sm">
                   <div className="flex items-center gap-2 text-xs text-text-secondary">
@@ -329,75 +338,8 @@ export default function BillingPage() {
             </div>
           </div>
 
-          {/* Plans + Subscribe */}
-          <div className="rounded-md border border-white/10 bg-secondary/5 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <Sparkles className="h-4 w-4 opacity-80" />
-                <span>Διαθέσιμα πλάνα</span>
-              </div>
-              <div className="text-xs text-text-secondary">
-                {plans.length ? `${plans.length} πλάνα` : '—'}
-              </div>
-            </div>
-
-            {checkoutErr && (
-              <div className="mt-3 rounded-md border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-200">
-                {checkoutErr}
-              </div>
-            )}
-
-            {plans.length === 0 ? (
-              <div className="mt-3 text-sm text-text-secondary">Δεν υπάρχουν ενεργά πλάνα.</div>
-            ) : (
-              <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
-                {plans.map((p) => {
-                  const isCurrent = sub?.plan_id === p.id;
-                  return (
-                    <div
-                      key={p.id}
-                      className="rounded-md border border-white/10 bg-secondary-background/40 p-3 flex flex-col"
-                    >
-                      <div className="text-sm font-semibold">{p.name}</div>
-                      <div className="mt-1 text-xs text-text-secondary">
-                        Mobile: <span className="text-text-primary font-medium">{p.includes_mobile ? 'Ναι' : 'Όχι'}</span>
-                      </div>
-                      <div className="mt-3 text-lg font-semibold">
-                        {fmtMoney(p.monthly_price_cents, p.currency)}
-                        <span className="text-xs font-medium text-text-secondary"> / μήνα</span>
-                      </div>
-
-                      <div className="mt-3 flex gap-2">
-                        <button
-                          className={[
-                            'inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold border transition',
-                            isCurrent
-                              ? 'opacity-60 cursor-not-allowed border-white/10 bg-white/5'
-                              : 'border-white/10 bg-secondary/10 hover:bg-secondary/20',
-                          ].join(' ')}
-                          disabled={checkoutBusy || isCurrent}
-                          onClick={() => startCheckout(p.id)}
-                          title={isCurrent ? 'Είναι ήδη το τρέχον πλάνο' : 'Μετάβαση στο Viva Checkout'}
-                        >
-                          {checkoutBusy ? 'Παρακαλώ περίμενε…' : isCurrent ? 'Τρέχον πλάνο' : 'Συνδρομή'}
-                          {!isCurrent && <ExternalLink className="h-4 w-4 opacity-80" />}
-                        </button>
-                      </div>
-
-                      {!isCurrent && (
-                        <div className="mt-2 text-[11px] text-text-secondary">
-                          Θα μεταφερθείς στο ασφαλές checkout της Viva για πληρωμή με κάρτα.
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
           {/* Payment history */}
-          <div className="rounded-md border border-white/10 overflow-hidden">
+          <div className="rounded-md border border-border/10 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 bg-secondary-background/50">
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <History className="h-4 w-4 opacity-80" />
@@ -425,7 +367,7 @@ export default function BillingPage() {
                   </thead>
                   <tbody>
                     {payments.map((p) => (
-                      <tr key={p.id} className="border-t border-white/10 hover:bg-secondary/10">
+                      <tr key={p.id} className="border-t border-border/10 hover:bg-secondary/10">
                         <td className="px-4 py-2">{fmtDate(p.marked_at)}</td>
                         <td className="px-4 py-2 text-xs text-text-secondary">
                           {fmtDate(p.period_start)} → {fmtDate(p.period_end)}
@@ -433,7 +375,7 @@ export default function BillingPage() {
                         <td className="px-4 py-2 text-xs">{p.subscription_plans?.name ?? '—'}</td>
                         <td className="px-4 py-2 font-medium">{fmtMoney(p.amount_cents, p.currency)}</td>
                         <td className="px-4 py-2 text-xs">
-                          <span className="inline-flex items-center px-2 py-1 rounded-full bg-white/5 border border-white/10">
+                          <span className="inline-flex items-center px-2 py-1 rounded-full bg-white/5 border border-border/10">
                             {p.method}
                           </span>
                         </td>
@@ -449,7 +391,7 @@ export default function BillingPage() {
           </div>
 
           {/* Mobile-friendly payment list */}
-          <div className="md:hidden rounded-md border border-white/10 overflow-hidden">
+          <div className="md:hidden rounded-md border border-border/10 overflow-hidden">
             <div className="px-4 py-3 bg-secondary-background/50 text-sm font-semibold flex items-center gap-2">
               <History className="h-4 w-4 opacity-80" />
               <span>Ιστορικό πληρωμών</span>
@@ -458,7 +400,7 @@ export default function BillingPage() {
               <div className="px-4 py-4 text-sm text-text-secondary">Δεν υπάρχουν καταγεγραμμένες πληρωμές.</div>
             ) : (
               payments.slice(0, 30).map((p) => (
-                <div key={p.id} className="border-t border-white/10 px-4 py-3">
+                <div key={p.id} className="border-t border-border/10 px-4 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold">{fmtMoney(p.amount_cents, p.currency)}</div>
@@ -475,7 +417,7 @@ export default function BillingPage() {
                     <div className="text-right">
                       <div className="text-xs text-text-secondary">{fmtDate(p.marked_at)}</div>
                       <div className="mt-1 text-xs">
-                        <span className="inline-flex items-center px-2 py-1 rounded-full bg-white/5 border border-white/10">
+                        <span className="inline-flex items-center px-2 py-1 rounded-full bg-white/5 border border-border/10">
                           {p.method}
                         </span>
                       </div>

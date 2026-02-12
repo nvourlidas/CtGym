@@ -147,7 +147,7 @@ export default function TodayBookingsPieWidget({ tenantId }: Props) {
   const hasBookings = data.totalBookings > 0
 
   const chartData = {
-    labels: ['Check-ins', 'Ακυρώσεις', 'No-shows', 'Ενεργές κρατήσεις'],
+    labels: ['Check-ins', 'Ακυρώσεις', 'Απουσίες', 'Ενεργές κρατήσεις'],
     datasets: [
       {
         data: hasBookings
@@ -224,7 +224,7 @@ export default function TodayBookingsPieWidget({ tenantId }: Props) {
         <div className="space-y-2">
           <LegendRow color="#22c55e" label="Check-ins" value={data.checkIns} />
           <LegendRow color="#f97373" label="Ακυρώσεις" value={data.cancels} />
-          <LegendRow color="#a855f7" label="No-shows" value={data.noShows} />
+          <LegendRow color="#a855f7" label="Απουσίες" value={data.noShows} />
           <LegendRow color="#38bdf8" label="Ενεργές κρατήσεις" value={data.active} />
         </div>
 

@@ -4,6 +4,8 @@ import { useAuth } from '../../auth';
 import type { LucideIcon } from 'lucide-react';
 import { Pencil, Trash2, Loader2, Plus } from 'lucide-react';
 import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
+import SessionPickerModal, { type SessionRow as PickerSessionRow } from '../../components/bookings/SessionPickerModal';
+
 
 type Member = { id: string; full_name: string | null };
 
@@ -74,6 +76,7 @@ export default function BookingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [editRow, setEditRow] = useState<Booking | null>(null);
+
 
   // global error modal
   const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null);
@@ -385,13 +388,13 @@ export default function BookingsPage() {
                           id={b.id}
                           onDeleted={load}
                           onError={handleError}
-                           guard={() => {
-                              if (subscriptionInactive) {
-                                setShowSubModal(true);
-                                return false;
-                              }
-                              return true;
-                            }}
+                          guard={() => {
+                            if (subscriptionInactive) {
+                              setShowSubModal(true);
+                              return false;
+                            }
+                            return true;
+                          }}
                         />
                       </div>
                     </div>
@@ -766,6 +769,13 @@ function CreateBookingModal({
   const [sessionDate, setSessionDate] = useState(''); // yyyy-mm-dd
   const sessionDropdownRef = useRef<HTMLDivElement | null>(null);
 
+  const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
+  useEffect(() => {
+    if (!sessionPickerOpen) return;
+    // αν θες, μπορείς να βάλεις default date = σήμερα:
+    // setSessionDate(new Date().toISOString().slice(0, 10));
+  }, [sessionPickerOpen]);
+
   useEffect(() => {
     (async () => {
       const { data: m, error: mErr } = await supabase
@@ -831,21 +841,21 @@ function CreateBookingModal({
   });
   const selectedMember = members.find((m) => m.id === userId);
 
-  const filteredSessions = sessions.filter((s) => {
-    const needle = sessionSearch.toLowerCase();
-    const title = (s.classes?.title ?? '').toLowerCase();
-    const dateLabel = formatDateTime(s.starts_at).toLowerCase();
-    const matchesText = !needle || title.includes(needle) || dateLabel.includes(needle);
+  // const filteredSessions = sessions.filter((s) => {
+  //   const needle = sessionSearch.toLowerCase();
+  //   const title = (s.classes?.title ?? '').toLowerCase();
+  //   const dateLabel = formatDateTime(s.starts_at).toLowerCase();
+  //   const matchesText = !needle || title.includes(needle) || dateLabel.includes(needle);
 
-    if (sessionDate) {
-      const d = new Date(s.starts_at);
-      if (Number.isNaN(d.getTime())) return false;
-      const iso = d.toISOString().slice(0, 10);
-      if (iso !== sessionDate) return false;
-    }
+  //   if (sessionDate) {
+  //     const d = new Date(s.starts_at);
+  //     if (Number.isNaN(d.getTime())) return false;
+  //     const iso = d.toISOString().slice(0, 10);
+  //     if (iso !== sessionDate) return false;
+  //   }
 
-    return matchesText;
-  });
+  //   return matchesText;
+  // });
   const selectedSession = sessions.find((s) => s.id === sessionId);
 
   const sessionLabel = (s: SessionRow) => {
@@ -937,75 +947,54 @@ function CreateBookingModal({
       </FormRow>
 
       <FormRow label="Συνεδρία *">
-        <div ref={sessionDropdownRef} className="relative">
+        <div className="space-y-2">
           <button
             type="button"
             className="input flex items-center justify-between"
-            onClick={() => setSessionDropdownOpen((v) => !v)}
+            onClick={() => setSessionPickerOpen(true)}
           >
-            <span>
-              {selectedSession
-                ? sessionLabel(selectedSession)
-                : '— επίλεξε συνεδρία —'}
+            <span className="truncate">
+              {selectedSession ? sessionLabel(selectedSession) : '— επίλεξε συνεδρία —'}
             </span>
-            <span className="ml-2 text-xs opacity-70">
-              {sessionDropdownOpen ? '▲' : '▼'}
-            </span>
+            <span className="ml-2 text-xs opacity-70">🔎</span>
           </button>
 
-          {sessionDropdownOpen && (
-            <div className="absolute z-50 mt-1 w-full rounded-md border border-border/15 bg-secondary-background shadow-lg">
-              <div className="p-2 border-b border-border/10 space-y-2">
-                <input
-                  className="input h-9! text-sm!"
-                  placeholder="Αναζήτηση (τίτλος, ώρα)..."
-                  value={sessionSearch}
-                  onChange={(e) => setSessionSearch(e.target.value)}
-                />
-                <div className="flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-                  <span>Φίλτρο ημερομηνίας:</span>
-                  <input
-                    type="date"
-                    className="input h-8! text-xs!"
-                    value={sessionDate}
-                    onChange={(e) => setSessionDate(e.target.value)}
-                  />
-                  {sessionDate && (
-                    <button
-                      type="button"
-                      className="px-2 py-1 rounded border border-border/20 hover:bg-white/5"
-                      onClick={() => setSessionDate('')}
-                    >
-                      Καθαρισμός
-                    </button>
-                  )}
-                </div>
-              </div>
+          {selectedSession?.ends_at && (
+            <div className="text-xs text-text-secondary">
+              Λήξη: {formatDateTime(selectedSession.ends_at)}
+            </div>
+          )}
 
-              <div className="max-h-72 overflow-y-auto">
-                {filteredSessions.length === 0 && (
-                  <div className="px-3 py-2 text-xs text-text-secondary">
-                    Δεν βρέθηκαν συνεδρίες
-                  </div>
-                )}
-                {filteredSessions.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    className={`w-full px-3 py-2 text-left text-xs md:text-sm hover:bg-white/5 ${s.id === sessionId ? 'bg-white/10' : ''
-                      }`}
-                    onClick={() => {
-                      setSessionId(s.id);
-                      setSessionDropdownOpen(false);
-                    }}
-                  >
-                    {sessionLabel(s)}
-                  </button>
-                ))}
-              </div>
+          {selectedSession?.classes?.class_categories?.name && (
+            <div className="text-xs text-text-secondary flex items-center gap-2">
+              {selectedSession?.classes?.class_categories?.color && (
+                <span
+                  className="inline-block h-2.5 w-2.5 rounded-full border border-border/20"
+                  style={{ backgroundColor: selectedSession.classes.class_categories.color }}
+                />
+              )}
+              <span>{selectedSession.classes.class_categories.name}</span>
             </div>
           )}
         </div>
+
+        {sessionPickerOpen && (
+          <SessionPickerModal
+            title="Επιλογή συνεδρίας"
+            sessions={sessions}
+            selectedSessionId={sessionId}
+            initialSearch={sessionSearch}
+            initialDate={sessionDate}
+            onClose={() => setSessionPickerOpen(false)}
+            onPick={(picked) => {
+              setSessionId(picked.id);
+            }}
+            onChangeFilters={({ search, date }) => {
+              setSessionSearch(search);
+              setSessionDate(date);
+            }}
+          />
+        )}
       </FormRow>
 
       <FormRow label="Τύπος κράτησης">

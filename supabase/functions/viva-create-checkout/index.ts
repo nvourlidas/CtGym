@@ -147,12 +147,12 @@ Deno.serve(async (req) => {
 
     const payload: any = {
       amount,
-      customerTrns: `Subscription: ${plan.name}`,
+      customerTrns: `Συνδρομή: ${plan.name}`,
       merchantTrns,
       customer: {
         email: body.customer_email ?? undefined,
         fullName: body.customer_full_name ?? undefined,
-        requestLang: body.request_lang ?? "el",
+        requestLang: body.request_lang ?? "EL",
       },
     };
 
@@ -186,7 +186,9 @@ Deno.serve(async (req) => {
     );
     if (!orderCode) throw new Error(`No orderCode returned: ${orderText}`);
 
-    const checkoutUrl = `${checkoutBase}${encodeURIComponent(orderCode)}`;
+    const brandColor = (Deno.env.get("VIVA_BRAND_COLOR") ?? "ffc947").replace("#", "");
+const checkoutUrl = `${checkoutBase}${encodeURIComponent(orderCode)}&color=${encodeURIComponent(brandColor)}`;
+
 
     return res(200, { orderCode, checkoutUrl });
   } catch (e: any) {

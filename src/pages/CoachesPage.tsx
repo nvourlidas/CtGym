@@ -110,7 +110,7 @@ export default function CoachesPage() {
           className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white"
           onClick={() => requireActiveSubscription(() => setShowCreate(true))}
         >
-          Νέος Προπονητής
+          Νέος Γυμναστής
         </button>
       </div>
 
@@ -158,7 +158,7 @@ export default function CoachesPage() {
                   </Td>
                   <Td>
                     {c.is_active ? (
-                      <span className="text-xs px-2 py-1 rounded-full bg-green-500/10 text-green-700">
+                      <span className="text-xs px-2 py-1 rounded-full bg-green-500/10 text-success">
                         Ενεργός
                       </span>
                     ) : (
@@ -368,7 +368,7 @@ function CreateCoachModal({
   };
 
   return (
-    <Modal title="Νέος Προπονητής" onClose={onClose}>
+    <Modal title="Νέος Γυμναστής" onClose={onClose}>
       <FormRow label="Ονοματεπώνυμο *">
         <input
           className="input"
@@ -407,7 +407,7 @@ function CreateCoachModal({
             checked={isActive}
             onChange={(e) => setIsActive(e.target.checked)}
           />
-          <span>Ενεργός προπονητής</span>
+          <span>Ενεργός Γυμναστής</span>
         </label>
       </FormRow>
 
@@ -507,7 +507,7 @@ function EditCoachModal({
             checked={isActive}
             onChange={(e) => setIsActive(e.target.checked)}
           />
-          <span>Ενεργός προπονητής</span>
+          <span>Ενεργός Γυμναστής</span>
         </label>
       </FormRow>
 

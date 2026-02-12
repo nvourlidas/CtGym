@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+
 /* =========================================================
    🌞 LIGHT THEME (default)
    ========================================================= */
@@ -25,6 +26,9 @@
   --color-border: #0f172a;
 
   --color-bulk-bg: #6CB4EE;
+
+   --breakpoint-3xl: 130rem;
+  --breakpoint-4xl: 2560px;
 }
 
 /* =========================================================
@@ -35,9 +39,9 @@
   --color-primary: #4c6fff;
   --color-secondary: #94a3b8;
   --color-accent: #ffc947;
-  --color-success: #03C03C;
+  --color-success: #11ec53;
   --color-warning: #ffc947;
-  --color-danger: #ef4444;
+  --color-danger: #f85252;
 
   /* Surfaces */
   --color-background: #253649;
@@ -52,6 +56,9 @@
   --color-border: #e5e7eb;
 
   --color-bulk-bg: #3B3C36;
+
+    --breakpoint-3xl: 100rem;
+  --breakpoint-4xl: 2560px;
 }
 
 /* =========================================================
@@ -82,11 +89,24 @@
     @apply h-9 w-full rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary;
   }
 
+  .inputTextArea {
+    @apply h-20 w-full rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary;
+  }
+
   .btn-primary {
     @apply h-9 rounded-md px-3 text-sm bg-primary text-white hover:bg-primary/90;
   }
 
   .btn-secondary {
     @apply h-9 rounded-md px-3 text-sm border border-border/10 hover:bg-border/5;
+  }
+
+    .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE & Edge */
+    scrollbar-width: none;     /* Firefox */
   }
 }

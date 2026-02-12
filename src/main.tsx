@@ -13,7 +13,8 @@ import AppShell from './layout/AppShell';
 
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
-import Members from './pages/Members';
+import Members from './pages/Members/Members';
+import MemberDetailsPage from './pages/Members/MemberDetailsPage';
 import Memberships from './pages/Memberships/MembershipsPage';
 import Classes from './pages/Classes/Classes';
 import ClassSessionsPage from './pages/Classes/ClassSessions';
@@ -29,6 +30,8 @@ import FinancePage from './pages/FinancePage'
 import WorkoutTemplatesPage from './pages/workouts/WorkoutTemplatesPage';
 import BillingPage from './pages/BillingPage';
 import SessionQrPage from './pages/SessionQrPage';
+import QuestionnairesPage from './pages/Questionnaires/QuestionnairesPage';
+import QuestionnaireBuilderPage from './pages/Questionnaires/QuestionnaireBuilderPage';
 
 //test program
 import ProgramsPage2 from './pages/Classes/ProgramsPage2';
@@ -48,6 +51,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Dashboard /> },
       { path: 'members', element: <Members /> },
+      { path: '/members/:id', element: <MemberDetailsPage /> },
       { path: 'classes', element: <Classes /> },
       { path: 'categories', element: <Categories /> },
       { path: 'sessions', element: <ClassSessionsPage /> },
@@ -63,6 +67,9 @@ const router = createBrowserRouter([
       { path: 'workouttemplates', element: <WorkoutTemplatesPage /> },
       { path: 'billing', element: <BillingPage /> },
       { path: 'qrpage', element: <SessionQrPage /> },
+      { path: 'questionnaires', element: <QuestionnairesPage /> },
+      { path: '/questionnaires/new', element: <QuestionnaireBuilderPage /> },
+      { path: '/questionnaires/:id', element: <QuestionnaireBuilderPage /> },
     ],
   },
 ]);

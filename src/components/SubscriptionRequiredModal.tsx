@@ -10,10 +10,10 @@ export default function SubscriptionRequiredModal({ open, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-lg bg-secondary-background border border-white/10 shadow-xl">
+      <div className="w-full max-w-md rounded-lg bg-secondary-background border border-border/10 shadow-xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-          <div className="flex items-center gap-2 text-yellow-400">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border/10">
+          <div className="flex items-center gap-2 text-warning">
             <AlertTriangle size={18} />
             <span className="font-semibold">Απαιτείται συνδρομή</span>
           </div>
@@ -37,10 +37,10 @@ export default function SubscriptionRequiredModal({ open, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-white/10 flex justify-end gap-2">
+        <div className="px-4 py-3 border-t border-border/10 flex justify-end gap-2">
           <button
             onClick={onClose}
-            className="h-9 px-4 rounded-md border border-white/15 hover:bg-white/5 text-sm"
+            className="h-9 px-4 rounded-md border border-border/15 hover:bg-border/5 text-sm"
           >
             Κλείσιμο
           </button>
