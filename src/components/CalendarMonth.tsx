@@ -52,6 +52,86 @@ function fmtHM(iso?: string | null) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+type Slot = { start: string; end: string };
+
+type DayKey = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+type DaySchedule = { open: boolean; slots: Slot[] };
+type WeekSchedule = Record<DayKey, DaySchedule>;
+
+type TenantOpeningHoursRow = {
+  tenant_id: string;
+  timezone: string;
+  week: WeekSchedule;
+  exceptions: any[];
+};
+
+function dayKeyFromDate(d: Date): DayKey {
+  // JS: 0=Sun..6=Sat
+  const map: DayKey[] = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+  return map[d.getDay()];
+}
+
+function isoToKey(iso: string) {
+  if (!iso || iso.length < 10) return 0;
+  const y = iso.slice(0, 4);
+  const m = iso.slice(5, 7);
+  const d = iso.slice(8, 10);
+  const n = parseInt(`${y}${m}${d}`, 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function isClosedByExceptions(exceptions: any[], ymd: string) {
+  const k = isoToKey(ymd);
+
+  for (const e of Array.isArray(exceptions) ? exceptions : []) {
+    const t = e?.type;
+
+    // closures: always closed
+    if (t === "closure" && e?.date && isoToKey(e.date) === k) return true;
+    if (t === "closure_range" && e?.from && e?.to) {
+      const a = isoToKey(e.from);
+      const b = isoToKey(e.to);
+      if (k >= a && k <= b) return true;
+    }
+
+    // holidays: closed only if closed=true
+    if (t === "holiday" && e?.date && isoToKey(e.date) === k) {
+      if (e?.closed === true) return true;
+    }
+    if (t === "holiday_range" && e?.from && e?.to) {
+      const a = isoToKey(e.from);
+      const b = isoToKey(e.to);
+      if (k >= a && k <= b) {
+        if (e?.closed === true) return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function isGymClosedOnDate(params: {
+  ymd: string; // local YYYY-MM-DD
+  date: Date;  // local date object
+  week?: WeekSchedule | null;
+  exceptions?: any[] | null;
+}) {
+  const { ymd, date, week, exceptions } = params;
+
+  // 1) Exceptions override everything
+  if (isClosedByExceptions(exceptions ?? [], ymd)) return true;
+
+  // 2) Weekly schedule (if present)
+  if (week) {
+    const dk = dayKeyFromDate(date);
+    const day = week[dk];
+    if (day && day.open === false) return true;
+  }
+
+  return false;
+}
+
+
 export function CalendarMonth({
   tenantId,
   initialDate,
@@ -82,6 +162,9 @@ export function CalendarMonth({
   const monthStart = useMemo(() => startOfMonth(cursor), [cursor]);
   const gridStart = useMemo(() => startOfWeek(monthStart), [monthStart]);
   const gridDays = 42; // 6 weeks
+
+  const [opening, setOpening] = useState<TenantOpeningHoursRow | null>(null);
+
 
   function sessionTitle(s: Session) {
     const c = s.classes;
@@ -121,22 +204,41 @@ export function CalendarMonth({
       toISO = utcMidnightISO(addDays(gridStart, gridDays));
     }
 
-    const [sess, cls] = await Promise.all([
+    const [sess, cls, oh] = await Promise.all([
       supabase
-        .from('class_sessions')
-        .select(
-          'id, tenant_id, class_id, starts_at, ends_at, capacity, classes(title)',
-        )
-        .eq('tenant_id', tenantId)
-        .gte('starts_at', fromISO)
-        .lt('starts_at', toISO)
-        .order('starts_at', { ascending: true }),
+        .from("class_sessions")
+        .select("id, tenant_id, class_id, starts_at, ends_at, capacity, classes(title)")
+        .eq("tenant_id", tenantId)
+        .gte("starts_at", fromISO)
+        .lt("starts_at", toISO)
+        .order("starts_at", { ascending: true }),
+
       supabase
-        .from('classes')
-        .select('id, title')
-        .eq('tenant_id', tenantId)
-        .order('title'),
+        .from("classes")
+        .select("id, title")
+        .eq("tenant_id", tenantId)
+        .order("title"),
+
+      supabase
+        .from("tenant_opening_hours")
+        .select("tenant_id, timezone, week, exceptions")
+        .eq("tenant_id", tenantId)
+        .maybeSingle(),
     ]);
+
+    if (sess.error || cls.error || oh.error) {
+      setError(
+        sess.error?.message ??
+        cls.error?.message ??
+        oh.error?.message ??
+        "Failed to load",
+      );
+    } else {
+      setRows((sess.data as Session[]) ?? []);
+      setOpening((oh.data as TenantOpeningHoursRow) ?? null);
+    }
+    setLoading(false);
+
 
     if (sess.error || cls.error) {
       setError(
@@ -197,6 +299,18 @@ export function CalendarMonth({
         : rows
       : [];
 
+
+  const dayClosed = useMemo(() => {
+    const key = ymdLocal(cursor);
+    return isGymClosedOnDate({
+      ymd: key,
+      date: cursor,
+      week: opening?.week ?? null,
+      exceptions: opening?.exceptions ?? null,
+    });
+  }, [cursor, opening, ymdLocal]);
+
+
   return (
     <div className="w-full rounded-md border border-border/10 bg-secondary-background/60">
       {header && (
@@ -234,21 +348,19 @@ export function CalendarMonth({
           <div className="ml-auto flex items-center gap-1 mt-1 sm:mt-0">
             <button
               onClick={() => setViewMode('day')}
-              className={`h-8 px-3 rounded-md border text-xs sm:text-sm ${
-                viewMode === 'day'
-                  ? 'bg-primary/90 border-primary/70 text-white' 
-                  : 'border-border/10 hover:bg-border/5'
-              }`}
+              className={`h-8 px-3 rounded-md border text-xs sm:text-sm ${viewMode === 'day'
+                ? 'bg-primary/90 border-primary/70 text-white'
+                : 'border-border/10 hover:bg-border/5'
+                }`}
             >
               Ημέρα
             </button>
             <button
               onClick={() => setViewMode('month')}
-              className={`h-8 px-3 rounded-md border text-xs sm:text-sm ${
-                viewMode === 'month'
-                  ? 'bg-primary/90 border-primary/70 text-white'
-                  : 'border-border/10 hover:bg-border/5'
-              }`}
+              className={`h-8 px-3 rounded-md border text-xs sm:text-sm ${viewMode === 'month'
+                ? 'bg-primary/90 border-primary/70 text-white'
+                : 'border-border/10 hover:bg-border/5'
+                }`}
             >
               Μήνας
             </button>
@@ -273,34 +385,46 @@ export function CalendarMonth({
         {viewMode === 'day' ? (
           // ===== DAY VIEW =====
           <div className="space-y-2">
-            <div className="text-xs uppercase tracking-wide opacity-70">
-              {cursor.toLocaleDateString(undefined, {
-                weekday: 'long',
-                month: 'short',
-                day: 'numeric',
-              })}
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-xs uppercase tracking-wide opacity-70">
+                {cursor.toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "short",
+                  day: "numeric",
+                })}
+              </div>
+
+              {dayClosed && (
+                <span className="text-[10px] px-2 py-1 rounded-full border border-danger/30 bg-danger/15 text-danger">
+                  Κλειστό
+                </span>
+              )}
             </div>
+
             <div className="space-y-2">
-              {filteredDayRows.length === 0 && (
-                <div className="text-sm opacity-50 italic">
-                  Καμία συνεδρία σήμερα
+              {dayClosed && (
+                <div className="text-[11px] text-text-secondary">
+                  Το γυμναστήριο είναι δηλωμένο ως κλειστό για αυτή την ημέρα.
                 </div>
               )}
+
+              {filteredDayRows.length === 0 && (
+                <div className="text-sm opacity-50 italic">Καμία συνεδρία σήμερα</div>
+              )}
+
               {filteredDayRows.map((s) => (
                 <button
                   key={s.id}
-                  onClick={() => onSessionClick?.(s)}
-                  className="w-full text-left truncate rounded-md border border-border/10 px-3 py-2 hover:bg-border/5"
-                  title={`${sessionTitle(s)} • ${fmtHM(s.starts_at)}–${fmtHM(
-                    s.ends_at,
-                  )}`}
+                  disabled={dayClosed}
+                  onClick={() => !dayClosed && onSessionClick?.(s)}
+                  className={`w-full text-left truncate rounded-md border border-border/10 px-2 py-1 hover:bg-border/5
+                                  ${dayClosed ? "opacity-50 cursor-not-allowed" : ""}`}
+                  title={`${sessionTitle(s)} • ${fmtHM(s.starts_at)}–${fmtHM(s.ends_at)}`}
                 >
                   <div className="text-[11px] opacity-70">
                     {fmtHM(s.starts_at)}–{fmtHM(s.ends_at)}
                   </div>
-                  <div className="text-sm font-medium truncate">
-                    {sessionTitle(s)}
-                  </div>
+                  <div className="text-sm font-medium truncate">{sessionTitle(s)}</div>
                 </button>
               ))}
             </div>
@@ -328,13 +452,27 @@ export function CalendarMonth({
 
                   const weekdayLabel = WEEKDAY_LABELS[day.getDay()];
 
+                  const isClosed = isGymClosedOnDate({
+                    ymd: key,
+                    date: day,
+                    week: opening?.week ?? null,
+                    exceptions: opening?.exceptions ?? null,
+                  });
+
+
                   return (
                     <div
                       key={idx}
-                      className={`min-h-20 sm:min-h-22.5 bg-secondary-background/60 p-2 relative ${
-                        isOtherMonth ? 'opacity-60' : ''
-                      }`}
+                      className={`min-h-20 sm:min-h-22.5 bg-secondary-background/60 p-2 relative ${isOtherMonth ? "opacity-60" : ""
+                        }`}
                     >
+                      {isClosed && (
+                        <div className="absolute top-2 left-2">
+                          <span className="text-[10px] px-2 py-1 rounded-full border border-danger/30 bg-danger/15 text-danger">
+                            Κλειστό
+                          </span>
+                        </div>
+                      )}
                       {/* Day-of-week label for mobile */}
                       <div className="sm:hidden text-[10px] uppercase tracking-wide opacity-70 mb-1">
                         {weekdayLabel}
@@ -343,11 +481,10 @@ export function CalendarMonth({
                       {/* Day bubble */}
                       <div className="absolute top-2 right-2 text-[10px]">
                         <span
-                          className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${
-                            isToday
-                              ? 'bg-primary/80 text-white'
-                              : 'bg-transparent text-text-primary/70'
-                          }`}
+                          className={`inline-flex h-5 w-5 items-center justify-center rounded-full ${isToday
+                            ? 'bg-primary/80 text-white'
+                            : 'bg-transparent text-text-primary/70'
+                            }`}
                         >
                           {day.getDate()}
                         </span>
@@ -362,8 +499,10 @@ export function CalendarMonth({
                         {items.map((s) => (
                           <button
                             key={s.id}
-                            onClick={() => onSessionClick?.(s)}
-                            className="w-full text-left truncate rounded-md border border-border/10 px-2 py-1 hover:bg-border/5"
+                            disabled={isClosed}
+                            onClick={() => !isClosed && onSessionClick?.(s)}
+                            className={`w-full text-left truncate rounded-md border border-border/10 px-2 py-1 hover:bg-border/5
+                                  ${isClosed ? "opacity-50 cursor-not-allowed" : ""}`}
                             title={`${sessionTitle(s)} • ${fmtHM(
                               s.starts_at,
                             )}–${fmtHM(s.ends_at)}`}

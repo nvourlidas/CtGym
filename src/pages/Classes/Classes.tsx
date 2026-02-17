@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import type { LucideIcon } from 'lucide-react';
@@ -53,6 +53,9 @@ export default function ClassesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [coaches, setCoaches] = useState<Coach[]>([]);
 
+  const [totalCount, setTotalCount] = useState(0);
+
+
   // pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -72,55 +75,67 @@ export default function ClassesPage() {
 
   async function load() {
     if (!profile?.tenant_id) return;
+
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from('classes')
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase
+      .from("classes_list")
       .select(
         `
-        id,
-        tenant_id,
-        title,
-        description,
-        created_at,
-        category_id,
-        drop_in_enabled,
-        drop_in_price,
-        member_drop_in_price,
-        coach_id,
-        class_categories (
-          id,
-          name,
-          color
-        ),
-        coaches (
-          id,
-          full_name
-        )
-      `
+      id, tenant_id, title, description, created_at,
+      category_id, drop_in_enabled, drop_in_price, member_drop_in_price, coach_id,
+      category_name, category_color,
+      coach_full_name
+    `,
+        { count: "exact" }
       )
-      .eq('tenant_id', profile.tenant_id)
-      .order('created_at', { ascending: false });
+      .eq("tenant_id", profile.tenant_id)
+      .order("created_at", { ascending: false });
 
-    if (!error && data) {
-      const normalized: GymClass[] = (data as any[]).map((row) => ({
-        ...row,
-        class_categories: Array.isArray(row.class_categories)
-          ? row.class_categories[0] ?? null
-          : row.class_categories ?? null,
-        coach: Array.isArray(row.coaches)
-          ? row.coaches[0] ?? null
-          : row.coaches ?? null,
+    const needle = q.trim();
+    if (needle) {
+      query = query.or(
+        `title.ilike.%${needle}%,description.ilike.%${needle}%,id.ilike.%${needle}%,category_name.ilike.%${needle}%,coach_full_name.ilike.%${needle}%`
+      );
+    }
+
+    const { data, error, count } = await query.range(from, to);
+
+    if (!error) {
+      const normalized: GymClass[] = ((data as any[]) ?? []).map((r) => ({
+        id: r.id,
+        tenant_id: r.tenant_id,
+        title: r.title,
+        description: r.description ?? null,
+        created_at: r.created_at,
+        category_id: r.category_id ?? null,
+        drop_in_enabled: !!r.drop_in_enabled,
+        drop_in_price: r.drop_in_price ?? null,
+        member_drop_in_price: r.member_drop_in_price ?? null,
+        coach_id: r.coach_id ?? null,
+        class_categories: r.category_name
+          ? { id: r.category_id ?? "", name: r.category_name, color: r.category_color ?? null }
+          : null,
+        coach: r.coach_full_name
+          ? { id: r.coach_id ?? "", full_name: r.coach_full_name }
+          : null,
       }));
+
       setRows(normalized);
+      setTotalCount(count ?? 0);
     }
 
     setLoading(false);
   }
 
+
   useEffect(() => {
     load();
-  }, [profile?.tenant_id]);
+  }, [profile?.tenant_id, page, pageSize, q]);
+
 
   // Load categories for this tenant
   useEffect(() => {
@@ -159,31 +174,10 @@ export default function ClassesPage() {
       });
   }, [profile?.tenant_id]);
 
-  const filtered = useMemo(() => {
-    if (!q) return rows;
-    const needle = q.toLowerCase();
-    return rows.filter(
-      (r) =>
-        (r.title ?? '').toLowerCase().includes(needle) ||
-        (r.description ?? '').toLowerCase().includes(needle) ||
-        r.id.toLowerCase().includes(needle) ||
-        (r.class_categories?.name ?? '').toLowerCase().includes(needle),
-    );
-  }, [rows, q]);
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+  const startIdx = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endIdx = Math.min(totalCount, page * pageSize);
 
-  useEffect(() => {
-    setPage(1);
-  }, [q, pageSize]);
-
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-
-  const paginated = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, page, pageSize]);
-
-  const startIdx = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
-  const endIdx = Math.min(filtered.length, page * pageSize);
 
   return (
     <div className="p-6">
@@ -225,7 +219,7 @@ export default function ClassesPage() {
                     </td>
                   </tr>
                 )}
-                {!loading && filtered.length === 0 && (
+                {!loading && totalCount  === 0 && (
                   <tr>
                     <td className="px-3 py-4 opacity-60" colSpan={6}>
                       Δεν υπάρχουν τμήματα
@@ -233,8 +227,8 @@ export default function ClassesPage() {
                   </tr>
                 )}
                 {!loading &&
-                  filtered.length > 0 &&
-                  paginated.map((c) => (
+                  totalCount  > 0 &&
+                  rows.map((c) => (
                     <tr
                       key={c.id}
                       className="border-t border-border/10 hover:bg-secondary/10"
@@ -321,15 +315,15 @@ export default function ClassesPage() {
             <div className="px-3 py-4 text-sm opacity-60">Loading…</div>
           )}
 
-          {!loading && filtered.length === 0 && (
+          {!loading && totalCount  === 0 && (
             <div className="px-3 py-4 text-sm opacity-60">
               Δεν υπάρχουν τμήματα
             </div>
           )}
 
           {!loading &&
-            filtered.length > 0 &&
-            paginated.map((c) => (
+            totalCount  > 0 &&
+            rows.map((c) => (
               <div
                 key={c.id}
                 className="border-t border-border/10 bg-secondary/5 px-3 py-3"
@@ -410,16 +404,16 @@ export default function ClassesPage() {
         </div>
 
         {/* Shared pagination footer */}
-        {!loading && filtered.length > 0 && (
+        {!loading && totalCount  > 0 && (
           <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-border/10">
             <div>
               Εμφάνιση <span className="font-semibold">{startIdx}</span>
-              {filtered.length > 0 && (
+              {totalCount  > 0 && (
                 <>
                   –<span className="font-semibold">{endIdx}</span>
                 </>
               )}{' '}
-              από <span className="font-semibold">{filtered.length}</span>
+              από <span className="font-semibold">{totalCount }</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1">

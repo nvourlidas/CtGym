@@ -1,6 +1,6 @@
 import DatePicker from 'react-datepicker';
 import { el } from 'date-fns/locale/el';
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import SessionAttendanceModal from '../../components/Programs/SessionAttendanceModal';
@@ -45,6 +45,9 @@ export default function ClassSessionsPage() {
   const [editRow, setEditRow] = useState<SessionRow | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [totalCount, setTotalCount] = useState(0);
+
+
   // pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -72,14 +75,19 @@ export default function ClassSessionsPage() {
 
   async function load() {
     if (!profile?.tenant_id) return;
+
     setLoading(true);
     setError(null);
 
-    const [cls, sess] = await Promise.all([
-      supabase
-        .from('classes')
-        .select(
-          `
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    try {
+      const [clsRes, sessRes] = await Promise.all([
+        supabase
+          .from('classes')
+          .select(
+            `
           id,
           title,
           class_categories (
@@ -88,97 +96,108 @@ export default function ClassSessionsPage() {
             color
           )
         `,
-        )
-        .eq('tenant_id', profile.tenant_id)
-        .order('title'),
-      supabase
-        .from('class_sessions')
-        .select(
-          'id, tenant_id, class_id, starts_at, ends_at, capacity, created_at, cancel_before_hours, checkin_token',
-        )
-        .eq('tenant_id', profile.tenant_id)
-        .order('starts_at', { ascending: false }),
-    ]);
+          )
+          .eq('tenant_id', profile.tenant_id)
+          .order('title', { ascending: true }),
 
-    if (!cls.error) {
-      const list: GymClass[] = ((cls.data as any[]) ?? []).map((row) => ({
-        id: row.id,
-        title: row.title,
-        class_categories: Array.isArray(row.class_categories)
-          ? row.class_categories[0] ?? null
-          : row.class_categories ?? null,
-      }));
-      setClasses(list);
+        // sessions (server-side filters + pagination + count)
+        (() => {
+          let q = supabase
+            .from('class_sessions')
+            .select(
+              'id, tenant_id, class_id, starts_at, ends_at, capacity, created_at, cancel_before_hours, checkin_token',
+              { count: 'exact' },
+            )
+            .eq('tenant_id', profile.tenant_id)
+            .order('starts_at', { ascending: false });
+
+          // class filter
+          if (qClass) q = q.eq('class_id', qClass);
+
+          // date filter (based on starts_at)
+          if (dateFilter) {
+            const now = new Date();
+            let start: Date | null = null;
+            let end: Date | null = null;
+
+            if (dateFilter === 'today') {
+              start = startOfDay(now);
+              end = new Date(start);
+              end.setDate(end.getDate() + 1);
+            } else if (dateFilter === 'week') {
+              start = startOfWeek(now);
+              end = new Date(start);
+              end.setDate(end.getDate() + 7);
+            } else if (dateFilter === 'month') {
+              start = startOfMonth(now);
+              end = new Date(start);
+              end.setMonth(end.getMonth() + 1);
+            }
+
+            if (start && end) {
+              q = q
+                .gte('starts_at', start.toISOString())
+                .lt('starts_at', end.toISOString());
+            }
+          }
+
+          return q.range(from, to);
+        })(),
+      ]);
+
+      // classes dropdown list (with category)
+      if (!clsRes.error) {
+        const list: GymClass[] = ((clsRes.data as any[]) ?? []).map((row) => ({
+          id: row.id,
+          title: row.title,
+          class_categories: Array.isArray(row.class_categories)
+            ? row.class_categories[0] ?? null
+            : row.class_categories ?? null,
+        }));
+        setClasses(list);
+      }
+
+      // sessions page + total count
+      if (!sessRes.error) {
+        setRows(((sessRes.data as SessionRow[]) ?? []) as SessionRow[]);
+        setTotalCount(sessRes.count ?? 0);
+      } else {
+        setRows([]);
+        setTotalCount(0);
+      }
+
+      // surface first error (if any)
+      if (clsRes.error || sessRes.error) {
+        setError(clsRes.error?.message ?? sessRes.error?.message ?? null);
+      }
+
+      // reset selection on every reload
+      setSelectedIds([]);
+    } finally {
+      setLoading(false);
     }
-
-    if (!sess.error) setRows((sess.data as SessionRow[]) ?? []);
-
-    if (cls.error || sess.error) {
-      setError(cls.error?.message ?? sess.error?.message ?? null);
-    }
-
-    setSelectedIds([]);
-    setLoading(false);
   }
+
 
   useEffect(() => {
     load();
-  }, [profile?.tenant_id]);
+  }, [profile?.tenant_id, page, pageSize, qClass, dateFilter]);
 
-  const filtered = useMemo(() => {
-    let list = rows;
 
-    if (qClass) {
-      list = list.filter((r) => r.class_id === qClass);
-    }
 
-    if (dateFilter) {
-      const now = new Date();
-      let start: Date | null = null;
-      let end: Date | null = null;
-
-      if (dateFilter === 'today') {
-        start = startOfDay(now);
-        end = new Date(start);
-        end.setDate(end.getDate() + 1);
-      } else if (dateFilter === 'week') {
-        start = startOfWeek(now);
-        end = new Date(start);
-        end.setDate(end.getDate() + 7);
-      } else if (dateFilter === 'month') {
-        start = startOfMonth(now);
-        end = new Date(start);
-        end.setMonth(end.getMonth() + 1);
-      }
-
-      if (start && end) {
-        list = list.filter((r) => {
-          const d = new Date(r.starts_at);
-          return d >= start! && d < end!;
-        });
-      }
-    }
-
-    return list;
-  }, [rows, qClass, dateFilter]);
 
   useEffect(() => {
     setPage(1);
   }, [qClass, dateFilter, pageSize]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+  const startIdx = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endIdx = Math.min(totalCount, page * pageSize);
 
-  const paginated = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, page, pageSize]);
-
-  const startIdx = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
-  const endIdx = Math.min(filtered.length, page * pageSize);
 
   const getClass = (id: string) => classes.find((c) => c.id === id);
 
-  const pageIds = paginated.map((s) => s.id);
+  const pageIds = rows.map((s) => s.id);
   const allPageSelected =
     pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
 
@@ -321,7 +340,7 @@ export default function ClassSessionsPage() {
                     </td>
                   </tr>
                 )}
-                {!loading && filtered.length === 0 && (
+                {!loading && rows.length === 0 && (
                   <tr>
                     <td className="px-3 py-4 opacity-60" colSpan={7}>
                       No sessions
@@ -329,8 +348,8 @@ export default function ClassSessionsPage() {
                   </tr>
                 )}
                 {!loading &&
-                  filtered.length > 0 &&
-                  paginated.map((s) => {
+                  rows.length > 0 &&
+                  rows.map((s) => {
                     const cls = getClass(s.class_id);
                     const hasQr = Boolean(s.checkin_token);
 
@@ -429,12 +448,12 @@ export default function ClassSessionsPage() {
           {loading && (
             <div className="px-3 py-4 text-sm opacity-60">Loading…</div>
           )}
-          {!loading && filtered.length === 0 && (
+          {!loading && rows.length === 0 && (
             <div className="px-3 py-4 text-sm opacity-60">No sessions</div>
           )}
           {!loading &&
-            filtered.length > 0 &&
-            paginated.map((s) => {
+            rows.length > 0 &&
+            rows.map((s) => {
               const cls = getClass(s.class_id);
               const hasQr = Boolean(s.checkin_token);
 
@@ -537,16 +556,16 @@ export default function ClassSessionsPage() {
         </div>
 
         {/* Pagination footer */}
-        {!loading && filtered.length > 0 && (
+        {!loading && rows.length > 0 && (
           <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-border/10">
             <div>
               Εμφάνιση <span className="font-semibold">{startIdx}</span>
-              {filtered.length > 0 && (
+              {rows.length > 0 && (
                 <>
                   –<span className="font-semibold">{endIdx}</span>
                 </>
               )}{' '}
-              από <span className="font-semibold">{filtered.length}</span>
+              από <span className="font-semibold">{totalCount}</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1">

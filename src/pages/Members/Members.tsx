@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
-import MemberDetailsModal from '../../components/Members/MemberDetailsModal';
 import SendMemberEmailModal from '../../components/Members/SendMemberEmailModal';
 import type { LucideIcon } from 'lucide-react';
 import { Eye, Pencil, Trash2, Loader2 } from 'lucide-react';
@@ -73,14 +72,14 @@ export default function MembersPage() {
 
 
   const navigate = useNavigate();
-  const tenantId = profile?.tenant_id; 
+  const tenantId = profile?.tenant_id;
 
   // pagination state
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
   // Details modal state
-  const [detailsMember, setDetailsMember] = useState<Member | null>(null);
+  // const [detailsMember, setDetailsMember] = useState<Member | null>(null);
 
   // debts per member
   const [membershipDebts, setMembershipDebts] = useState<Record<string, number>>(
@@ -477,7 +476,11 @@ export default function MembersPage() {
                       <IconButton
                         icon={Eye}
                         label="Λεπτομέρειες"
-                        onClick={() => setDetailsMember(m)}
+                        onClick={() =>
+                          navigate(`/members/${m.id}`, {
+                            state: { member: m, tenantId, subscriptionInactive },
+                          })
+                        }
                       />
                       <IconButton
                         icon={Pencil}
@@ -597,7 +600,7 @@ export default function MembersPage() {
       )}
 
       {/* Details modal (Details + History + Economic tabs) */}
-      {detailsMember && profile?.tenant_id && (
+      {/* {detailsMember && profile?.tenant_id && (
         <MemberDetailsModal
           member={detailsMember}
           tenantId={profile.tenant_id}
@@ -605,7 +608,7 @@ export default function MembersPage() {
           subscriptionInactive={subscriptionInactive}
           onSubscriptionBlocked={() => setShowSubModal(true)}
         />
-      )}
+      )} */}
 
       {/* Send Email modal (separate component file) */}
       {showEmailModal && (

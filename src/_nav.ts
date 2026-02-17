@@ -12,6 +12,7 @@ import {
   EuroIcon,
   QrCode,
   ClipboardList,
+  Clock,
 } from 'lucide-react';
 
 
@@ -79,9 +80,10 @@ export const NAV: NavEntry[] = [
     label: 'Ρυθμίσεις',
     icon: Settings,
     children: [
-      { label: 'Εμφάνιση εφαρμογής', to: '/themesettings', icon: Palette },
-      { label: 'Πληροφορίες Γυμναστηρίου', to: '/gyminfo', icon: Info },
-      { label: 'Συνδρομή Γυμναστηρίου', to: '/billing', icon: CreditCard },
+      { label: 'Εμφάνιση εφαρμογής', to: '/settings/themesettings', icon: Palette },
+      { label: 'Πληροφορίες Γυμναστηρίου', to: '/settings/gyminfo', icon: Info },
+      { label: 'Ωράριο Γυμναστηρίου', to: '/settings/opninghours', icon: Clock },
+      { label: 'Συνδρομή Γυμναστηρίου', to: '/settings/billing', icon: CreditCard },
     ],
   },
 ];

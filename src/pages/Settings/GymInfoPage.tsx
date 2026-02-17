@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../auth';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../auth';
 
 type GymInfo = {
   id: string;

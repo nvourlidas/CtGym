@@ -1,7 +1,7 @@
 // src/pages/BillingPage.tsx
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../auth';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../auth';
 import {
   CalendarClock,
   CheckCircle2,
@@ -10,7 +10,7 @@ import {
   XCircle,
   Sparkles,
 } from 'lucide-react';
-import PlanPickerModal from '../components/billing/PlanPickerModal';
+import PlanPickerModal from '../../components/billing/PlanPickerModal';
 
 type PlanRow = {
   id: string;

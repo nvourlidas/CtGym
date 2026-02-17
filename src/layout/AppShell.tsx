@@ -6,6 +6,7 @@ import { useAuth } from '../auth';
 import { NAV, type NavEntry } from '../_nav';
 import type { LucideIcon } from 'lucide-react';
 import logo from '../assets/CTGYM.YELLOW 1080x1080.svg';
+import PlanPickerModal from '../components/billing/PlanPickerModal';
 
 type Tenant = { name: string };
 type ThemeMode = 'light' | 'dark';
@@ -23,9 +24,16 @@ function applyTheme(mode: ThemeMode) {
 }
 
 export default function AppShell() {
-  const { profile, subscription } = useAuth();
+  const { profile, subscription, subscriptionLoading } = useAuth();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const [showPlansModal, setShowPlansModal] = useState(false);
+
+  const [plans, setPlans] = useState<any[]>([]);
+  const [plansBusy, setPlansBusy] = useState(false);
+  const [plansError, setPlansError] = useState<string | null>(null);
+
 
   // ✅ Theme toggle state (persisted)
   const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
@@ -47,7 +55,18 @@ export default function AppShell() {
   }, [profile?.tenant_id]);
 
   const subscriptionBanner = useMemo(() => {
-    if (!subscription || profile?.role !== 'admin') return null;
+    // only admin-like roles should see it
+    const isAdminLike = profile?.role === 'admin' || profile?.role === 'owner';
+    if (!isAdminLike) return null;
+
+    // ✅ case 1: no row in tenant_subscription_status
+    if (!subscription) {
+      return {
+        type: 'expired' as const,
+        daysLeft: null as number | null,
+        message: 'Δεν υπάρχει ενεργή συνδρομή. Απαιτείται επιλογή πλάνου.',
+      };
+    }
 
     const now = new Date();
 
@@ -58,7 +77,18 @@ export default function AppShell() {
           ? new Date(subscription.current_period_end)
           : null;
 
-    if (!endDate) return null;
+    // if we have a row but no dates, still treat as needs attention
+    if (!endDate) {
+      const isActive = subscription.is_active === true || subscription.status === 'active';
+      if (!isActive) {
+        return {
+          type: 'expired' as const,
+          daysLeft: null as number | null,
+          message: 'Η συνδρομή δεν είναι ενεργή. Απαιτείται επιλογή πλάνου.',
+        };
+      }
+      return null;
+    }
 
     const daysLeft = Math.ceil(
       (endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
@@ -82,6 +112,110 @@ export default function AppShell() {
 
     return null;
   }, [subscription, profile?.role]);
+
+
+  useEffect(() => {
+    if (!profile?.tenant_id) return;
+
+    // ✅ allow both admin + owner
+    const isAdminLike =
+      profile.role === 'admin' || profile.role === 'owner';
+
+    if (!isAdminLike) return;
+
+    // Wait until subscription is resolved (important)
+    if (subscriptionLoading) return;
+
+    // No row OR not active = should open
+    const isActive =
+      subscription?.is_active === true ||
+      subscription?.status === 'active';
+
+    const shouldOpen = !subscription || !isActive;
+
+    if (!shouldOpen) return;
+
+    // Open only once per login
+    const key = `shown_plans_modal_${profile.tenant_id}`;
+    if (sessionStorage.getItem(key) === '1') return;
+
+    sessionStorage.setItem(key, '1');
+    setShowPlansModal(true);
+  }, [
+    profile?.tenant_id,
+    profile?.role,
+    subscription,
+    subscriptionLoading,
+  ]);
+
+
+
+  useEffect(() => {
+    if (!showPlansModal) return;
+
+    let alive = true;
+
+    (async () => {
+      setPlansBusy(true);
+      setPlansError(null);
+
+      try {
+        const { data, error } = await supabase
+          .from('subscription_plans')
+          .select('id,name,includes_mobile,monthly_price_cents,currency,is_active')
+          .order('monthly_price_cents', { ascending: true });
+
+        if (error) throw error;
+        if (!alive) return;
+
+        setPlans(data ?? []);
+      } catch (e: any) {
+        if (!alive) return;
+        setPlansError(e?.message || 'Αποτυχία φόρτωσης πλάνων.');
+      } finally {
+        if (!alive) return;
+        setPlansBusy(false);
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [showPlansModal]);
+
+
+  const onSubscribe = async (planId: string) => {
+    if (!profile?.tenant_id) return;
+
+    setPlansBusy(true);
+    setPlansError(null);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('viva-create-checkout', {
+        body: {
+          tenant_id: profile.tenant_id,
+          plan_id: planId,
+          customer_email: profile.email ?? null,
+          customer_full_name: profile.full_name ?? null,
+          request_lang: 'el',
+        },
+      });
+
+      if (error) throw error;
+
+      const url = data?.checkoutUrl ?? data?.checkout_url;
+      if (!url) throw new Error('Δεν επιστράφηκε checkout url από Viva.');
+
+      window.open(url, '_blank');
+      // keep modal open until webhook activates subscription (recommended)
+      // setShowPlansModal(false);
+    } catch (e: any) {
+      setPlansError(e?.message || 'Αποτυχία εκκίνησης πληρωμής.');
+    } finally {
+      setPlansBusy(false);
+    }
+  };
+
 
   const toggleTheme = () => {
     setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
@@ -120,7 +254,7 @@ export default function AppShell() {
             ].join(' ')}
           >
             {subscriptionBanner.message}{' '}
-            <NavLink to="/billing" className="underline font-semibold ml-2">
+            <NavLink to="/settings/billing" className="underline font-semibold ml-2">
               Διαχείριση συνδρομής
             </NavLink>
           </div>
@@ -140,7 +274,7 @@ export default function AppShell() {
               </button>
 
               <div className="font-semibold flex justify-center gap-1">
-                <img src={logo}  className="w-28 sm:w-32 md:w-36 lg:w-42"/>
+                <img src={logo} className="w-25 sm:w-32 md:w-32 " />
               </div>
 
               <div className="hidden sm:block text-sm opacity-60">
@@ -168,6 +302,17 @@ export default function AppShell() {
           <Outlet />
         </main>
       </div>
+
+      <PlanPickerModal
+        open={showPlansModal}
+        plans={plans as any}
+        currentPlanId={(subscription as any)?.plan_id ?? null}
+        busy={plansBusy}
+        error={plansError}
+        onClose={() => setShowPlansModal(false)}
+        onSubscribe={onSubscribe}
+      />
+
     </div>
   );
 }

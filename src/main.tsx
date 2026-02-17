@@ -21,17 +21,18 @@ import ClassSessionsPage from './pages/Classes/ClassSessions';
 import Bookings from './pages/Classes/Bookings';
 import Plans from './pages/Memberships/Plans';
 import Categories from './pages/CategoriesPage';
-import ThemeSettings from './pages/ThemeSettingsPage';
+import ThemeSettings from './pages/Settings/ThemeSettingsPage';
 import Coaches from './pages/CoachesPage';
-import GymInfo from './pages/GymInfoPage';
+import GymInfo from './pages/Settings/GymInfoPage';
 import BulkBookings from './pages/Classes/AdminBulkBookingsPage';
 import ForgotPassword from './pages/ForgotPasswordPage'
 import FinancePage from './pages/FinancePage'
 import WorkoutTemplatesPage from './pages/workouts/WorkoutTemplatesPage';
-import BillingPage from './pages/BillingPage';
+import BillingPage from './pages/Settings/BillingPage';
 import SessionQrPage from './pages/SessionQrPage';
 import QuestionnairesPage from './pages/Questionnaires/QuestionnairesPage';
 import QuestionnaireBuilderPage from './pages/Questionnaires/QuestionnaireBuilderPage';
+import OpeningHours from './pages/Settings/OpeningHoursPage';
 
 //test program
 import ProgramsPage2 from './pages/Classes/ProgramsPage2';
@@ -59,17 +60,18 @@ const router = createBrowserRouter([
       { path: 'bookings', element: <Bookings /> },
       { path: 'plans', element: <Plans /> },
       { path: 'memberships', element: <Memberships /> },
-      { path: 'themesettings', element: <ThemeSettings /> },
+      { path: 'settings/themesettings', element: <ThemeSettings /> },
       { path: 'coaches', element: <Coaches /> },
-      { path: 'gyminfo', element: <GymInfo /> },
+      { path: 'settings/gyminfo', element: <GymInfo /> },
       { path: 'bulkbookings', element: <BulkBookings /> },
       { path: 'finances', element: <FinancePage /> },
       { path: 'workouttemplates', element: <WorkoutTemplatesPage /> },
-      { path: 'billing', element: <BillingPage /> },
+      { path: 'settings/billing', element: <BillingPage /> },
       { path: 'qrpage', element: <SessionQrPage /> },
       { path: 'questionnaires', element: <QuestionnairesPage /> },
       { path: '/questionnaires/new', element: <QuestionnaireBuilderPage /> },
       { path: '/questionnaires/:id', element: <QuestionnaireBuilderPage /> },
+      { path: 'settings/opninghours', element: <OpeningHours /> },
     ],
   },
 ]);

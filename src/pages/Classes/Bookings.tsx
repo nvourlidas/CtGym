@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import type { LucideIcon } from 'lucide-react';
 import { Pencil, Trash2, Loader2, Plus } from 'lucide-react';
 import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
-import SessionPickerModal, { type SessionRow as PickerSessionRow } from '../../components/bookings/SessionPickerModal';
+import SessionPickerModal from '../../components/bookings/SessionPickerModal';
 
 
 type Member = { id: string; full_name: string | null };
@@ -71,6 +71,8 @@ export default function BookingsPage() {
   const { profile, subscription } = useAuth();
   const [showSubModal, setShowSubModal] = useState(false);
   const [rows, setRows] = useState<Booking[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -108,159 +110,159 @@ export default function BookingsPage() {
 
   async function load() {
     if (!profile?.tenant_id) return;
+
     setLoading(true);
     setError(null);
 
-    const { data, error } = await supabase
-      .from('bookings')
-      .select(`
-        id, tenant_id, session_id, user_id, status, created_at,
-        booking_type,
-        drop_in_price,
-        profiles!inner(id, full_name),
-        class_sessions!inner(
-          id, starts_at, ends_at, capacity,
-          classes(
-            id,
-            title,
-            class_categories(name, color)
-          )
-        )
-      `)
-      .eq('tenant_id', profile.tenant_id)
-      .order('created_at', { ascending: false });
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
 
-    if (error) {
-      const { data: bare, error: e2 } = await supabase
-        .from('bookings')
-        .select(
-          'id, tenant_id, session_id, user_id, status, created_at, booking_type, drop_in_price',
-        )
-        .eq('tenant_id', profile.tenant_id)
-        .order('created_at', { ascending: false });
+    // Base query
+    let query = supabase
+      .from("bookings_list")
+      .select(
+        `
+    id, tenant_id, session_id, user_id, status, created_at,
+    booking_type, drop_in_price,
+    member_full_name,
+    starts_at, ends_at, capacity,
+    class_id, class_title,
+    category_name, category_color
+  `,
+        { count: "exact" }
+      )
+      .eq("tenant_id", profile.tenant_id)
+      .order("created_at", { ascending: false });
 
-      if (e2) {
-        setError(e2.message);
-        handleError('Σφάλμα φόρτωσης κρατήσεων', e2.message);
-      }
-      setRows(((bare as any[]) ?? []).map((b) => ({
-        ...b,
-        profile: null,
-        session: null,
-      })));
-    } else {
-      const mapped = (data as any[]).map((b) => ({
-        id: b.id,
-        tenant_id: b.tenant_id,
-        session_id: b.session_id,
-        user_id: b.user_id,
-        status: b.status,
-        created_at: b.created_at,
-        booking_type: b.booking_type ?? 'membership',
-        drop_in_price: b.drop_in_price ?? null,
-        profile: b.profiles
-          ? { id: b.profiles.id, full_name: b.profiles.full_name }
-          : null,
-        session: b.class_sessions
-          ? {
-            id: b.class_sessions.id,
-            starts_at: b.class_sessions.starts_at,
-            ends_at: b.class_sessions.ends_at,
-            capacity: b.class_sessions.capacity,
-            classes: b.class_sessions.classes
-              ? {
-                id: b.class_sessions.classes.id,
-                title: b.class_sessions.classes.title,
-                class_categories: b.class_sessions.classes.class_categories ?? null,
-              }
-              : null,
-          }
-          : null,
-      }));
-      setRows(mapped);
+
+    // Server-side filters (IMPORTANT: these reduce count too)
+    if (classFilter) query = query.eq("class_id", classFilter);
+    if (statusFilter) query = query.eq("status", statusFilter);
+    if (bookingTypeFilter) query = query.eq("booking_type", bookingTypeFilter);
+
+    if (dateFilterMode === "today" || (dateFilterMode === "custom" && customDate)) {
+      const base = dateFilterMode === "today"
+        ? new Date().toISOString().slice(0, 10)
+        : customDate;
+      query = query.gte("starts_at", `${base}T00:00:00.000Z`).lte("starts_at", `${base}T23:59:59.999Z`);
     }
 
-    setLoading(false);
-  }
 
-  useEffect(() => {
-    load();
-  }, [profile?.tenant_id]);
-
-  const classOptions = useMemo(() => {
-    const map = new Map<string, string>();
-    rows.forEach((r) => {
-      const c = r.session?.classes;
-      if (c?.id && c.title) {
-        map.set(c.id, c.title);
-      }
-    });
-    return Array.from(map.entries())
-      .map(([id, title]) => ({ id, title }))
-      .sort((a, b) => a.title.localeCompare(b.title));
-  }, [rows]);
-
-  const filtered = useMemo(() => {
-    let list = [...rows];
-
-    if (classFilter) {
-      list = list.filter((r) => r.session?.classes?.id === classFilter);
-    }
-
-    if (statusFilter) {
-      list = list.filter((r) => (r.status ?? 'booked') === statusFilter);
-    }
-
-    if (bookingTypeFilter) {
-      list = list.filter((r) => (r.booking_type ?? 'membership') === bookingTypeFilter);
-    }
-
-    if (dateFilterMode === 'today' || (dateFilterMode === 'custom' && customDate)) {
-      const start = new Date();
-      if (dateFilterMode === 'today') {
-        start.setHours(0, 0, 0, 0);
-      } else {
-        const [yyyy, mm, dd] = customDate.split('-').map(Number);
-        start.setFullYear(yyyy, (mm ?? 1) - 1, dd ?? 1);
-        start.setHours(0, 0, 0, 0);
-      }
-      const end = new Date(start);
-      end.setDate(end.getDate() + 1);
-
-      list = list.filter((r) => {
-        const base = r.session?.starts_at ?? r.created_at;
-        const d = new Date(base);
-        if (Number.isNaN(d.getTime())) return false;
-        return d >= start && d < end;
-      });
-    }
-
-    if (q) {
-      const needle = q.toLowerCase();
-      list = list.filter(
-        (r) =>
-          (r.profile?.full_name ?? '').toLowerCase().includes(needle) ||
-          (r.session?.classes?.title ?? '').toLowerCase().includes(needle) ||
-          (r.status ?? '').toLowerCase().includes(needle),
+    const needle = q.trim();
+    if (needle) {
+      query = query.or(
+        `member_full_name.ilike.%${needle}%,class_title.ilike.%${needle}%,category_name.ilike.%${needle}%,status.ilike.%${needle}%`
       );
     }
 
-    return list;
-  }, [rows, q, classFilter, statusFilter, bookingTypeFilter, dateFilterMode, customDate]);
+
+    const { data, error, count } = await query.range(from, to);
+
+    if (error) {
+      // fallback bare (still paginated)
+      const { data: bare, error: e2, count: c2 } = await supabase
+        .from("bookings")
+        .select(
+          "id, tenant_id, session_id, user_id, status, created_at, booking_type, drop_in_price",
+          { count: "exact" }
+        )
+        .eq("tenant_id", profile.tenant_id)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (e2) {
+        setError(e2.message);
+        handleError("Σφάλμα φόρτωσης κρατήσεων", e2.message);
+        setRows([]);
+        setTotalCount(0);
+        setLoading(false);
+        return;
+      }
+
+      setRows(((bare as any[]) ?? []).map((b) => ({ ...b, profile: null, session: null })));
+      setTotalCount(c2 ?? 0);
+      setLoading(false);
+      return;
+    }
+
+    const mapped = ((data as any[]) ?? []).map((r) => ({
+      id: r.id,
+      tenant_id: r.tenant_id,
+      session_id: r.session_id,
+      user_id: r.user_id,
+      status: r.status,
+      created_at: r.created_at,
+      booking_type: r.booking_type ?? "membership",
+      drop_in_price: r.drop_in_price ?? null,
+      profile: r.member_full_name ? { id: r.user_id, full_name: r.member_full_name } : null,
+      session: r.starts_at
+        ? {
+          id: r.session_id,
+          starts_at: r.starts_at,
+          ends_at: r.ends_at,
+          capacity: r.capacity,
+          classes: r.class_id
+            ? {
+              id: r.class_id,
+              title: r.class_title ?? "—",
+              class_categories: r.category_name
+                ? { name: r.category_name, color: r.category_color ?? null }
+                : null,
+            }
+            : null,
+        }
+        : null,
+    }));
+
+    setRows(mapped);
+    setTotalCount(count ?? 0);
+    setLoading(false);
+  }
+
+
+  useEffect(() => {
+    load();
+  }, [
+    profile?.tenant_id,
+    page,
+    pageSize,
+    classFilter,
+    statusFilter,
+    bookingTypeFilter,
+    dateFilterMode,
+    customDate,
+    q,
+  ]);
+
+
+
+  const [classOptions, setClassOptions] = useState<{ id: string; title: string }[]>([]);
+
+  useEffect(() => {
+    if (!profile?.tenant_id) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("classes")
+        .select("id, title")
+        .eq("tenant_id", profile.tenant_id)
+        .order("title", { ascending: true });
+
+      if (!error) {
+        setClassOptions(((data as any[]) ?? []).map((c) => ({ id: c.id, title: c.title })));
+      }
+    })();
+  }, [profile?.tenant_id]);
+
+
 
   useEffect(() => {
     setPage(1);
   }, [q, pageSize, classFilter, statusFilter, bookingTypeFilter, dateFilterMode, customDate]);
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+  const startIdx = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endIdx = Math.min(totalCount, page * pageSize);
 
-  const paginated = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return filtered.slice(start, start + pageSize);
-  }, [filtered, page, pageSize]);
-
-  const startIdx = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
-  const endIdx = Math.min(filtered.length, page * pageSize);
 
   return (
     <div className="p-4 md:p-6">
@@ -350,16 +352,16 @@ export default function BookingsPage() {
         {loading && (
           <div className="px-3 py-4 text-sm opacity-60">Loading…</div>
         )}
-        {!loading && filtered.length === 0 && (
+        {!loading && rows.length === 0 && (
           <div className="px-3 py-4 text-sm opacity-60">No bookings</div>
         )}
 
         {/* Content when there are rows */}
-        {!loading && filtered.length > 0 && (
+        {!loading && rows.length > 0 && (
           <>
             {/* Mobile cards */}
             <div className="md:hidden divide-y divide-white/10">
-              {paginated.map((b) => {
+              {rows.map((b) => {
                 const isDropIn = (b.booking_type ?? 'membership') === 'drop_in';
                 const title = b.session?.classes?.title ?? '—';
                 const startLabel = b.session?.starts_at
@@ -474,7 +476,7 @@ export default function BookingsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginated.map((b) => {
+                  {rows.map((b) => {
                     const isDropIn = (b.booking_type ?? 'membership') === 'drop_in';
                     return (
                       <tr
@@ -571,12 +573,12 @@ export default function BookingsPage() {
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-3 py-2 text-xs text-text-secondary border-t border-border/10">
               <div>
                 Εμφάνιση <span className="font-semibold">{startIdx}</span>
-                {filtered.length > 0 && (
+                {totalCount > 0 && (
                   <>
                     –<span className="font-semibold">{endIdx}</span>
                   </>
                 )}{' '}
-                από <span className="font-semibold">{filtered.length}</span>
+                από <span className="font-semibold">{totalCount}</span>
               </div>
               <div className="flex flex-wrap items-center gap-3">
                 <div className="flex items-center gap-1">

@@ -1,9 +1,9 @@
 // src/pages/ThemeSettingsPage.tsx
 import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { useAuth } from '../auth';
-import { MobilePreview } from '../components/MobilePreview';
-import SubscriptionRequiredModal from '../components/SubscriptionRequiredModal';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../auth';
+import { MobilePreview } from '../../components/MobilePreview';
+import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
 
 type Theme = {
     primary_color: string;
