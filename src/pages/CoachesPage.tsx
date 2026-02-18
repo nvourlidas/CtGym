@@ -393,7 +393,7 @@ function CreateCoachModal({
       </FormRow>
       <FormRow label="Σύντομο βιογραφικό / σημειώσεις">
         <textarea
-          className="input"
+          className="inputTextArea"
           rows={3}
           value={bio}
           onChange={(e) => setBio(e.target.value)}
@@ -493,7 +493,7 @@ function EditCoachModal({
       </FormRow>
       <FormRow label="Σύντομο βιογραφικό / σημειώσεις">
         <textarea
-          className="input"
+          className="inputTextArea"
           rows={3}
           value={bio}
           onChange={(e) => setBio(e.target.value)}

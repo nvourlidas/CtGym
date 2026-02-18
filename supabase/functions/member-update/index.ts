@@ -70,6 +70,7 @@ serve(async (req) => {
     address,
     afm,
     max_dropin_debt,
+    notes,
   } = payload || {};
 
   if (!id) {
@@ -189,6 +190,9 @@ serve(async (req) => {
   }
   if (typeof afm !== "undefined") {
     updates.afm = afm || null;
+  }
+  if (typeof notes !== "undefined") {
+    updates.notes = notes || null;
   }
   if (typeof max_dropin_debt !== "undefined") {
     if (

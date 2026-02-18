@@ -90,6 +90,7 @@ serve(async (req) => {
     address,
     afm,
     max_dropin_debt,
+    notes,
   } = payload || {};
 
   if (!email || !password || !tenant_id) {
@@ -169,6 +170,7 @@ serve(async (req) => {
     address: address || null,
     afm: afm || null,
     max_dropin_debt: maxDropinValue,
+    notes: notes || null,
   });
 
   if (profErr) {

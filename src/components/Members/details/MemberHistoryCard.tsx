@@ -233,7 +233,7 @@ export default function MemberHistoryCard({
                   type="button"
                   onClick={() => setHistorySelectedDay(key)}
                   className={[
-                    'min-h-13.5 bg-black/10 px-2 py-1 text-left hover:bg-border/5',
+                    'min-h-13.5 bg-bulk-bg/50 px-2 py-1 text-left hover:bg-border/5',
                     !inMonth ? 'opacity-40' : '',
                     isSelected ? 'ring-2 ring-primary/60' : '',
                   ].join(' ')}

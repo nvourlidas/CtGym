@@ -1,15 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 import SendMemberEmailModal from '../../components/Members/SendMemberEmailModal';
 import type { LucideIcon } from 'lucide-react';
-import { Eye, Pencil, Trash2, Loader2 } from 'lucide-react';
+import { Eye, Pencil, Trash2, Loader2, Sheet, FileText, Inbox, BellDot } from 'lucide-react';
 import '../../styles/quill-dark.css';
 import DatePicker from 'react-datepicker';
 import { el } from 'date-fns/locale';
 import SendMemberPushModal from '../../components/Members/SendMemberPushModal';
 import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
 import { useNavigate } from 'react-router-dom';
+
+
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+import notoSansUrl from '../../assets/fonts/NotoSans-Regular.ttf?url';
+import notoSansBoldUrl from '../../assets/fonts/NotoSans-Bold.ttf?url';
+
+
 
 
 type Member = {
@@ -24,12 +35,41 @@ type Member = {
   address?: string | null;
   afm?: string | null;
   max_dropin_debt?: number | null;
+  notes?: string | null;
 };
 
 
 type TenantRow = {
   name: string;
 };
+
+type ColumnKey =
+  | 'email'
+  | 'birth_date'
+  | 'address'
+  | 'afm'
+  | 'total_debt'
+  | 'max_dropin_debt'
+  | 'created_at'
+  | 'notes';
+
+const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
+  { key: 'email', label: 'Email' },
+  { key: 'birth_date', label: 'Ημ. Γέννησης' },
+  { key: 'address', label: 'Διεύθυνση' },
+  { key: 'afm', label: 'ΑΦΜ' },
+  { key: 'total_debt', label: 'Συνολική Οφειλή' },
+  { key: 'max_dropin_debt', label: 'Max Drop-in Οφειλή' },
+  { key: 'notes', label: 'Σημειώσεις' },
+  { key: 'created_at', label: 'Ημ. Δημιουργίας' },
+];
+
+// defaults (what you show today)
+const DEFAULT_VISIBLE: ColumnKey[] = [
+  'total_debt',
+  'max_dropin_debt',
+  'created_at',
+];
 
 function formatDateDMY(value: string | null | undefined): string {
   if (!value) return '—';
@@ -69,10 +109,46 @@ export default function MembersPage() {
   const [q, setQ] = useState('');
   const [showCreate, setShowCreate] = useState(false);
   const [editRow, setEditRow] = useState<Member | null>(null);
+  const colsBtnRef = useRef<HTMLButtonElement | null>(null);
+  const colsPanelRef = useRef<HTMLDivElement | null>(null);
+
+  const [dropdownPos, setDropdownPos] = useState<{ left: number; top: number }>({
+    left: 0,
+    top: 0,
+  });
+
 
 
   const navigate = useNavigate();
   const tenantId = profile?.tenant_id;
+
+  const COLS_GLOBAL_KEY = 'members_table_visible_cols_v1';
+  const COLS_TENANT_KEY = tenantId
+    ? `members_table_visible_cols_v1_${tenantId}`
+    : null;
+
+  function sanitizeCols(input: unknown): ColumnKey[] {
+    if (!Array.isArray(input)) return DEFAULT_VISIBLE;
+    const valid = input.filter((k): k is ColumnKey =>
+      ALL_COLUMNS.some((c) => c.key === k),
+    );
+    return valid.length ? valid : DEFAULT_VISIBLE;
+  }
+
+
+
+
+  const [showCols, setShowCols] = useState(false);
+  const [visibleCols, setVisibleCols] = useState<ColumnKey[]>(() => {
+    try {
+      const raw = localStorage.getItem(COLS_GLOBAL_KEY);
+      if (!raw) return DEFAULT_VISIBLE;
+      return sanitizeCols(JSON.parse(raw));
+    } catch {
+      return DEFAULT_VISIBLE;
+    }
+  });
+
 
   // pagination state
   const [page, setPage] = useState(1);
@@ -117,7 +193,7 @@ export default function MembersPage() {
     const { data, error } = await supabase
       .from('profiles')
       .select(
-        'id, full_name, phone, tenant_id, role, created_at, birth_date, address, afm, max_dropin_debt, email',
+        'id, full_name, phone, tenant_id, role, created_at, birth_date, address, afm, max_dropin_debt, email, notes',
       )
       .eq('tenant_id', profile.tenant_id)
       .eq('role', 'member')
@@ -254,6 +330,113 @@ export default function MembersPage() {
   }, [profile?.tenant_id]);
 
 
+  const isColVisible = (key: ColumnKey) => visibleCols.includes(key);
+
+  const toggleCol = (key: ColumnKey) => {
+    setVisibleCols((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+  };
+
+  const setAllCols = () => setVisibleCols(ALL_COLUMNS.map((c) => c.key));
+  const resetCols = () => setVisibleCols(DEFAULT_VISIBLE);
+
+  const desktopColCount =
+    3 + // checkbox + name + phone
+    visibleCols.length +
+    1; // actions
+
+
+  useEffect(() => {
+    if (!showCols) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+
+      // if click is inside the button or the dropdown, ignore
+      if (colsBtnRef.current?.contains(t)) return;
+      if (colsPanelRef.current?.contains(t)) return;
+
+      setShowCols(false);
+    };
+
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [showCols]);
+
+
+  useEffect(() => {
+    if (!showCols) return;
+
+    const place = () => {
+      const btn = colsBtnRef.current;
+      const panel = colsPanelRef.current;
+      if (!btn || !panel) return;
+
+      const btnRect = btn.getBoundingClientRect();
+
+      // Make sure panel has a measurable width/height
+      const panelWidth = panel.offsetWidth || 288; // fallback ~w-72
+      const panelHeight = panel.offsetHeight || 200;
+
+      const margin = 8;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      // Horizontal: prefer align-left, otherwise align-right, then clamp
+      let left = btnRect.left;
+      if (left + panelWidth + margin > vw) {
+        left = btnRect.right - panelWidth;
+      }
+      left = Math.max(margin, Math.min(left, vw - panelWidth - margin));
+
+      // Vertical: prefer below; if not enough space, open above
+      const belowTop = btnRect.bottom + 8;
+      const aboveTop = btnRect.top - 8 - panelHeight;
+
+      let top = belowTop;
+      if (belowTop + panelHeight + margin > vh && aboveTop >= margin) {
+        top = aboveTop;
+      }
+
+      // clamp vertical anyway
+      top = Math.max(margin, Math.min(top, vh - panelHeight - margin));
+
+      setDropdownPos({ left, top });
+    };
+
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true); // catches inner scroll containers too
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [showCols]);
+
+  useEffect(() => {
+    if (!COLS_TENANT_KEY) return;
+
+    try {
+      const raw = localStorage.getItem(COLS_TENANT_KEY);
+      if (!raw) return; // important: keep whatever we already have (global)
+      setVisibleCols(sanitizeCols(JSON.parse(raw)));
+    } catch { }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [COLS_TENANT_KEY]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLS_GLOBAL_KEY, JSON.stringify(visibleCols));
+      if (COLS_TENANT_KEY) {
+        localStorage.setItem(COLS_TENANT_KEY, JSON.stringify(visibleCols));
+      }
+    } catch { }
+  }, [visibleCols, COLS_TENANT_KEY]);
+
+
+
 
   const subscriptionInactive = !subscription?.is_active;
 
@@ -269,53 +452,294 @@ export default function MembersPage() {
   const tenantNameFromProfile = tenant?.name ?? 'Cloudtec Gym';
 
 
+
+
+  const exportRows = useMemo(() => {
+    // if user selected members -> export those, else export filtered list
+    if (selectedIds.length > 0) {
+      return rows.filter((m) => selectedIds.includes(m.id));
+    }
+    return filtered;
+  }, [rows, filtered, selectedIds]);
+
+  function buildExportColumns() {
+    // Always include these basics
+    const base = [
+      { key: 'full_name', label: 'Όνομα' },
+      { key: 'phone', label: 'Τηλέφωνο' },
+    ] as const;
+
+    // Add your visible columns (from your column selector)
+    // NOTE: adjust if you added extra columns like notes etc.
+    const map: Record<ColumnKey, { key: string; label: string }> = {
+      email: { key: 'email', label: 'Email' },
+      birth_date: { key: 'birth_date', label: 'Ημ. Γέννησης' },
+      address: { key: 'address', label: 'Διεύθυνση' },
+      afm: { key: 'afm', label: 'ΑΦΜ' },
+      total_debt: { key: 'total_debt', label: 'Συνολική Οφειλή' },
+      max_dropin_debt: { key: 'max_dropin_debt', label: 'Max Drop-in Οφειλή' },
+      notes: { key: 'notes', label: 'Σημειώσεις' },
+      created_at: { key: 'created_at', label: 'Ημ. Δημιουργίας' },
+    };
+
+    const dynamic = visibleCols.map((k) => map[k]).filter(Boolean);
+    return [...base, ...dynamic];
+  }
+
+  function toExportObject(m: Member) {
+    const membershipDebt = membershipDebts[m.id] ?? 0;
+    const dropinDebt = dropinDebts[m.id] ?? 0;
+    const totalDebt = membershipDebt + dropinDebt;
+
+    return {
+      full_name: m.full_name ?? '—',
+      phone: m.phone ?? '—',
+      email: m.email ?? '—',
+      birth_date: formatDateDMY(m.birth_date),
+      address: m.address ?? '—',
+      afm: m.afm ?? '—',
+      total_debt: totalDebt ? formatMoney(totalDebt) : '0',
+      max_dropin_debt:
+        m.max_dropin_debt != null ? formatMoney(Number(m.max_dropin_debt)) : '—',
+      notes: m.notes ?? '-',
+      created_at: formatDateDMY(m.created_at),
+    };
+  }
+
+  function exportExcel() {
+    const cols = buildExportColumns();
+    const data = exportRows.map((m) => {
+      const obj = toExportObject(m);
+      // build row with labels (nice for excel headers)
+      const out: Record<string, any> = {};
+      cols.forEach((c) => (out[c.label] = (obj as any)[c.key]));
+      return out;
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Members');
+
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([buf], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+
+    const filename = `members_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    saveAs(blob, filename);
+  }
+
+  async function exportPdf() {
+    const cols = buildExportColumns();
+    const doc = new jsPDF({ orientation: 'landscape' });
+
+    // ✅ Embed Greek-capable font
+    const regular64 = await loadTtfAsBase64(notoSansUrl);
+    doc.addFileToVFS('NotoSans-Regular.ttf', regular64);
+    doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
+
+    const bold64 = await loadTtfAsBase64(notoSansBoldUrl);
+    doc.addFileToVFS('NotoSans-Bold.ttf', bold64);
+    doc.addFont('NotoSans-Bold.ttf', 'NotoSans', 'bold');
+
+    doc.setFont('NotoSans', 'normal');
+
+    const title = `Μέλη (${exportRows.length})`;
+    doc.setFontSize(14);
+    doc.text(title, 14, 14);
+
+    const head = [cols.map((c) => c.label)];
+    const body = exportRows.map((m) => {
+      const obj = toExportObject(m);
+      return cols.map((c) => String((obj as any)[c.key] ?? ''));
+    });
+
+    autoTable(doc, {
+      head,
+      body,
+      startY: 20,
+
+      // ✅ body defaults
+      styles: {
+        font: 'NotoSans',
+        fontStyle: 'normal',
+        fontSize: 9,
+        cellPadding: 2,
+      },
+
+      // ✅ header uses bold + same font
+      headStyles: {
+        font: 'NotoSans',
+        fontStyle: 'bold',
+      },
+
+      // (optional) ensure theme doesn't override
+      theme: 'grid',
+    });
+
+
+    doc.save(`members_${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
+
+  async function loadTtfAsBase64(url: string): Promise<string> {
+    const res = await fetch(url);
+    const buf = await res.arrayBuffer();
+    let binary = '';
+    const bytes = new Uint8Array(buf);
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+  }
+
+
   return (
     <div className="p-6">
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <input
-          className="h-9 rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
-          placeholder="Αναζήτηση μελών…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <button
-          className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white"
-          onClick={() => requireActiveSubscription(() => setShowCreate(true))}
-        >
-          Νέο Μέλος
-        </button>
+      <div className="flex flex-wrap justify-between">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <input
+            className="h-9 rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
+            placeholder="Αναζήτηση μελών…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <button
+            className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white"
+            onClick={() => requireActiveSubscription(() => setShowCreate(true))}
+          >
+            Νέο Μέλος
+          </button>
 
-        <button
-          className="h-9 rounded-md px-3 text-sm border border-border/15 text-text-primary hover:bg-secondary/30 disabled:opacity-40"
-          onClick={() => requireActiveSubscription(() => setShowEmailModal(true))}
-          disabled={rows.length === 0}
-        >
-          Αποστολή Email
-        </button>
+          <button
+            className="h-9 rounded-md px-3 text-sm border border-border/15 text-text-primary hover:bg-secondary/30 disabled:opacity-40 cursor-pointer inline-flex items-center gap-2"
+            onClick={() => requireActiveSubscription(() => setShowEmailModal(true))}
+            disabled={rows.length === 0}
+          >
+            <Inbox className="h-4 w-4" />
+            Αποστολή Email
+          </button>
 
-        <button
-          className="h-9 rounded-md px-3 text-sm border border-border/15 text-text-primary hover:bg-secondary/30 disabled:opacity-40"
-          onClick={() => requireActiveSubscription(() => setShowPushModal(true))}
-          disabled={rows.length === 0}
-        >
-          Αποστολή Push
-        </button>
+          <button
+            className="h-9 rounded-md px-3 text-sm border border-border/15 text-text-primary hover:bg-secondary/30 disabled:opacity-40 cursor-pointer inline-flex items-center gap-2"
+            onClick={() => requireActiveSubscription(() => setShowPushModal(true))}
+            disabled={rows.length === 0}
+          >
+            <BellDot className="h-4 w-4" />
+            Αποστολή Push
+          </button>
 
 
 
-        {selectedIds.length > 0 && (
-          <div className="text-xs text-text-secondary">
-            Επιλεγμένα μέλη:{' '}
-            <span className="font-semibold">{selectedIds.length}</span>{' '}
-            <button
-              type="button"
-              className="underline ml-1"
-              onClick={clearSelection}
+          {selectedIds.length > 0 && (
+            <div className="text-xs text-text-secondary">
+              Επιλεγμένα μέλη:{' '}
+              <span className="font-semibold">{selectedIds.length}</span>{' '}
+              <button
+                type="button"
+                className="underline ml-1"
+                onClick={clearSelection}
+              >
+                (καθαρισμός)
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <button
+            ref={colsBtnRef}
+            type="button"
+            className="h-9 rounded-md px-3 text-sm border border-border/15 text-text-primary hover:bg-secondary/30 inline-flex items-center gap-2 cursor-pointer"
+            onClick={() => setShowCols((s) => !s)}
+          >
+            <Eye className="h-4 w-4" />
+            Στήλες
+          </button>
+
+          {showCols && (
+            <div
+              ref={colsPanelRef}
+              className="
+                  fixed z-50 w-72
+                  rounded-xl border border-border/15
+                  bg-secondary-background/95 backdrop-blur
+                  shadow-2xl shadow-black/20
+                  p-3
+                "
+              style={{ left: dropdownPos.left, top: dropdownPos.top }}
             >
-              (καθαρισμός)
-            </button>
-          </div>
-        )}
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <div className="text-sm font-semibold text-text-primary">Στήλες πίνακα</div>
+                <button
+                  className="text-xs px-2 py-1 rounded-md border border-border/15 hover:bg-secondary/30 opacity-90"
+                  onClick={() => setShowCols(false)}
+                  type="button"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-xs text-text-secondary">Επιλογή πεδίων</div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="text-xs px-2 py-1 rounded-md border border-border/15 hover:bg-secondary/30"
+                    onClick={setAllCols}
+                  >
+                    όλα
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs px-2 py-1 rounded-md border border-border/15 hover:bg-secondary/30"
+                    onClick={resetCols}
+                  >
+                    reset
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-72 overflow-auto pr-1 space-y-1">
+                {ALL_COLUMNS.map((c) => (
+                  <label
+                    key={c.key}
+                    className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-secondary/25 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      className="accent-primary"
+                      checked={isColVisible(c.key)}
+                      onChange={() => toggleCol(c.key)}
+                    />
+                    <span className="text-sm text-text-primary">{c.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className='mb-2 flex gap-2'>
+        <button
+          className="h-9 rounded-md px-3 text-sm border border-border/15 text-text-primary hover:bg-[#26a347] hover:border-white/15 hover:text-white inline-flex items-center gap-2 cursor-pointer"
+          onClick={() => requireActiveSubscription(() => exportExcel())}
+          disabled={loading || rows.length === 0}
+        >
+          <Sheet className="h-4 w-4" />
+          Export Excel
+        </button>
+
+        <button
+          className="h-9 rounded-md px-3 text-sm border border-border/15 text-text-primary hover:bg-[#db2525] hover:border-white/15 hover:text-white inline-flex items-center gap-2 cursor-pointer"
+          onClick={() => requireActiveSubscription(() => exportPdf())}
+          disabled={loading || rows.length === 0}
+        >
+          <FileText className="h-4 w-4" />
+          Export PDF
+        </button>
       </div>
 
       <div className="rounded-md border border-border/10 overflow-hidden">
@@ -333,25 +757,31 @@ export default function MembersPage() {
                       onChange={toggleSelectPage}
                     />
                   </Th>
+
                   <Th>Όνομα</Th>
                   <Th>Τηλέφωνο</Th>
-                  <Th>Συνολική Οφειλή</Th>
-                  <Th>Max Drop-in Οφειλή</Th>
-                  <Th>Ημ. Δημιουργίας</Th>
+
+                  {isColVisible('email') && <Th>Email</Th>}
+                  {isColVisible('birth_date') && <Th>Ημ. Γέννησης</Th>}
+                  {isColVisible('address') && <Th>Διεύθυνση</Th>}
+                  {isColVisible('afm') && <Th>ΑΦΜ</Th>}
+                  {isColVisible('total_debt') && <Th>Συνολική Οφειλή</Th>}
+                  {isColVisible('max_dropin_debt') && <Th>Max Drop-in Οφειλή</Th>}
+                  {isColVisible('notes') && <Th>Σημειώσεις</Th>}
+                  {isColVisible('created_at') && <Th>Ημ. Δημιουργίας</Th>}
+
                   <Th className="text-right pr-3">Ενέργειες</Th>
                 </tr>
               </thead>
               <tbody>
                 {loading && (
                   <tr>
-                    <td className="px-3 py-4 opacity-60" colSpan={7}>
-                      Loading…
-                    </td>
+                    <td className="px-3 py-4 opacity-60" colSpan={desktopColCount}>Loading…</td>
                   </tr>
                 )}
                 {!loading && filtered.length === 0 && (
                   <tr>
-                    <td className="px-3 py-4 opacity-60" colSpan={7}>
+                    <td className="px-3 py-4 opacity-60" colSpan={desktopColCount}>
                       No members
                     </td>
                   </tr>
@@ -378,25 +808,38 @@ export default function MembersPage() {
                         </Td>
                         <Td>{m.full_name ?? '—'}</Td>
                         <Td>{m.phone ?? '—'}</Td>
-                        <Td>
-                          {totalDebt !== 0 ? (
-                            <span className="text-warning font-semibold">
-                              {formatMoney(totalDebt)}
-                            </span>
-                          ) : (
-                            <span className="text-success text-xs uppercase tracking-wide font-semibold">
-                              0
-                            </span>
-                          )}
-                        </Td>
-                        <Td>
-                          {m.max_dropin_debt != null
-                            ? formatMoney(Number(m.max_dropin_debt))
-                            : '—'}
-                        </Td>
-                        <Td>
-                          {formatDateDMY(m.created_at)}
-                        </Td>
+
+                        {isColVisible('email') && <Td>{m.email ?? '—'}</Td>}
+                        {isColVisible('birth_date') && <Td>{formatDateDMY(m.birth_date)}</Td>}
+                        {isColVisible('address') && <Td>{m.address ?? '—'}</Td>}
+                        {isColVisible('afm') && <Td>{m.afm ?? '—'}</Td>}
+
+                        {isColVisible('total_debt') && (
+                          <Td>
+                            {totalDebt !== 0 ? (
+                              <span className="text-warning font-semibold">
+                                {formatMoney(totalDebt)}
+                              </span>
+                            ) : (
+                              <span className="text-success text-xs uppercase tracking-wide font-semibold">
+                                0
+                              </span>
+                            )}
+                          </Td>
+                        )}
+
+                        {isColVisible('max_dropin_debt') && (
+                          <Td>
+                            {m.max_dropin_debt != null ? formatMoney(Number(m.max_dropin_debt)) : '—'}
+                          </Td>
+                        )}
+                        {isColVisible('notes') && (
+                          <Td className="max-w-62.5 truncate">
+                            {m.notes ?? '—'}
+                          </Td>
+                        )}
+
+                        {isColVisible('created_at') && <Td>{formatDateDMY(m.created_at)}</Td>}
                         <Td className="text-right space-x-1 pr-3">
                           <IconButton
                             icon={Eye}
@@ -502,28 +945,55 @@ export default function MembersPage() {
                   </div>
 
                   <div className="mt-2 space-y-1 text-xs">
-                    <div>
-                      <span className="opacity-70">Συνολική Οφειλή: </span>
-                      {totalDebt !== 0 ? (
-                        <span className="text-accent font-medium">
-                          {formatMoney(totalDebt)}
-                        </span>
-                      ) : (
-                        <span className="text-emerald-500 uppercase tracking-wide">
-                          0
-                        </span>
-                      )}
-                    </div>
-                    <div>
-                      <span className="opacity-70">Max Drop-in Οφειλή: </span>
-                      {m.max_dropin_debt != null
-                        ? formatMoney(Number(m.max_dropin_debt))
-                        : '—'}
-                    </div>
-                    <div className="opacity-70">
-                      Δημιουργήθηκε: {formatDateDMY(m.created_at)}
-                    </div>
+                    {isColVisible('total_debt') && (
+                      <div>
+                        <span className="opacity-70">Συνολική Οφειλή: </span>
+                        {totalDebt !== 0 ? (
+                          <span className="text-accent font-medium">{formatMoney(totalDebt)}</span>
+                        ) : (
+                          <span className="text-emerald-500 uppercase tracking-wide">0</span>
+                        )}
+                      </div>
+                    )}
 
+                    {isColVisible('max_dropin_debt') && (
+                      <div>
+                        <span className="opacity-70">Max Drop-in Οφειλή: </span>
+                        {m.max_dropin_debt != null ? formatMoney(Number(m.max_dropin_debt)) : '—'}
+                      </div>
+                    )}
+
+                    {isColVisible('email') && (
+                      <div>
+                        <span className="opacity-70">Email: </span>
+                        {m.email ?? '—'}
+                      </div>
+                    )}
+
+                    {isColVisible('birth_date') && (
+                      <div>
+                        <span className="opacity-70">Ημ. Γέννησης: </span>
+                        {formatDateDMY(m.birth_date)}
+                      </div>
+                    )}
+
+                    {isColVisible('address') && (
+                      <div>
+                        <span className="opacity-70">Διεύθυνση: </span>
+                        {m.address ?? '—'}
+                      </div>
+                    )}
+
+                    {isColVisible('afm') && (
+                      <div>
+                        <span className="opacity-70">ΑΦΜ: </span>
+                        {m.afm ?? '—'}
+                      </div>
+                    )}
+
+                    {isColVisible('created_at') && (
+                      <div className="opacity-70">Δημιουργήθηκε: {formatDateDMY(m.created_at)}</div>
+                    )}
                   </div>
                 </div>
               );
@@ -718,6 +1188,7 @@ function CreateMemberModal({
   const [maxDropinDebt, setMaxDropinDebt] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [notes, setNotes] = useState('');
 
   const submit = async () => {
     if (!email || !password) return;
@@ -733,6 +1204,7 @@ function CreateMemberModal({
         address: address || null,
         afm: afm || null,
         max_dropin_debt: maxDropinDebt ? Number(maxDropinDebt) : null,
+        notes: notes || null,
       },
     });
     setBusy(false);
@@ -802,6 +1274,13 @@ function CreateMemberModal({
           onChange={(e) => setMaxDropinDebt(e.target.value)}
         />
       </FormRow>
+      <FormRow label="Σημειώσεις">
+        <textarea
+          className="input min-h-20 resize-y"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </FormRow>
       <FormRow label="Password *">
         <input
           className="input"
@@ -842,6 +1321,7 @@ function EditMemberModal({
   const [maxDropinDebt, setMaxDropinDebt] = useState(
     row.max_dropin_debt != null ? String(row.max_dropin_debt) : '',
   );
+  const [notes, setNotes] = useState(row.notes ?? '');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -857,6 +1337,7 @@ function EditMemberModal({
         address: address || null,
         afm: afm || null,
         max_dropin_debt: maxDropinDebt ? Number(maxDropinDebt) : null,
+        notes: notes || null,
       },
     });
     setBusy(false);
@@ -920,6 +1401,14 @@ function EditMemberModal({
           onChange={(e) => setMaxDropinDebt(e.target.value)}
         />
       </FormRow>
+      <FormRow label="Σημειώσεις">
+        <textarea
+          className="input min-h-20 resize-y"
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+      </FormRow>
+
       <FormRow label="Νέο password (προαιρετικό)">
         <input
           className="input"

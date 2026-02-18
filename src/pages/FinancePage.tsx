@@ -1217,7 +1217,7 @@ export default function FinancePage() {
 
         <div className="rounded-xl border border-warning/60 bg-secondary-background p-4 text-xs text-warning/80">
           <div className="text-[0.70rem] uppercase tracking-wide text-warning/80">
-            Συνολικά Χρέη
+            Συνολικές Οφειλές
           </div>
 
           <div className="mt-2 text-lg font-semibold">

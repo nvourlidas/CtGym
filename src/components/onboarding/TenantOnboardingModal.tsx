@@ -88,7 +88,7 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
   const [tenantId, setTenantId] = useState<string | null>(null);
 
 
-
+  console.log(tenantId)
 
   const [gymInfo, setGymInfo] = useState<GymInfoForm>({
     email: "",

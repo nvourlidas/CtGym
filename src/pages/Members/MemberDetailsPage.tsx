@@ -57,7 +57,7 @@ export default function MemberDetailsPage() {
         const { data, error } = await supabase
           .from('profiles')
           .select(
-            'id, tenant_id, full_name, phone, created_at, email, birth_date, address, afm, max_dropin_debt'
+            'id, tenant_id, full_name, phone, created_at, email, birth_date, address, afm, max_dropin_debt, notes'
           )
           .eq('id', id)
           .maybeSingle();
@@ -81,6 +81,7 @@ export default function MemberDetailsPage() {
           birth_date: (data as any).birth_date ?? null,
           address: (data as any).address ?? null,
           afm: (data as any).afm ?? null,
+          notes: (data as any).notes ?? null,
           max_dropin_debt: (data as any).max_dropin_debt ?? null,
         });
       } catch (e: any) {

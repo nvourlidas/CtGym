@@ -362,7 +362,6 @@ export default function BillingPage() {
                       <th className="px-4 py-2 font-semibold">Πλάνο</th>
                       <th className="px-4 py-2 font-semibold">Ποσό</th>
                       <th className="px-4 py-2 font-semibold">Μέθοδος</th>
-                      <th className="px-4 py-2 font-semibold">Reference</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -378,9 +377,6 @@ export default function BillingPage() {
                           <span className="inline-flex items-center px-2 py-1 rounded-full bg-white/5 border border-border/10">
                             {p.method}
                           </span>
-                        </td>
-                        <td className="px-4 py-2 text-xs text-text-secondary">
-                          {p.reference ? <span className="text-text-primary">{p.reference}</span> : '—'}
                         </td>
                       </tr>
                     ))}

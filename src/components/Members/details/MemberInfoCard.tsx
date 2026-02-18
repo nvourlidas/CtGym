@@ -20,7 +20,7 @@ export default function MemberInfoCard({ member }: { member: Member }) {
         <h2 className="text-sm font-semibold">Στοιχεία</h2>
       </div>
 
-      <div className="p-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-1">
+      <div className="p-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-2">
         <DetailField label="Ονοματεπώνυμο" value={member.full_name} />
         <DetailField label="Τηλέφωνο" value={member.phone} />
         <DetailField label="Email" value={member.email ?? null} />
@@ -35,6 +35,7 @@ export default function MemberInfoCard({ member }: { member: Member }) {
           label="Μέγιστο χρέος drop-in"
           value={member.max_dropin_debt != null ? `${member.max_dropin_debt}€` : null}
         />
+        <DetailField label="Σημειώσεις" value={member.notes ?? null} />
       </div>
     </div>
   );

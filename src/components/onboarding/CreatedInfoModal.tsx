@@ -9,7 +9,6 @@ type Props = {
 
 export default function CreatedInfoModal({
   open,
-  tenantId,
   adminEmail,
   onClose,
 }: Props) {

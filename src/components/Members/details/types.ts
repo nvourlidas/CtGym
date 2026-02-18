@@ -9,6 +9,7 @@ export type Member = {
   address?: string | null;
   afm?: string | null;
   max_dropin_debt?: number | null;
+  notes?: string | null;
 };
 
 export type HistoryRow = {
