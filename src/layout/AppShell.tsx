@@ -1,12 +1,14 @@
 // src/layout/AppShell.tsx
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
 import { NAV, type NavEntry } from '../_nav';
 import type { LucideIcon } from 'lucide-react';
 import logo from '../assets/CTGYM.YELLOW 1080x1080.svg';
 import PlanPickerModal from '../components/billing/PlanPickerModal';
+import { Rocket } from "lucide-react";
+
 
 type Tenant = { name: string };
 type ThemeMode = 'light' | 'dark';
@@ -162,7 +164,7 @@ export default function AppShell() {
       try {
         const { data, error } = await supabase
           .from('subscription_plans')
-          .select('id,name,includes_mobile,monthly_price_cents,currency,is_active')
+          .select('id,name,includes_mobile,monthly_price_cents,currency,is_active,max_members,max_classes,max_membership_plans')
           .order('monthly_price_cents', { ascending: true });
 
         if (error) throw error;
@@ -216,6 +218,20 @@ export default function AppShell() {
     }
   };
 
+  const isPro = useMemo(() => {
+    if (!subscription) return false;
+
+    const tier = String(
+      (subscription as any)?.plan_id ??
+      (subscription as any)?.tier ??
+      ""
+    ).toLowerCase();
+
+
+    return tier === "pro";
+  }, [subscription]);
+
+  console.log("Subscription;", subscription);
 
   const toggleTheme = () => {
     setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
@@ -223,15 +239,15 @@ export default function AppShell() {
 
   return (
     <div className="min-h-screen bg-background text-text-primary flex">
-      {/* Desktop sidebar (persistent, full height) */}
+      {/* Desktop sidebar */}
       <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:bg-secondary-background lg:text-text-primary lg:border-r lg:border-white/10 lg:sticky lg:top-0 lg:h-screen">
         <SidebarNav />
       </aside>
 
-      {/* Mobile sidebar (off-canvas) */}
+      {/* Mobile sidebar */}
       <aside
         className={`fixed inset-y-0 left-0 z-30 w-64 bg-secondary-background text-text-primary border-r border-white/10 transform transition-transform lg:hidden ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
+          } flex flex-col`}
       >
         <SidebarNav />
       </aside>
@@ -283,17 +299,17 @@ export default function AppShell() {
             </div>
 
             <div className="flex items-center gap-2">
-              {/* ✅ Theme toggle */}
-              <button
-                onClick={toggleTheme}
-                className="h-9 rounded-md border border-border/10 px-3 text-sm hover:bg-border/5"
-                aria-label="Toggle theme"
-                title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
-              >
-                {theme === 'dark' ? '☀️ Φωτεινό' : '🌙 Σκοτεινό'}
-              </button>
+              {!isPro && (
+                <button
+                  onClick={() => setShowPlansModal(true)}
+                  className="inline-flex items-center gap-2 h-9 rounded-md px-4 text-sm font-semibold bg-accent hover:bg-accent/80 text-black shadow-md hover:shadow-lg transition-all  cursor-pointer"
+                >
+                  <Rocket className="h-4 w-4" />
+                  Αναβάθμιση
+                </button>
+              )}
 
-              <UserMenu />
+              <UserMenu theme={theme} onToggleTheme={toggleTheme} />
             </div>
           </div>
         </header>
@@ -334,40 +350,48 @@ function SidebarNav() {
   );
 
   return (
-    <nav className="p-3">
-      {visible.map((e, i) => {
-        if (e.type === 'section') {
+    <div className="flex h-full min-h-0 flex-col">
+      {/* Optional: top area (you can keep it empty or add stuff later) */}
+      {/* <div className="px-3 py-3 shrink-0">...</div> */}
+
+      {/* Scroll area */}
+      <nav className="flex-1 min-h-0 overflow-y-auto no-scrollbar p-3">
+        {visible.map((e, i) => {
+          if (e.type === 'section') {
+            return (
+              <div
+                key={`sec-${i}`}
+                className="px-2 pt-4 pb-2 text-[10px] tracking-wide font-semibold uppercase opacity-60"
+              >
+                {e.title}
+              </div>
+            );
+          }
+          if (e.type === 'divider') {
+            return <div key={`div-${i}`} className="my-2 border-t border-white/10" />;
+          }
+          if (e.type === 'item') {
+            return (
+              <NavItem
+                key={`item-${e.to}-${i}`}
+                to={e.to}
+                label={e.label}
+                end={e.end}
+                Icon={e.icon as LucideIcon | undefined}
+              />
+            );
+          }
           return (
-            <div key={`sec-${i}`} className="px-2 pt-4 pb-2 text-[10px] tracking-wide font-semibold uppercase opacity-60">
-              {e.title}
-            </div>
-          );
-        }
-        if (e.type === 'divider') {
-          return <div key={`div-${i}`} className="my-2 border-t border-white/10" />;
-        }
-        if (e.type === 'item') {
-          return (
-            <NavItem
-              key={`item-${e.to}-${i}`}
-              to={e.to}
-              label={e.label}
-              end={e.end}
-              Icon={e.icon as LucideIcon | undefined}
+            <SidebarGroup
+              key={`group-${e.label}-${i}`}
+              entry={e}
+              currentPath={location.pathname}
+              role={role}
             />
           );
-        }
-        // group
-        return (
-          <SidebarGroup
-            key={`group-${e.label}-${i}`}
-            entry={e}
-            currentPath={location.pathname}
-            role={role}
-          />
-        );
-      })}
-    </nav>
+        })}
+      </nav>
+    </div>
   );
 }
 
@@ -456,9 +480,38 @@ function NavItem({
   );
 }
 
-function UserMenu() {
+function UserMenu({
+  theme,
+  onToggleTheme,
+}: {
+  theme: ThemeMode;
+  onToggleTheme: () => void;
+}) {
   const { session, profile } = useAuth();
   const [open, setOpen] = useState(false);
+
+  const boxRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+    if (!open) return;
+
+    const onDown = (e: MouseEvent) => {
+      const el = boxRef.current;
+      if (!el) return;
+      if (!el.contains(e.target as Node)) setOpen(false);
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -466,22 +519,61 @@ function UserMenu() {
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={boxRef}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="h-9 rounded-md border border-border/10 px-3 text-sm hover:bg-border/5"
+        className="h-9 rounded-md border border-border/10 px-3 text-sm hover:bg-border/5 cursor-pointer"
       >
         {profile?.full_name || session?.user?.email || 'Account'}
       </button>
+
       {open && (
         <div className="absolute right-0 mt-2 w-56 rounded-md border border-border/10 bg-secondary-background text-text-primary shadow-lg">
           <div className="px-3 py-2 text-sm">
             <div className="font-medium">{profile?.full_name || '—'}</div>
             <div className="opacity-70">{session?.user?.email}</div>
-            <div className="mt-1 text-[10px] uppercase opacity-60">{profile?.role}</div>
+            <div className="mt-1 text-[10px] uppercase opacity-60">
+              {profile?.role}
+            </div>
           </div>
+
           <div className="border-t border-border/10" />
-          <button onClick={signOut} className="w-full text-left px-3 py-2 text-sm hover:bg-border/5">
+
+          {/* ✅ Theme toggle inside menu */}
+          <div className="px-3 py-2">
+            <div className="flex items-center justify-between">
+              <div className="text-sm">Θέμα</div>
+
+              <button
+                type="button"
+                onClick={onToggleTheme}
+                className={[
+                  "relative inline-flex h-6 w-11 items-center rounded-full transition",
+                  theme === "dark" ? "bg-primary" : "bg-black/20",
+                ].join(" ")}
+                aria-label="Toggle theme"
+                title={theme === "dark" ? "Σκοτεινό" : "Φωτεινό"}
+              >
+                <span
+                  className={[
+                    "inline-block h-5 w-5 transform rounded-full bg-white transition",
+                    theme === "dark" ? "translate-x-5" : "translate-x-1",
+                  ].join(" ")}
+                />
+              </button>
+            </div>
+
+            <div className="mt-1 text-[11px] text-text-secondary">
+              {theme === "dark" ? "Σκοτεινό" : "Φωτεινό"}
+            </div>
+          </div>
+
+          <div className="border-t border-border/10" />
+
+          <button
+            onClick={signOut}
+            className="w-full text-left px-3 py-2 text-sm hover:bg-border/5"
+          >
             Sign out
           </button>
         </div>

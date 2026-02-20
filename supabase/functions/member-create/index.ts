@@ -7,7 +7,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 const ALLOWED = new Set<string>([
   "http://localhost:5173",
   "http://127.0.0.1:5173",
-  "https://mycreatorapp.cloudtec.gr", // ← adjust to your admin domain
+  "https://mycreatorapp.cloudtec.gr",
   "https://ctgym.cloudtec.gr",
 ]);
 
@@ -18,11 +18,9 @@ function buildCors(req: Request) {
   const reqHdrs = req.headers.get("access-control-request-headers") ?? "";
 
   return {
-    // Allow the exact origin (not *) so credentials work if you ever need them
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    // Echo requested headers to satisfy browsers’ preflight
     "Access-Control-Allow-Headers": reqHdrs ||
       "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
@@ -55,6 +53,45 @@ async function assertTenantActive(admin: any, tenantId: string) {
     };
     throw err;
   }
+}
+
+/** ✅ Get effective max_members for tenant (NULL = unlimited). Falls back to Free plan. */
+async function getEffectiveMaxMembers(admin: any, tenantId: string) {
+  // 1) try active/trial/past_due plan
+  const { data: sub, error: subErr } = await admin
+    .from("tenant_subscriptions")
+    .select("plan_id, status")
+    .eq("tenant_id", tenantId)
+    .in("status", ["active", "trial", "past_due"])
+    .maybeSingle();
+
+  if (subErr) throw new Error(subErr.message);
+
+  const planId = sub?.plan_id ?? "free"; // 🔁 change if your free plan id is different
+
+  const { data: plan, error: planErr } = await admin
+    .from("subscription_plans")
+    .select("max_members")
+    .eq("id", planId)
+    .maybeSingle();
+
+  if (planErr) throw new Error(planErr.message);
+
+  // If free plan row is missing or max_members null, treat as unlimited only if truly null.
+  // (Normally: Free=25, Starter=120, Pro=NULL)
+  return plan?.max_members ?? null;
+}
+
+/** ✅ Count current members (profiles with role='member') for tenant */
+async function countTenantMembers(admin: any, tenantId: string) {
+  const { count, error } = await admin
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("role", "member");
+
+  if (error) throw new Error(error.message);
+  return count ?? 0;
 }
 
 serve(async (req) => {
@@ -122,6 +159,31 @@ serve(async (req) => {
     );
   }
 
+  // ✅ PLAN LIMIT: members (profiles)
+  try {
+    const maxMembers = await getEffectiveMaxMembers(admin, String(tenant_id));
+    if (maxMembers !== null) {
+      const current = await countTenantMembers(admin, String(tenant_id));
+      if (current >= maxMembers) {
+        return withCors(
+          JSON.stringify({
+            error: "PLAN_LIMIT:MAX_MEMBERS_REACHED",
+            limit: maxMembers,
+            current,
+          }),
+          { status: 409 },
+          req,
+        );
+      }
+    }
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({ error: e?.message ?? "PLAN_LIMIT_CHECK_FAILED" }),
+      { status: 400 },
+      req,
+    );
+  }
+
   // 5) Create auth user
   const { data: created, error: createErr } = await admin.auth.admin.createUser(
     {
@@ -131,7 +193,6 @@ serve(async (req) => {
       user_metadata: {
         full_name,
         phone,
-        // you *could* also forward address/birth_date here if you want in auth metadata
       },
     },
   );
@@ -166,7 +227,7 @@ serve(async (req) => {
     tenant_id,
     role: "member",
     email,
-    birth_date: birth_date || null, // expects "YYYY-MM-DD" string
+    birth_date: birth_date || null,
     address: address || null,
     afm: afm || null,
     max_dropin_debt: maxDropinValue,
@@ -183,7 +244,7 @@ serve(async (req) => {
     );
   }
 
-  // 7) Success (with CORS)
+  // 7) Success
   return withCors(
     JSON.stringify({ ok: true, id: userId }),
     { status: 200 },

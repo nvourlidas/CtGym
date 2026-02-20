@@ -7,6 +7,13 @@ import { el } from 'date-fns/locale/el';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
 
+import { addMonths, isAfter, } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
+
+import { Rocket } from "lucide-react";
+
+
+
 type GymClass = { id: string; title: string };
 
 // ✅ same idea as your member modal: store Date objects, send/compute ISO dates when needed
@@ -17,6 +24,77 @@ type GymClass = { id: string; title: string };
 //   return `${y}-${m}-${day}`; // local date (no timezone shift)
 // }
 
+
+type Toast = {
+  id: string;
+  title: string;
+  message?: string;
+  variant?: "error" | "success" | "info";
+  actionLabel?: string;
+  onAction?: () => void;
+};
+
+function ToastHost({
+  toasts,
+  dismiss,
+}: {
+  toasts: Toast[];
+  dismiss: (id: string) => void;
+}) {
+  return (
+    <div className="fixed right-4 top-4 z-100 flex w-120 max-w-[calc(100vw-2rem)] flex-col gap-2">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className={[
+            "rounded-xl border border-border/15 bg-secondary-background/95 backdrop-blur shadow-2xl shadow-black/20",
+            "px-3 py-3",
+          ].join(" ")}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div
+                className={[
+                  "text-sm font-semibold",
+                  t.variant === "error" ? "text-danger" : "",
+                  t.variant === "success" ? "text-success" : "",
+                ].join(" ")}
+              >
+                {t.title}
+              </div>
+              {t.message && (
+                <div className="mt-1 text-xs text-text-secondary">{t.message}</div>
+              )}
+              {t.actionLabel && t.onAction && (
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => t.onAction?.()}
+                    className="inline-flex items-center gap-2 h-8 rounded-md px-3 text-xs font-semibold bg-primary hover:bg-primary/90 text-white shadow-md hover:shadow-lg transition-all cursor-pointer"
+                  >
+                    <Rocket className="h-3.5 w-3.5" />
+                    {t.actionLabel}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => dismiss(t.id)}
+              className="rounded-md border border-border/15 px-2 py-1 text-xs hover:bg-secondary/30"
+              aria-label="Κλείσιμο"
+              title="Κλείσιμο"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ProgramGeneratorModal({
   open,
   onClose,
@@ -26,8 +104,64 @@ export default function ProgramGeneratorModal({
   onClose: () => void;
   onGenerated: () => void;
 }) {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
+  const navigate = useNavigate();
   const tenantId = profile?.tenant_id;
+
+  function getTier(sub: any): 'free' | 'starter' | 'pro' {
+    const name = String(sub?.plan_name ?? sub?.plan?.name ?? '').toLowerCase();
+    const code = String(sub?.plan_code ?? sub?.plan?.code ?? '').toLowerCase();
+
+    // make it resilient to your naming
+    if (name.includes('pro') || code.includes('pro')) return 'pro';
+    if (name.includes('starter') || code.includes('starter')) return 'starter';
+    return 'free';
+  }
+
+  const tier = getTier(subscription as any);
+
+  // "ahead from today"
+  const today0 = startOfDay(new Date());
+
+  const maxAllowedDate: Date | null =
+    tier === 'pro'
+      ? null
+      : tier === 'starter'
+        ? addMonths(today0, 3)
+        : addDays(today0, 7);
+
+
+  function startOfDay(d: Date) {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    return x;
+  }
+
+  function addDays(d: Date, days: number) {
+    const x = new Date(d);
+    x.setDate(x.getDate() + days);
+    return x;
+  }
+
+  // Decide horizon (Free=7d, Starter=~90d, Pro=unlimited)
+  // Adjust the detection to your actual subscription fields if needed.
+  function getHorizonDays(): number {
+    const planName = String((subscription as any)?.plan_name ?? (subscription as any)?.name ?? "").toLowerCase();
+    const planTier = String((subscription as any)?.plan_id?? (subscription as any)?.tier ?? "").toLowerCase();
+
+    const isPro = planTier === "pro" || planName.includes("pro") || planTier.includes("friend_app");
+    const isStarter = planTier === "starter" || planName.includes("starter") || planTier.includes("friend_app");
+
+    if (isPro) return Number.POSITIVE_INFINITY;
+    if (isStarter) return 90; // ~3 months
+    return 7; // free default
+  }
+
+  function maxAllowedDateFromToday(): Date | null {
+    const days = getHorizonDays();
+    if (!Number.isFinite(days)) return null; // unlimited
+    return addDays(startOfDay(new Date()), days);
+  }
 
   const [classes, setClasses] = useState<GymClass[]>([]);
   const [classId, setClassId] = useState('');
@@ -46,6 +180,21 @@ export default function ProgramGeneratorModal({
   const [capacity, setCapacity] = useState<number | ''>('');
   const [cancelBeforeHours, setCancelBeforeHours] = useState<number | ''>(''); // NEW
   const [saving, setSaving] = useState(false);
+
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  function pushToast(t: Omit<Toast, "id">) {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, ...t }]);
+    // auto-dismiss
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((x) => x.id !== id));
+    }, 5000);
+  }
+
+  function dismissToast(id: string) {
+    setToasts((prev) => prev.filter((x) => x.id !== id));
+  }
 
   useEffect(() => {
     if (!tenantId || !open) return;
@@ -82,11 +231,27 @@ export default function ProgramGeneratorModal({
       alert('Παρακαλώ επιλέξτε ένα μάθημα.');
       return;
     }
-    if(!fromDate || !toDate || !startTime || !endTime){
+    if (!fromDate || !toDate || !startTime || !endTime) {
       alert('Παρακαλώ συμπληρώστε τις ημερομηνίες και ώρες.');
       return;
     }
-    
+
+    // ✅ Plan limitation: how far ahead you can schedule
+    if (maxAllowedDate && (isAfter(fromDate, maxAllowedDate) || isAfter(toDate, maxAllowedDate))) {
+      // use your existing toast function (same one you used for members/classes/plans)
+      pushToast({
+        variant: "error",
+        title: "Περιορισμός προγραμματισμού",
+        message:
+          tier === "free"
+            ? "Στο Free μπορείς να προγραμματίσεις έως 7 ημέρες μπροστά. Αναβάθμισε για περισσότερο."
+            : "Στο Starter μπορείς να προγραμματίσεις έως 3 μήνες μπροστά. Αναβάθμισε για απεριόριστο.",
+        actionLabel: "Αναβάθμιση",
+        onAction: () => navigate("/billing"),
+      });
+      return;
+    }
+
     if (!tenantId || !classId || !fromDate || !toDate || !startTime || !endTime) return;
 
     const cancelVal = cancelBeforeHours === '' ? null : Number(cancelBeforeHours);
@@ -155,6 +320,7 @@ export default function ProgramGeneratorModal({
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60">
+      <ToastHost toasts={toasts} dismiss={dismissToast} />
       <div className="w-full max-w-2xl rounded-xl border border-white/10 bg-secondary-background p-6 shadow-2xl text-text-primary">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">
@@ -201,9 +367,8 @@ export default function ProgramGeneratorModal({
                     <button
                       key={c.id}
                       type="button"
-                      className={`w-full px-3 py-2 text-left text-sm hover:bg:white/5 ${
-                        c.id === classId ? 'bg-white/10' : ''
-                      }`}
+                      className={`w-full px-3 py-2 text-left text-sm hover:bg:white/5 ${c.id === classId ? 'bg-white/10' : ''
+                        }`}
                       onClick={() => {
                         setClassId(c.id);
                         setClassDropdownOpen(false);
@@ -262,7 +427,33 @@ export default function ProgramGeneratorModal({
               <label className="block text-sm font-medium mb-1">Από ημερομηνία</label>
               <DatePicker
                 selected={fromDate}
-                onChange={(date) => setFromDate(date)}
+                onChange={(date) => {
+                  const picked = date as Date | null;
+                  if (!picked) {
+                    setFromDate(null);
+                    return;
+                  }
+
+                  const maxAllowed = maxAllowedDateFromToday();
+                  if (maxAllowed && startOfDay(picked) > startOfDay(maxAllowed)) {
+                    pushToast({
+                      variant: "error",
+                      title: "Περιορισμός ημερομηνίας",
+                      message: `Στο πλάνο σου μπορείς να προγραμματίσεις έως ${maxAllowed.toLocaleDateString("el-GR")}.`,
+                      actionLabel: "Αναβάθμιση",
+                      onAction: () => navigate("/settings/billing"),
+                    });
+                    return; // keep previous fromDate
+                  }
+
+                  // valid -> set
+                  setFromDate(picked);
+
+                  // also keep toDate consistent (optional safety)
+                  if (toDate && startOfDay(toDate) < startOfDay(picked)) {
+                    setToDate(picked);
+                  }
+                }}
                 dateFormat="dd/MM/yyyy"
                 locale={el}
                 placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
@@ -273,7 +464,6 @@ export default function ProgramGeneratorModal({
                 dropdownMode="select"
                 scrollableYearDropdown
                 yearDropdownItemNumber={80}
-                maxDate={toDate ?? undefined}
               />
               {/* hidden value (optional) if you ever want to see what gets stored */}
               {/* <div className="mt-1 text-[11px] opacity-60">{fromDate ? dateToISODate(fromDate) : ''}</div> */}
@@ -283,7 +473,38 @@ export default function ProgramGeneratorModal({
               <label className="block text-sm font-medium mb-1">Έως ημερομηνία</label>
               <DatePicker
                 selected={toDate}
-                onChange={(date) => setToDate(date)}
+                onChange={(date) => {
+                  const picked = date as Date | null;
+                  if (!picked) {
+                    setToDate(null);
+                    return;
+                  }
+
+                  // cannot be before fromDate
+                  if (fromDate && startOfDay(picked) < startOfDay(fromDate)) {
+                    pushToast({
+                      variant: "error",
+                      title: "Μη έγκυρο εύρος",
+                      message: "Η ημερομηνία 'Έως' δεν μπορεί να είναι πριν από την 'Από'.",
+                    });
+                    return; // keep previous toDate
+                  }
+
+                  // plan horizon
+                  const maxAllowed = maxAllowedDateFromToday();
+                  if (maxAllowed && startOfDay(picked) > startOfDay(maxAllowed)) {
+                    pushToast({
+                      variant: "error",
+                      title: "Περιορισμός ημερομηνίας",
+                      message: `Στο πλάνο σου μπορείς να προγραμματίσεις έως ${maxAllowed.toLocaleDateString("el-GR")}.`,
+                      actionLabel: "Αναβάθμιση",
+                      onAction: () => navigate("/billing"),
+                    });
+                    return; // keep previous toDate
+                  }
+
+                  setToDate(picked);
+                }}
                 dateFormat="dd/MM/yyyy"
                 locale={el}
                 placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
@@ -294,9 +515,15 @@ export default function ProgramGeneratorModal({
                 dropdownMode="select"
                 scrollableYearDropdown
                 yearDropdownItemNumber={80}
-                minDate={fromDate ?? undefined}
               />
             </div>
+            <p className="text-xs text-text-secondary">
+              {tier === 'pro'
+                ? 'Pro: απεριόριστος προγραμματισμός.'
+                : tier === 'starter'
+                  ? 'Starter: προγραμματισμός έως 3 μήνες μπροστά.'
+                  : 'Free: προγραμματισμός έως 7 ημέρες μπροστά.'}
+            </p>
           </div>
 
           <div>

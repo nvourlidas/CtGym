@@ -4,6 +4,7 @@ import { useAuth } from '../../auth';
 import type { LucideIcon } from 'lucide-react';
 import { Pencil, Trash2, Loader2 } from 'lucide-react';
 import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
+import { useNavigate } from "react-router-dom";
 
 type CoachRef = {
   id: string;
@@ -42,6 +43,88 @@ type Coach = {
   full_name: string;
 };
 
+async function readEdgeErrorPayload(err: any): Promise<any | null> {
+  const res: Response | undefined = err?.context;
+  if (!res) return null;
+
+  try {
+    return await res.clone().json();
+  } catch {
+    try {
+      const txt = await res.clone().text();
+      return txt ? { error: txt } : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+type Toast = {
+  id: string;
+  title: string;
+  message?: string;
+  variant?: "error" | "success" | "info";
+  actionLabel?: string;
+  onAction?: () => void;
+};
+
+function ToastHost({
+  toasts,
+  dismiss,
+}: {
+  toasts: Toast[];
+  dismiss: (id: string) => void;
+}) {
+  return (
+    <div className="fixed right-4 top-4 z-100 flex w-90 max-w-[calc(100vw-2rem)] flex-col gap-2">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className="rounded-xl border border-border/15 bg-secondary-background/95 backdrop-blur shadow-2xl shadow-black/20 px-3 py-3"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div
+                className={[
+                  "text-sm font-semibold",
+                  t.variant === "error" ? "text-red-400" : "",
+                  t.variant === "success" ? "text-emerald-400" : "",
+                ].join(" ")}
+              >
+                {t.title}
+              </div>
+              {t.message && (
+                <div className="mt-1 text-xs text-text-secondary">{t.message}</div>
+              )}
+              {t.actionLabel && t.onAction && (
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => t.onAction?.()}
+                    className="h-8 rounded-md px-3 text-xs bg-primary hover:bg-primary/90 text-white"
+                  >
+                    {t.actionLabel}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => dismiss(t.id)}
+              className="rounded-md border border-border/15 px-2 py-1 text-xs hover:bg-secondary/30"
+              aria-label="Κλείσιμο"
+              title="Κλείσιμο"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ClassesPage() {
   const { profile, subscription } = useAuth();
   const [showSubModal, setShowSubModal] = useState(false);
@@ -71,6 +154,18 @@ export default function ClassesPage() {
     action();
   }
 
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const pushToast = (t: Omit<Toast, "id">, ms = 4500) => {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, ...t }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((x) => x.id !== id));
+    }, ms);
+  };
+
+  const dismissToast = (id: string) =>
+    setToasts((prev) => prev.filter((x) => x.id !== id));
 
 
   async function load() {
@@ -181,6 +276,7 @@ export default function ClassesPage() {
 
   return (
     <div className="p-6">
+      <ToastHost toasts={toasts} dismiss={dismissToast} />
       <div className="mb-4 flex items-center gap-3">
         <input
           className="h-9 rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
@@ -219,7 +315,7 @@ export default function ClassesPage() {
                     </td>
                   </tr>
                 )}
-                {!loading && totalCount  === 0 && (
+                {!loading && totalCount === 0 && (
                   <tr>
                     <td className="px-3 py-4 opacity-60" colSpan={6}>
                       Δεν υπάρχουν τμήματα
@@ -227,7 +323,7 @@ export default function ClassesPage() {
                   </tr>
                 )}
                 {!loading &&
-                  totalCount  > 0 &&
+                  totalCount > 0 &&
                   rows.map((c) => (
                     <tr
                       key={c.id}
@@ -315,14 +411,14 @@ export default function ClassesPage() {
             <div className="px-3 py-4 text-sm opacity-60">Loading…</div>
           )}
 
-          {!loading && totalCount  === 0 && (
+          {!loading && totalCount === 0 && (
             <div className="px-3 py-4 text-sm opacity-60">
               Δεν υπάρχουν τμήματα
             </div>
           )}
 
           {!loading &&
-            totalCount  > 0 &&
+            totalCount > 0 &&
             rows.map((c) => (
               <div
                 key={c.id}
@@ -404,16 +500,16 @@ export default function ClassesPage() {
         </div>
 
         {/* Shared pagination footer */}
-        {!loading && totalCount  > 0 && (
+        {!loading && totalCount > 0 && (
           <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-border/10">
             <div>
               Εμφάνιση <span className="font-semibold">{startIdx}</span>
-              {totalCount  > 0 && (
+              {totalCount > 0 && (
                 <>
                   –<span className="font-semibold">{endIdx}</span>
                 </>
               )}{' '}
-              από <span className="font-semibold">{totalCount }</span>
+              από <span className="font-semibold">{totalCount}</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-1">
@@ -458,6 +554,7 @@ export default function ClassesPage() {
           tenantId={profile?.tenant_id!}
           categories={categories}
           coaches={coaches}
+          toast={pushToast}
           onClose={() => {
             setShowCreate(false);
             load();
@@ -536,11 +633,13 @@ function CreateClassModal({
   categories,
   coaches,
   onClose,
+  toast,
 }: {
   tenantId: string;
   categories: Category[];
   coaches: Coach[];
   onClose: () => void;
+  toast: (t: Omit<Toast, "id">, ms?: number) => void;
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -553,10 +652,14 @@ function CreateClassModal({
   );
   const [busy, setBusy] = useState(false);
 
+  const navigate = useNavigate();
+
   const submit = async () => {
     if (!title.trim()) return;
+
     setBusy(true);
-    await supabase.functions.invoke('class-create', {
+
+    const { data, error } = await supabase.functions.invoke("class-create", {
       body: {
         tenant_id: tenantId,
         title: title.trim(),
@@ -568,7 +671,56 @@ function CreateClassModal({
         member_drop_in_price: dropInEnabled ? memberDropInPrice : null,
       },
     });
+
     setBusy(false);
+
+    // ✅ non-2xx
+    if (error) {
+      const payload = await readEdgeErrorPayload(error);
+      const code = payload?.error;
+
+      if (code === "PLAN_LIMIT:MAX_CLASSES_REACHED") {
+        const limit = payload?.limit;
+        const current = payload?.current;
+
+        toast({
+          variant: "error",
+          title: "Έφτασες το όριο του πλάνου σου",
+          message:
+            limit != null && current != null
+              ? `Έχεις ήδη ${current}/${limit}.`
+              : "Έχεις φτάσει το όριο του πλάνου σου.",
+          actionLabel: "Αναβάθμιση",
+          onAction: () => navigate("/settings/billing"),
+        });
+        return; // ❗ keep modal open
+      }
+
+      toast({
+        variant: "error",
+        title: "Αποτυχία δημιουργίας τμήματος",
+        message: code ?? error.message ?? "Unknown error",
+      });
+      return;
+    }
+
+    // ✅ 2xx but function might still send {error:...}
+    const code = (data as any)?.error;
+    if (code) {
+      toast({
+        variant: "error",
+        title: "Αποτυχία δημιουργίας τμήματος",
+        message: String(code),
+      });
+      return;
+    }
+
+    toast({
+      variant: "success",
+      title: "Το τμήμα δημιουργήθηκε",
+      message: "Προστέθηκε επιτυχώς στη λίστα τμημάτων.",
+    });
+
     onClose();
   };
 

@@ -4,6 +4,7 @@ import { useAuth } from '../../auth';
 import type { LucideIcon } from 'lucide-react';
 import { Pencil, Trash2, Plus, Loader2 } from 'lucide-react';
 import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
+import { useNavigate } from 'react-router-dom';
 
 type PlanKind = 'duration' | 'sessions' | 'hybrid';
 
@@ -26,6 +27,89 @@ type Plan = {
   categories: Category[];
 };
 
+type Toast = {
+  id: string;
+  title: string;
+  message?: string;
+  variant?: "error" | "success" | "info";
+  actionLabel?: string;
+  onAction?: () => void;
+};
+
+async function readEdgeErrorPayload(err: any): Promise<any | null> {
+  const res: Response | undefined = err?.context;
+  if (!res) return null;
+
+  try {
+    return await res.clone().json();
+  } catch {
+    try {
+      const txt = await res.clone().text();
+      return txt ? { error: txt } : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function ToastHost({
+  toasts,
+  dismiss,
+}: {
+  toasts: Toast[];
+  dismiss: (id: string) => void;
+}) {
+
+  return (
+    <div className="fixed right-4 top-4 z-100 flex w-90 max-w-[calc(100vw-2rem)] flex-col gap-2">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className="rounded-xl border border-border/15 bg-secondary-background/95 backdrop-blur shadow-2xl shadow-black/20 px-3 py-3"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div
+                className={[
+                  "text-sm font-semibold",
+                  t.variant === "error" ? "text-red-400" : "",
+                  t.variant === "success" ? "text-emerald-400" : "",
+                ].join(" ")}
+              >
+                {t.title}
+              </div>
+              {t.message && (
+                <div className="mt-1 text-xs text-text-secondary">{t.message}</div>
+              )}
+              {t.actionLabel && t.onAction && (
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => t.onAction?.()}
+                    className="h-8 rounded-md px-3 text-xs bg-primary hover:bg-primary/90 text-white"
+                  >
+                    {t.actionLabel}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => dismiss(t.id)}
+              className="rounded-md border border-border/15 px-2 py-1 text-xs hover:bg-secondary/30"
+              aria-label="Κλείσιμο"
+              title="Κλείσιμο"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function Plans() {
   const { profile, subscription } = useAuth();
   const [showSubModal, setShowSubModal] = useState(false);
@@ -42,7 +126,6 @@ export default function Plans() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-
   const subscriptionInactive = !subscription?.is_active;
 
   function requireActiveSubscription(action: () => void) {
@@ -53,6 +136,18 @@ export default function Plans() {
     action();
   }
 
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const pushToast = (t: Omit<Toast, "id">, ms = 4500) => {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, ...t }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((x) => x.id !== id));
+    }, ms);
+  };
+
+  const dismissToast = (id: string) =>
+    setToasts((prev) => prev.filter((x) => x.id !== id));
 
   async function load() {
     if (!profile?.tenant_id) return;
@@ -177,6 +272,7 @@ export default function Plans() {
 
   return (
     <div className="p-4 md:p-6">
+      <ToastHost toasts={toasts} dismiss={dismissToast} />
       {/* Top bar – responsive */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <input
@@ -413,6 +509,7 @@ export default function Plans() {
         <CreatePlanModal
           tenantId={profile?.tenant_id!}
           categories={categories}
+          toast={pushToast}
           onClose={() => {
             setShowCreate(false);
             load();
@@ -423,6 +520,7 @@ export default function Plans() {
         <EditPlanModal
           row={editRow}
           categories={categories}
+          toast={pushToast}
           onClose={() => {
             setEditRow(null);
             load();
@@ -516,9 +614,11 @@ function CreatePlanModal({
   tenantId,
   categories,
   onClose,
+  toast,
 }: {
   tenantId: string;
   categories: Category[];
+  toast: (t: Omit<Toast, "id">, ms?: number) => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState('');
@@ -529,6 +629,7 @@ function CreatePlanModal({
   const [description, setDescription] = useState('');
   const [categoryIds, setCategoryIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
 
   const toggleCategory = (id: string) => {
     setCategoryIds((prev) =>
@@ -538,12 +639,19 @@ function CreatePlanModal({
 
   const submit = async () => {
     if (!name) return;
+
     if ((durationDays || 0) <= 0 && (sessionCredits || 0) <= 0) {
-      alert('Παρέχετε ημέρες διάρκειας ή/και αριθμό συνεδριών.');
+      toast({
+        variant: "error",
+        title: "Λείπουν οφέλη πλάνου",
+        message: "Δώσε ημέρες διάρκειας ή/και αριθμό συνεδριών.",
+      });
       return;
     }
+
     setBusy(true);
-    const res = await supabase.functions.invoke('plan-create', {
+
+    const res = await supabase.functions.invoke("plan-create", {
       body: {
         tenant_id: tenantId,
         name,
@@ -555,11 +663,55 @@ function CreatePlanModal({
         category_ids: categoryIds,
       },
     });
+
     setBusy(false);
-    if (res.error || (res.data as any)?.error) {
-      alert(res.error?.message ?? (res.data as any)?.error ?? 'Create failed');
+
+    if (res.error) {
+      const payload = await readEdgeErrorPayload(res.error);
+      const code = payload?.error;
+
+      if (code === "PLAN_LIMIT:MAX_MEMBERSHIP_PLANS_REACHED") {
+        const limit = payload?.limit;
+        const current = payload?.current;
+
+        toast({
+          variant: "error",
+          title: "Έφτασες το όριο του πλάνου σου",
+          message:
+            limit != null && current != null
+              ? `Έχεις ήδη ${current}/${limit}.`
+              : "Έχεις φτάσει το όριο του πλάνου σου.",
+          actionLabel: "Αναβάθμιση",
+          onAction: () => navigate("/settings/billing"),
+        });
+
+        return; // ✅ keep modal open
+      }
+
+      toast({
+        variant: "error",
+        title: "Αποτυχία δημιουργίας πλάνου",
+        message: code ?? res.error.message ?? "Unknown error",
+      });
       return;
     }
+
+    const code = (res.data as any)?.error;
+    if (code) {
+      toast({
+        variant: "error",
+        title: "Αποτυχία δημιουργίας πλάνου",
+        message: String(code),
+      });
+      return;
+    }
+
+    toast({
+      variant: "success",
+      title: "Το πλάνο δημιουργήθηκε",
+      message: "Προστέθηκε επιτυχώς.",
+    });
+
     onClose();
   };
 
@@ -675,9 +827,11 @@ function EditPlanModal({
   row,
   categories,
   onClose,
+  toast,
 }: {
   row: Plan;
   categories: Category[];
+  toast: (t: Omit<Toast, "id">, ms?: number) => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(row.name);
@@ -719,10 +873,33 @@ function EditPlanModal({
       },
     });
     setBusy(false);
-    if (res.error || (res.data as any)?.error) {
-      alert(res.error?.message ?? (res.data as any)?.error ?? 'Save failed');
+    if (res.error) {
+      const payload = await readEdgeErrorPayload(res.error);
+      const code = payload?.error;
+
+      toast({
+        variant: "error",
+        title: "Αποτυχία αποθήκευσης",
+        message: code ?? res.error.message ?? "Unknown error",
+      });
       return;
     }
+
+    const code = (res.data as any)?.error;
+    if (code) {
+      toast({
+        variant: "error",
+        title: "Αποτυχία αποθήκευσης",
+        message: String(code),
+      });
+      return;
+    }
+
+    toast({
+      variant: "success",
+      title: "Αποθηκεύτηκε",
+      message: "Οι αλλαγές αποθηκεύτηκαν.",
+    });
     onClose();
   };
 

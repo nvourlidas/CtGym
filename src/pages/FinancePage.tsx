@@ -5,6 +5,8 @@ import { useAuth } from '../auth';
 import { Pencil, Trash2 } from 'lucide-react';
 import DatePicker from 'react-datepicker';
 import { el } from 'date-fns/locale';
+import { useNavigate } from 'react-router-dom';
+import PlanGate from "../components/billing/PlanGate";
 
 type FinanceCategoryRow = {
   id: string;
@@ -132,7 +134,6 @@ function FinanceTransactionModal({
     amount: '',
     notes: '',
   });
-
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -755,9 +756,23 @@ function FinanceCategoriesModal({
 /* ---------- Main Page ---------- */
 
 export default function FinancePage() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
   const tenantId = profile?.tenant_id ?? null;
   const profileId = profile?.id ?? null;
+
+
+
+  const navigate = useNavigate();
+
+  const tier =
+    String((subscription as any)?.plan_id ?? "").toLowerCase() ||
+    String((subscription as any)?.plan_name ?? (subscription as any)?.name ?? "").toLowerCase();
+
+  const isPro = tier.includes("pro");
+  const isStarter = tier.includes("starter");
+  const isFriend = tier.includes("friend_app");
+  const isFree = !(isPro || isStarter || isFriend);
+
 
   const now = new Date();
   const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -1042,385 +1057,406 @@ export default function FinancePage() {
   const endIdx = Math.min(transactions.length, page * pageSize);
 
   return (
-    <div className="p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-text-primary">Οικονομικά</h1>
-          <p className="mt-1 text-xs text-text-secondary">
-            Παρακολούθηση εσόδων / εξόδων για το γυμναστήριό σου.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowCategoriesModal(true)}
-            className="rounded-md border border-border/10 bg-secondary-background px-4 py-2 text-xs font-medium text-text-primary hover:bg-secondary/30"
-          >
-            Κατηγορίες
-          </button>
-          <button
-            type="button"
-            onClick={openCreateModal}
-            className="rounded-md bg-accent px-4 py-2 text-xs font-semibold text-slate-900 shadow hover:bg-accent/80"
-          >
-            + Νέα Κίνηση
-          </button>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="mb-4 rounded-xl border border-border bg-secondary-background p-4 text-xs text-slate-100">
-        {/* Date presets */}
-        <div className="mb-3">
-          <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-text-primary">
-            Περίοδος
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <PresetButton value="custom" label="Προσαρμοσμένο" />
-            <PresetButton value="this_week" label="Αυτή η εβδομάδα" />
-            <PresetButton value="this_month" label="Αυτός ο μήνας" />
-            <PresetButton value="month" label="Επιλογή μήνα" />
-            <PresetButton value="this_year" label="Αυτό το έτος" />
-          </div>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-4">
-          <div>
-            <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-text-primary">
-              Από
-            </div>
-            <DatePicker
-              selected={fromDate}
-              onChange={handleFromDateChange}
-              dateFormat="dd/MM/yyyy"
-              locale={el}
-              placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
-              className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-              wrapperClassName="w-full"
-              showMonthDropdown
-              showYearDropdown
-              dropdownMode="select"
-              scrollableYearDropdown
-              yearDropdownItemNumber={80}
-              disabled={datePreset !== 'custom'}
-            />
-          </div>
-
-          <div>
-            <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-slate-400">
-              Έως
-            </div>
-            <DatePicker
-              selected={toDate}
-              onChange={handleToDateChange}
-              dateFormat="dd/MM/yyyy"
-              locale={el}
-              placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
-              className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-              wrapperClassName="w-full"
-              showMonthDropdown
-              showYearDropdown
-              dropdownMode="select"
-              scrollableYearDropdown
-              yearDropdownItemNumber={80}
-              disabled={datePreset !== 'custom'}
-            />
-          </div>
-
-          {/* Month selection when preset = 'month' */}
-          {datePreset === 'month' && (
-            <div className="md:col-span-2">
-              <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-slate-400">
-                Επιλογή μήνα
-              </div>
-              <DatePicker
-                selected={monthPickerDate}
-                onChange={handleMonthPickerChange}
-                dateFormat="MM/yyyy"
-                locale={el}
-                placeholderText="ΜΜ/ΕΕΕΕ"
-                className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-                wrapperClassName="w-full"
-                showMonthYearPicker
-              />
-            </div>
-          )}
-
-          <div>
-            <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-slate-400">
-              Τύπος
-            </div>
-            <select
-              className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-              value={kindFilter}
-              onChange={handleKindFilterChange}
-            >
-              <option value="all">Όλα</option>
-              <option value="income">Έσοδα</option>
-              <option value="expense">Έξοδα</option>
-            </select>
-          </div>
-
-          <div>
-            <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-slate-400">
-              Κατηγορία
-            </div>
-            <select
-              className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
-              value={categoryFilter}
-              onChange={handleCategoryFilterChange}
-            >
-              <option value="all">Όλες</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name} ({cat.kind === 'income' ? 'Έσοδο' : 'Έξοδο'})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Summary */}
-      <div className="mb-4 grid gap-3 md:grid-cols-4">
-        <div className="rounded-xl border border-success/60 bg-secondary-background p-4 text-xs text-success/80">
-          <div className="text-[0.70rem] uppercase tracking-wide text-success/80">
-            Σύνολο Εσόδων
-          </div>
-          <div className="mt-2 text-lg font-semibold">
-            {formatCurrency(totalIncome)}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-danger/60 bg-secondary-background p-4 text-xs text-danger/80">
-          <div className="text-[0.70rem] uppercase tracking-wide text-danger/80">
-            Σύνολο Εξόδων
-          </div>
-          <div className="mt-2 text-lg font-semibold">
-            {formatCurrency(totalExpenses)}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-success/60 bg-secondary-background p-4 text-xs text-success/80">
-          <div className="text-[0.70rem] uppercase tracking-wide text-success/80">
-            Καθαρό Αποτέλεσμα
-          </div>
-          <div
-            className={`mt-2 text-lg font-semibold ${net >= 0 ? 'text-success/80' : 'text-danger/80'
-              }`}
-          >
-            {formatCurrency(net)}
-          </div>
-        </div>
-
-
-        <div className="rounded-xl border border-warning/60 bg-secondary-background p-4 text-xs text-warning/80">
-          <div className="text-[0.70rem] uppercase tracking-wide text-warning/80">
-            Συνολικές Οφειλές
-          </div>
-
-          <div className="mt-2 text-lg font-semibold">
-            {debtLoading ? '...' : formatCurrency(debt?.total_debt ?? 0)}
-          </div>
-
-          <div className="mt-1 text-[0.70rem] text-slate-400">
-            Συνδρομές: {formatCurrency(debt?.membership_debt ?? 0)} • Drop-in:{' '}
-            {formatCurrency(debt?.dropin_debt ?? 0)}
-          </div>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-border/10 bg-secondary-background">
-        <div className="max-h-125 overflow-auto no-scrollbar">
-          <table className="min-w-full text-left text-xs text-text-primary ">
-            <thead className="bg-secondary-background text-[0.70rem] uppercase tracking-wide text-text-secondary">
-              <tr>
-                <th className="px-4 py-2">Ημερομηνία</th>
-                <th className="px-4 py-2">Τίτλος</th>
-                <th className="px-4 py-2">Κατηγορία</th>
-                <th className="px-4 py-2">Τύπος</th>
-                <th className="px-4 py-2 text-right">Ποσό</th>
-                <th className="px-4 py-2">Σημειώσεις</th>
-                <th className="px-4 py-2 text-right">Ενέργειες</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-4 py-4 text-center text-xs text-text-secondary"
-                  >
-                    Φόρτωση δεδομένων...
-                  </td>
-                </tr>
-              )}
-
-              {!loading && paginatedTransactions.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-4 py-4 text-center text-xs text-text-secondary"
-                  >
-                    Δεν βρέθηκαν κινήσεις για τα επιλεγμένα φίλτρα.
-                  </td>
-                </tr>
-              )}
-
-              {!loading &&
-                paginatedTransactions.map((tx) => {
-                  const cat = getCategory(tx.category_id);
-
-                  return (
-                    <tr
-                      key={tx.id}
-                      className="border-t border-border/10 hover:bg-border/10"
-                    >
-                      <td className="px-4 py-2 align-middle text-[0.75rem] text-text-secondary">
-                        {formatDateDMY(tx.tx_date)}
-                      </td>
-                      <td className="px-4 py-2 align-middle text-[0.75rem]">
-                        {tx.title}
-                      </td>
-                      <td className="px-4 py-2 align-middle text-[0.75rem] text-text-secondary">
-                        {cat ? (
-                          <div className="flex items-center gap-2">
-                            {cat.color && (
-                              <span
-                                className="inline-block h-3 w-3 rounded-full border border-border/20"
-                                style={{ backgroundColor: cat.color }}
-                              />
-                            )}
-                            <span>{cat.name}</span>
-                          </div>
-                        ) : (
-                          '-'
-                        )}
-                      </td>
-                      <td className="px-4 py-2 align-middle text-[0.75rem]">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[0.65rem] font-semibold ${tx.kind === 'income'
-                            ? 'bg-emerald-500/10 text-success border border-emerald-500/40'
-                            : 'bg-rose-500/10 text-danger/60 border border-rose-500/40'
-                            }`}
-                        >
-                          {tx.kind === 'income' ? 'Έσοδο' : 'Έξοδο'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 align-middle text-right text-[0.75rem] font-semibold">
-                        <span
-                          className={
-                            tx.kind === 'income' ? 'text-success' : 'text-danger'
-                          }
-                        >
-                          {formatCurrency(tx.amount ?? 0)}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 align-middle text-[0.75rem] text-text-secondary">
-                        {tx.notes ?? '-'}
-                      </td>
-                      <td className="px-4 py-2 align-middle text-right">
-                        <div className="inline-flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(tx)}
-                            className="rounded-md border border-border bg-slate-800/80 p-1.5 text-slate-100 hover:bg-slate-700"
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(tx.id)}
-                            className="rounded-md border border-rose-600/80 bg-danger p-1.5 text-white hover:bg-rose-800/80"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* 🔹 Pagination footer */}
-        {!loading && transactions.length > 0 && (
-          <div className="flex items-center justify-between px-4 py-2 text-xs text-text-secondary border-t border-border/10">
+    <div className="relative">
+      {/* ✅ blurred + non-interactive content when free */}
+      <div className={isFree ? "pointer-events-none select-none blur-sm opacity-60" : ""}>
+        <div className="p-6">
+          <div className="mb-4 flex items-center justify-between">
             <div>
-              Εμφάνιση{' '}
-              <span className="font-semibold">{startIdx}</span>
-              {transactions.length > 0 && (
-                <>
-                  –<span className="font-semibold">{endIdx}</span>
-                </>
-              )}{' '}
-              από <span className="font-semibold">{transactions.length}</span>
+              <h1 className="text-xl font-semibold text-text-primary">Οικονομικά</h1>
+              <p className="mt-1 text-xs text-text-secondary">
+                Παρακολούθηση εσόδων / εξόδων για το γυμναστήριό σου.
+              </p>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1">
-                <span>Γραμμές ανά σελίδα:</span>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCategoriesModal(true)}
+                className="rounded-md border border-border/10 bg-secondary-background px-4 py-2 text-xs font-medium text-text-primary hover:bg-secondary/30"
+              >
+                Κατηγορίες
+              </button>
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="rounded-md bg-accent px-4 py-2 text-xs font-semibold text-slate-900 shadow hover:bg-accent/80"
+              >
+                + Νέα Κίνηση
+              </button>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="mb-4 rounded-xl border border-border bg-secondary-background p-4 text-xs text-slate-100">
+            {/* Date presets */}
+            <div className="mb-3">
+              <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-text-primary">
+                Περίοδος
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <PresetButton value="custom" label="Προσαρμοσμένο" />
+                <PresetButton value="this_week" label="Αυτή η εβδομάδα" />
+                <PresetButton value="this_month" label="Αυτός ο μήνας" />
+                <PresetButton value="month" label="Επιλογή μήνα" />
+                <PresetButton value="this_year" label="Αυτό το έτος" />
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-4">
+              <div>
+                <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-text-primary">
+                  Από
+                </div>
+                <DatePicker
+                  selected={fromDate}
+                  onChange={handleFromDateChange}
+                  dateFormat="dd/MM/yyyy"
+                  locale={el}
+                  placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
+                  className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  wrapperClassName="w-full"
+                  showMonthDropdown
+                  showYearDropdown
+                  dropdownMode="select"
+                  scrollableYearDropdown
+                  yearDropdownItemNumber={80}
+                  disabled={datePreset !== 'custom'}
+                />
+              </div>
+
+              <div>
+                <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-slate-400">
+                  Έως
+                </div>
+                <DatePicker
+                  selected={toDate}
+                  onChange={handleToDateChange}
+                  dateFormat="dd/MM/yyyy"
+                  locale={el}
+                  placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
+                  className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  wrapperClassName="w-full"
+                  showMonthDropdown
+                  showYearDropdown
+                  dropdownMode="select"
+                  scrollableYearDropdown
+                  yearDropdownItemNumber={80}
+                  disabled={datePreset !== 'custom'}
+                />
+              </div>
+
+              {/* Month selection when preset = 'month' */}
+              {datePreset === 'month' && (
+                <div className="md:col-span-2">
+                  <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-slate-400">
+                    Επιλογή μήνα
+                  </div>
+                  <DatePicker
+                    selected={monthPickerDate}
+                    onChange={handleMonthPickerChange}
+                    dateFormat="MM/yyyy"
+                    locale={el}
+                    placeholderText="ΜΜ/ΕΕΕΕ"
+                    className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                    wrapperClassName="w-full"
+                    showMonthYearPicker
+                  />
+                </div>
+              )}
+
+              <div>
+                <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-slate-400">
+                  Τύπος
+                </div>
                 <select
-                  className="bg-transparent border border-border/10 rounded px-1 py-0.5"
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  value={kindFilter}
+                  onChange={handleKindFilterChange}
                 >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
+                  <option value="all">Όλα</option>
+                  <option value="income">Έσοδα</option>
+                  <option value="expense">Έξοδα</option>
                 </select>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
+
+              <div>
+                <div className="mb-1 text-[0.70rem] font-semibold uppercase tracking-wide text-slate-400">
+                  Κατηγορία
+                </div>
+                <select
+                  className="w-full rounded-md border border-border/20 bg-bulk-bg/60 px-2 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent/40"
+                  value={categoryFilter}
+                  onChange={handleCategoryFilterChange}
                 >
-                  Προηγ.
-                </button>
-                <span>
-                  Σελίδα <span className="font-semibold">{page}</span> από{' '}
-                  <span className="font-semibold">{pageCount}</span>
-                </span>
-                <button
-                  className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
-                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                  disabled={page === pageCount}
-                >
-                  Επόμενο
-                </button>
+                  <option value="all">Όλες</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name} ({cat.kind === 'income' ? 'Έσοδο' : 'Έξοδο'})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
-        )}
+
+          {/* Summary */}
+          <div className="mb-4 grid gap-3 md:grid-cols-4">
+            <div className="rounded-xl border border-success/60 bg-secondary-background p-4 text-xs text-success/80">
+              <div className="text-[0.70rem] uppercase tracking-wide text-success/80">
+                Σύνολο Εσόδων
+              </div>
+              <div className="mt-2 text-lg font-semibold">
+                {formatCurrency(totalIncome)}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-danger/60 bg-secondary-background p-4 text-xs text-danger/80">
+              <div className="text-[0.70rem] uppercase tracking-wide text-danger/80">
+                Σύνολο Εξόδων
+              </div>
+              <div className="mt-2 text-lg font-semibold">
+                {formatCurrency(totalExpenses)}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-success/60 bg-secondary-background p-4 text-xs text-success/80">
+              <div className="text-[0.70rem] uppercase tracking-wide text-success/80">
+                Καθαρό Αποτέλεσμα
+              </div>
+              <div
+                className={`mt-2 text-lg font-semibold ${net >= 0 ? 'text-success/80' : 'text-danger/80'
+                  }`}
+              >
+                {formatCurrency(net)}
+              </div>
+            </div>
+
+
+            <div className="rounded-xl border border-warning/60 bg-secondary-background p-4 text-xs text-warning/80">
+              <div className="text-[0.70rem] uppercase tracking-wide text-warning/80">
+                Συνολικές Οφειλές
+              </div>
+
+              <div className="mt-2 text-lg font-semibold">
+                {debtLoading ? '...' : formatCurrency(debt?.total_debt ?? 0)}
+              </div>
+
+              <div className="mt-1 text-[0.70rem] text-slate-400">
+                Συνδρομές: {formatCurrency(debt?.membership_debt ?? 0)} • Drop-in:{' '}
+                {formatCurrency(debt?.dropin_debt ?? 0)}
+              </div>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-hidden rounded-xl border border-border/10 bg-secondary-background">
+            <div className="max-h-125 overflow-auto no-scrollbar">
+              <table className="min-w-full text-left text-xs text-text-primary ">
+                <thead className="bg-secondary-background text-[0.70rem] uppercase tracking-wide text-text-secondary">
+                  <tr>
+                    <th className="px-4 py-2">Ημερομηνία</th>
+                    <th className="px-4 py-2">Τίτλος</th>
+                    <th className="px-4 py-2">Κατηγορία</th>
+                    <th className="px-4 py-2">Τύπος</th>
+                    <th className="px-4 py-2 text-right">Ποσό</th>
+                    <th className="px-4 py-2">Σημειώσεις</th>
+                    <th className="px-4 py-2 text-right">Ενέργειες</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-4 py-4 text-center text-xs text-text-secondary"
+                      >
+                        Φόρτωση δεδομένων...
+                      </td>
+                    </tr>
+                  )}
+
+                  {!loading && paginatedTransactions.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-4 py-4 text-center text-xs text-text-secondary"
+                      >
+                        Δεν βρέθηκαν κινήσεις για τα επιλεγμένα φίλτρα.
+                      </td>
+                    </tr>
+                  )}
+
+                  {!loading &&
+                    paginatedTransactions.map((tx) => {
+                      const cat = getCategory(tx.category_id);
+
+                      return (
+                        <tr
+                          key={tx.id}
+                          className="border-t border-border/10 hover:bg-border/10"
+                        >
+                          <td className="px-4 py-2 align-middle text-[0.75rem] text-text-secondary">
+                            {formatDateDMY(tx.tx_date)}
+                          </td>
+                          <td className="px-4 py-2 align-middle text-[0.75rem]">
+                            {tx.title}
+                          </td>
+                          <td className="px-4 py-2 align-middle text-[0.75rem] text-text-secondary">
+                            {cat ? (
+                              <div className="flex items-center gap-2">
+                                {cat.color && (
+                                  <span
+                                    className="inline-block h-3 w-3 rounded-full border border-border/20"
+                                    style={{ backgroundColor: cat.color }}
+                                  />
+                                )}
+                                <span>{cat.name}</span>
+                              </div>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td className="px-4 py-2 align-middle text-[0.75rem]">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[0.65rem] font-semibold ${tx.kind === 'income'
+                                ? 'bg-emerald-500/10 text-success border border-emerald-500/40'
+                                : 'bg-rose-500/10 text-danger/60 border border-rose-500/40'
+                                }`}
+                            >
+                              {tx.kind === 'income' ? 'Έσοδο' : 'Έξοδο'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 align-middle text-right text-[0.75rem] font-semibold">
+                            <span
+                              className={
+                                tx.kind === 'income' ? 'text-success' : 'text-danger'
+                              }
+                            >
+                              {formatCurrency(tx.amount ?? 0)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 align-middle text-[0.75rem] text-text-secondary">
+                            {tx.notes ?? '-'}
+                          </td>
+                          <td className="px-4 py-2 align-middle text-right">
+                            <div className="inline-flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(tx)}
+                                className="rounded-md border border-border bg-slate-800/80 p-1.5 text-slate-100 hover:bg-slate-700"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(tx.id)}
+                                className="rounded-md border border-rose-600/80 bg-danger p-1.5 text-white hover:bg-rose-800/80"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* 🔹 Pagination footer */}
+            {!loading && transactions.length > 0 && (
+              <div className="flex items-center justify-between px-4 py-2 text-xs text-text-secondary border-t border-border/10">
+                <div>
+                  Εμφάνιση{' '}
+                  <span className="font-semibold">{startIdx}</span>
+                  {transactions.length > 0 && (
+                    <>
+                      –<span className="font-semibold">{endIdx}</span>
+                    </>
+                  )}{' '}
+                  από <span className="font-semibold">{transactions.length}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    <span>Γραμμές ανά σελίδα:</span>
+                    <select
+                      className="bg-transparent border border-border/10 rounded px-1 py-0.5"
+                      value={pageSize}
+                      onChange={(e) => setPageSize(Number(e.target.value))}
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                    >
+                      Προηγ.
+                    </button>
+                    <span>
+                      Σελίδα <span className="font-semibold">{page}</span> από{' '}
+                      <span className="font-semibold">{pageCount}</span>
+                    </span>
+                    <button
+                      className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
+                      onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                      disabled={page === pageCount}
+                    >
+                      Επόμενο
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <FinanceTransactionModal
+            open={modalOpen}
+            mode={modalMode}
+            tenantId={tenantId}
+            profileId={profileId}
+            categories={categories}
+            initialTransaction={editingTransaction}
+            onClose={() => setModalOpen(false)}
+            onSaved={() => {
+              loadTransactions();
+              loadDebt();
+            }}
+          />
+
+          <FinanceCategoriesModal
+            open={showCategoriesModal}
+            tenantId={tenantId}
+            categories={categories}
+            onClose={() => setShowCategoriesModal(false)}
+            onChanged={() => {
+              loadCategories();
+              loadTransactions(); // refresh names/colors in table
+            }}
+          />
+        </div>
       </div>
+      {/* ✅ overlay card (ONLY blocks this page area) */}
+      {isFree && (
+        <div className="absolute inset-0 z-60 flex items-start justify-center p-6">
+          <div className="w-full max-w-xl">
+            <PlanGate
+              blocked
+              asOverlay
+              allow={["starter", "pro"]}
+              title="Τα Οικονομικά είναι διαθέσιμα από Starter"
+              description="Αναβάθμισε για να δημιουργείς και να δημοσιεύεις ερωτηματολόγια."
+              onUpgradeClick={() => navigate("/settings/billing")}
+            />
+          </div>
+        </div>
+      )}
 
-      <FinanceTransactionModal
-        open={modalOpen}
-        mode={modalMode}
-        tenantId={tenantId}
-        profileId={profileId}
-        categories={categories}
-        initialTransaction={editingTransaction}
-        onClose={() => setModalOpen(false)}
-        onSaved={() => {
-          loadTransactions();
-          loadDebt();
-        }}
-      />
-
-      <FinanceCategoriesModal
-        open={showCategoriesModal}
-        tenantId={tenantId}
-        categories={categories}
-        onClose={() => setShowCategoriesModal(false)}
-        onChanged={() => {
-          loadCategories();
-          loadTransactions(); // refresh names/colors in table
-        }}
-      />
     </div>
   );
 }

@@ -99,6 +99,75 @@ function parseISODateToLocal(dateStr: string | null | undefined): Date | null {
 }
 
 
+type Toast = {
+  id: string;
+  title: string;
+  message?: string;
+  variant?: "error" | "success" | "info";
+  actionLabel?: string;
+  onAction?: () => void;
+};
+
+function ToastHost({
+  toasts,
+  dismiss,
+}: {
+  toasts: Toast[];
+  dismiss: (id: string) => void;
+}) {
+  return (
+    <div className="fixed right-4 top-4 z-100 flex w-120 max-w-[calc(100vw-2rem)] flex-col gap-2">
+      {toasts.map((t) => (
+        <div
+          key={t.id}
+          className={[
+            "rounded-xl border border-border/15 bg-secondary-background/95 backdrop-blur shadow-2xl shadow-black/20",
+            "px-3 py-3",
+          ].join(" ")}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div
+                className={[
+                  "text-sm font-semibold",
+                  t.variant === "error" ? "text-danger" : "",
+                  t.variant === "success" ? "text-success" : "",
+                ].join(" ")}
+              >
+                {t.title}
+              </div>
+              {t.message && (
+                <div className="mt-1 text-xs text-text-secondary">{t.message}</div>
+              )}
+              {t.actionLabel && t.onAction && (
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => t.onAction?.()}
+                    className="h-8 rounded-md px-3 text-xs bg-primary hover:bg-primary/90 text-white"
+                  >
+                    {t.actionLabel}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => dismiss(t.id)}
+              className="rounded-md border border-border/15 px-2 py-1 text-xs hover:bg-secondary/30"
+              aria-label="Κλείσιμο"
+              title="Κλείσιμο"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 
 export default function MembersPage() {
   const { profile, subscription } = useAuth();
@@ -184,6 +253,20 @@ export default function MembersPage() {
   };
 
   const clearSelection = () => setSelectedIds([]);
+
+
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  const pushToast = (t: Omit<Toast, "id">, ms = 4500) => {
+    const id = crypto.randomUUID();
+    setToasts((prev) => [...prev, { id, ...t }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((x) => x.id !== id));
+    }, ms);
+  };
+
+  const dismissToast = (id: string) =>
+    setToasts((prev) => prev.filter((x) => x.id !== id));
 
   async function load() {
     if (!profile?.tenant_id) return;
@@ -448,6 +531,54 @@ export default function MembersPage() {
     action();
   }
 
+  const tier = String(
+    (subscription as any)?.plan_id ??
+    (subscription as any)?.tier ??
+    (subscription as any)?.plan_name ??
+    (subscription as any)?.name ??
+    ""
+  ).toLowerCase();
+
+  const isPro = tier.includes("pro");
+  const isStarter = tier.includes("starter");
+  const isFriend = tier.includes("friend_app");
+  const isFree = !(isPro || isStarter);
+
+  // decide where email/push belong:
+  const canSendComms = !isFree || isFriend; // ✅ Starter+
+  // or if you want Pro-only:
+  // const canSendComms = isPro;
+
+  const canExport = isPro || isFriend; // ✅ Excel + PDF only for Pro
+
+  function gateExport(actionName: "Excel" | "PDF", action: () => void) {
+    if (!canExport) {
+      pushToast({
+        variant: "info",
+        title: `🔒 Export ${actionName} διαθέσιμο μόνο στο Pro`,
+        message: "Αναβάθμισε για εξαγωγή αρχείων (Excel/PDF).",
+        actionLabel: "Αναβάθμιση",
+        onAction: () => navigate("/settings/billing"),
+      });
+      return;
+    }
+    action();
+  }
+
+
+  function gateComms(actionName: "Email" | "Push", action: () => void) {
+    if (!canSendComms) {
+      pushToast({
+        variant: "info",
+        title: `🔒 ${actionName} διαθέσιμο από Starter`,
+        message: "Αναβάθμισε για αποστολή μηνυμάτων σε μέλη.",
+        actionLabel: "Αναβάθμιση",
+        onAction: () => navigate("/settings/billing"),
+      });
+      return;
+    }
+    action();
+  }
 
   const tenantNameFromProfile = tenant?.name ?? 'Cloudtec Gym';
 
@@ -598,6 +729,7 @@ export default function MembersPage() {
   return (
     <div className="p-6">
       <div className="flex flex-wrap justify-between">
+        <ToastHost toasts={toasts} dismiss={dismissToast} />
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <input
             className="h-9 rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
@@ -613,21 +745,35 @@ export default function MembersPage() {
           </button>
 
           <button
-            className="h-9 rounded-md px-3 text-sm border border-border/15 text-text-primary hover:bg-secondary/30 disabled:opacity-40 cursor-pointer inline-flex items-center gap-2"
-            onClick={() => requireActiveSubscription(() => setShowEmailModal(true))}
-            disabled={rows.length === 0}
+            className={[
+              "h-9 rounded-md px-3 text-sm border border-border/15 inline-flex items-center gap-2",
+              canSendComms
+                ? "text-text-primary hover:bg-secondary/30 cursor-pointer"
+                : "text-text-secondary opacity-60 cursor-not-allowed",
+            ].join(" ")}
+            onClick={() => gateComms("Email", () => setShowEmailModal(true))}
+            disabled={rows.length === 0} // keep disabled if no data
+            title={!canSendComms ? "Διαθέσιμο από Starter" : "Αποστολή Email"}
           >
             <Inbox className="h-4 w-4" />
             Αποστολή Email
+            {!canSendComms && <span className="text-[11px] opacity-80">🔒</span>}
           </button>
 
           <button
-            className="h-9 rounded-md px-3 text-sm border border-border/15 text-text-primary hover:bg-secondary/30 disabled:opacity-40 cursor-pointer inline-flex items-center gap-2"
-            onClick={() => requireActiveSubscription(() => setShowPushModal(true))}
+            className={[
+              "h-9 rounded-md px-3 text-sm border border-border/15 inline-flex items-center gap-2",
+              canSendComms
+                ? "text-text-primary hover:bg-secondary/30 cursor-pointer"
+                : "text-text-secondary opacity-60 cursor-not-allowed",
+            ].join(" ")}
+            onClick={() => gateComms("Push", () => setShowPushModal(true))}
             disabled={rows.length === 0}
+            title={!canSendComms ? "Διαθέσιμο από Starter" : "Αποστολή Push"}
           >
             <BellDot className="h-4 w-4" />
             Αποστολή Push
+            {!canSendComms && <span className="text-[11px] opacity-80">🔒</span>}
           </button>
 
 
@@ -724,21 +870,35 @@ export default function MembersPage() {
 
       <div className='mb-2 flex gap-2'>
         <button
-          className="h-9 rounded-md px-3 text-sm border border-border/15 text-text-primary hover:bg-[#26a347] hover:border-white/15 hover:text-white inline-flex items-center gap-2 cursor-pointer"
-          onClick={() => requireActiveSubscription(() => exportExcel())}
+          className={[
+            "h-9 rounded-md px-3 text-sm border border-border/15 inline-flex items-center gap-2",
+            canExport
+              ? "text-text-primary hover:bg-[#26a347] hover:border-white/15 hover:text-white cursor-pointer"
+              : "text-text-secondary opacity-60 cursor-not-allowed",
+          ].join(" ")}
+          onClick={() => gateExport("Excel", () => exportExcel())}
           disabled={loading || rows.length === 0}
+          title={!canExport ? "Διαθέσιμο μόνο στο Pro" : "Export Excel"}
         >
           <Sheet className="h-4 w-4" />
-          Export Excel
+          Εξαγωγή Excel
+          {!canExport && <span className="text-[11px] opacity-80">🔒</span>}
         </button>
 
         <button
-          className="h-9 rounded-md px-3 text-sm border border-border/15 text-text-primary hover:bg-[#db2525] hover:border-white/15 hover:text-white inline-flex items-center gap-2 cursor-pointer"
-          onClick={() => requireActiveSubscription(() => exportPdf())}
+          className={[
+            "h-9 rounded-md px-3 text-sm border border-border/15 inline-flex items-center gap-2",
+            canExport
+              ? "text-text-primary hover:bg-[#db2525] hover:border-white/15 hover:text-white cursor-pointer"
+              : "text-text-secondary opacity-60 cursor-not-allowed",
+          ].join(" ")}
+          onClick={() => gateExport("PDF", () => exportPdf())}
           disabled={loading || rows.length === 0}
+          title={!canExport ? "Διαθέσιμο μόνο στο Pro" : "Export PDF"}
         >
           <FileText className="h-4 w-4" />
-          Export PDF
+          Εξαγωγή PDF
+          {!canExport && <span className="text-[11px] opacity-80">🔒</span>}
         </button>
       </div>
 
@@ -1057,6 +1217,7 @@ export default function MembersPage() {
             setShowCreate(false);
             load();
           }}
+          toast={pushToast}
         />
       )}
       {editRow && (
@@ -1171,13 +1332,34 @@ function DeleteButton({
   );
 }
 
+
+async function readEdgeErrorPayload(err: any): Promise<any | null> {
+  const res: Response | undefined = err?.context;
+  if (!res) return null;
+
+  // Try JSON first
+  try {
+    return await res.clone().json();
+  } catch {
+    // Fallback: text
+    try {
+      const txt = await res.clone().text();
+      return txt ? { error: txt } : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
 /* CREATE */
 function CreateMemberModal({
   tenantId,
   onClose,
+  toast,
 }: {
   tenantId: string;
   onClose: () => void;
+  toast: (t: Omit<Toast, "id">, ms?: number) => void;
 }) {
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
@@ -1189,11 +1371,14 @@ function CreateMemberModal({
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [notes, setNotes] = useState('');
+  const navigate = useNavigate();
 
   const submit = async () => {
     if (!email || !password) return;
+
     setBusy(true);
-    await supabase.functions.invoke('member-create', {
+
+    const { data, error } = await supabase.functions.invoke("member-create", {
       body: {
         email,
         password,
@@ -1207,7 +1392,53 @@ function CreateMemberModal({
         notes: notes || null,
       },
     });
+
     setBusy(false);
+
+    // ✅ Non-2xx comes here as `error`
+    if (error) {
+      const payload = await readEdgeErrorPayload(error);
+      const code = payload?.error;
+
+      if (code === "PLAN_LIMIT:MAX_MEMBERS_REACHED") {
+        const limit = payload?.limit;
+        const current = payload?.current;
+
+        toast({
+          variant: "error",
+          title: "Έφτασες το όριο του πλάνου σου",
+          message:
+            limit != null && current != null
+              ? `Έχεις ήδη ${current}/${limit}.`
+              : "Έχεις φτάσει το όριο του πλάνου σου.",
+          actionLabel: "Αναβάθμιση",
+          onAction: () => navigate("/settings/billing"),
+        });
+        return; // keep modal open
+      }
+
+      // Other subscription errors etc.
+      toast({
+        variant: "error",
+        title: "Αποτυχία δημιουργίας μέλους",
+        message: code ?? error.message ?? "Unknown error",
+      });
+      return;
+    }
+
+    // ✅ Success path (2xx)
+    const code = (data as any)?.error;
+    if (code) {
+      toast({ variant: "error", title: "Αποτυχία", message: String(code) });
+      return;
+    }
+
+    toast({
+      variant: "success",
+      title: "Το μέλος δημιουργήθηκε",
+      message: "Προστέθηκε επιτυχώς στη λίστα μελών.",
+    });
+
     onClose();
   };
 

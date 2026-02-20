@@ -44,7 +44,7 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
     try {
       const { data, error } = await supabase
         .from('tenant_subscription_status')
-        .select('tenant_id, status, current_period_end, grace_until, is_active')
+        .select('tenant_id, plan_id, status, current_period_end, grace_until, is_active')
         .eq('tenant_id', tenantId)
         .maybeSingle();
 

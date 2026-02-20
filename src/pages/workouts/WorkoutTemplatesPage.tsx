@@ -6,6 +6,8 @@ import { Pencil, Trash2, Loader2, Send, Plus } from 'lucide-react';
 import CreateWorkoutTemplateModal from '../../components/workouts/CreateWorkoutTemplateModal';
 import EditWorkoutTemplateModal from '../../components/workouts/EditWorkoutTemplateModal';
 import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
+import PlanGate from "../../components/billing/PlanGate";
+import { useNavigate } from 'react-router-dom';
 
 type TemplateRow = {
   id: string;
@@ -39,6 +41,8 @@ export default function WorkoutTemplatesPage() {
   const [editRow, setEditRow] = useState<TemplateRow | null>(null);
   const [assignRow, setAssignRow] = useState<TemplateRow | null>(null);
 
+  const navigate = useNavigate();
+
   // pagination
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -52,6 +56,15 @@ export default function WorkoutTemplatesPage() {
     }
     action();
   }
+
+  const tier =
+    String((subscription as any)?.plan_id ?? (subscription as any)?.tier ?? "").toLowerCase() ||
+    String((subscription as any)?.plan_name ?? (subscription as any)?.name ?? "").toLowerCase();
+
+  const isPro = tier.includes("pro");
+  const isStarter = tier.includes("starter");
+  const isFriend = tier.includes("friend_app");
+  const isFree = !(isPro || isStarter || isFriend);
 
 
   async function load() {
@@ -116,75 +129,139 @@ export default function WorkoutTemplatesPage() {
   const endIdx = Math.min(filtered.length, page * pageSize);
 
   return (
-    <div className="p-6">
-      <div className="mb-4 flex items-center gap-3">
-        <input
-          className="h-9 rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
-          placeholder="Αναζήτηση templates…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <button
-          className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white inline-flex items-center gap-2"
-          onClick={() => requireActiveSubscription(() => setShowCreate(true))}
-        >
-          <Plus className="h-4 w-4" />
-          Νέο Template
-        </button>
-      </div>
+    <div className="relative min-h-[calc(100vh-3.5rem)]">
+      {/* ✅ blurred + non-interactive content when free */}
+      <div className={isFree ? "pointer-events-none select-none blur-sm opacity-60" : ""}>
+        <div className="p-6">
+          <div className="mb-4 flex items-center gap-3">
+            <input
+              className="h-9 rounded-md border border-border/10 bg-secondary-background px-3 text-sm placeholder:text-text-secondary"
+              placeholder="Αναζήτηση templates…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+            <button
+              className="h-9 rounded-md px-3 text-sm bg-primary hover:bg-primary/90 text-white inline-flex items-center gap-2"
+              onClick={() => requireActiveSubscription(() => setShowCreate(true))}
+            >
+              <Plus className="h-4 w-4" />
+              Νέο Template
+            </button>
+          </div>
 
-      <div className="rounded-md border border-border/10 overflow-hidden">
-        {/* DESKTOP TABLE */}
-        <div className="hidden md:block">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-205 text-sm">
-              <thead className="bg-secondary-background/60">
-                <tr className="text-left">
-                  <Th>Όνομα</Th>
-                  <Th>Σημειώσεις</Th>
-                  <Th>Ασκήσεις</Th>
-                  <Th>Ημ/νία</Th>
-                  <Th className="text-right pr-3">Ενέργειες</Th>
-                </tr>
-              </thead>
+          <div className="rounded-md border border-border/10 overflow-hidden">
+            {/* DESKTOP TABLE */}
+            <div className="hidden md:block">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-205 text-sm">
+                  <thead className="bg-secondary-background/60">
+                    <tr className="text-left">
+                      <Th>Όνομα</Th>
+                      <Th>Σημειώσεις</Th>
+                      <Th>Ασκήσεις</Th>
+                      <Th>Ημ/νία</Th>
+                      <Th className="text-right pr-3">Ενέργειες</Th>
+                    </tr>
+                  </thead>
 
-              <tbody>
-                {loading && (
-                  <tr>
-                    <td className="px-3 py-4 opacity-60" colSpan={5}>
-                      Loading…
-                    </td>
-                  </tr>
-                )}
+                  <tbody>
+                    {loading && (
+                      <tr>
+                        <td className="px-3 py-4 opacity-60" colSpan={5}>
+                          Loading…
+                        </td>
+                      </tr>
+                    )}
 
-                {!loading && filtered.length === 0 && (
-                  <tr>
-                    <td className="px-3 py-4 opacity-60" colSpan={5}>
-                      Δεν υπάρχουν templates
-                    </td>
-                  </tr>
-                )}
+                    {!loading && filtered.length === 0 && (
+                      <tr>
+                        <td className="px-3 py-4 opacity-60" colSpan={5}>
+                          Δεν υπάρχουν templates
+                        </td>
+                      </tr>
+                    )}
 
-                {!loading &&
-                  filtered.length > 0 &&
-                  paginated.map((w) => {
-                    const exCount = w.workout_template_exercises?.length ?? 0;
-                    return (
-                      <tr
-                        key={w.id}
-                        className="border-t border-border/10 hover:bg-secondary/10"
-                      >
-                        <Td className="font-medium">{w.name ?? '—'}</Td>
-                        <Td className="text-text-secondary">
-                          <div className="max-w-xs whitespace-normal wrap-break-word text-xs leading-snug">
-                            {w.notes ?? '—'}
+                    {!loading &&
+                      filtered.length > 0 &&
+                      paginated.map((w) => {
+                        const exCount = w.workout_template_exercises?.length ?? 0;
+                        return (
+                          <tr
+                            key={w.id}
+                            className="border-t border-border/10 hover:bg-secondary/10"
+                          >
+                            <Td className="font-medium">{w.name ?? '—'}</Td>
+                            <Td className="text-text-secondary">
+                              <div className="max-w-xs whitespace-normal wrap-break-word text-xs leading-snug">
+                                {w.notes ?? '—'}
+                              </div>
+                            </Td>
+                            <Td>{exCount}</Td>
+                            <Td className="text-text-secondary text-xs">
+                              {new Date(w.updated_at ?? w.created_at).toLocaleString('el-GR')}
+                            </Td>
+                            <Td className="text-right space-x-1 pr-3">
+                              <IconButton
+                                icon={Send}
+                                label="Ανάθεση"
+                                onClick={() => requireActiveSubscription(() => setAssignRow(w))}
+                              />
+                              <IconButton
+                                icon={Pencil}
+                                label="Επεξεργασία"
+                                onClick={() => requireActiveSubscription(() => setEditRow(w))}
+                              />
+                              <DeleteButton id={w.id} onDeleted={load}
+                                guard={() => {
+                                  if (subscriptionInactive) {
+                                    setShowSubModal(true);
+                                    return false;
+                                  }
+                                  return true;
+                                }}
+                              />
+                            </Td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* MOBILE CARDS */}
+            <div className="md:hidden">
+              {loading && (
+                <div className="px-3 py-4 text-sm opacity-60">Loading…</div>
+              )}
+
+              {!loading && filtered.length === 0 && (
+                <div className="px-3 py-4 text-sm opacity-60">
+                  Δεν υπάρχουν templates
+                </div>
+              )}
+
+              {!loading &&
+                filtered.length > 0 &&
+                paginated.map((w) => {
+                  const exCount = w.workout_template_exercises?.length ?? 0;
+                  return (
+                    <div
+                      key={w.id}
+                      className="border-t border-border/10 bg-secondary/5 px-3 py-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="font-medium text-sm">
+                            {w.name ?? 'Template'}
                           </div>
-                        </Td>
-                        <Td>{exCount}</Td>
-                        <Td className="text-text-secondary text-xs">
-                          {new Date(w.updated_at ?? w.created_at).toLocaleString('el-GR')}
-                        </Td>
-                        <Td className="text-right space-x-1 pr-3">
+                          <div className="mt-0.5 text-xs text-text-secondary">
+                            {exCount} ασκήσεις ·{' '}
+                            {new Date(w.updated_at ?? w.created_at).toLocaleDateString('el-GR')}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
                           <IconButton
                             icon={Send}
                             label="Ανάθεση"
@@ -204,169 +281,127 @@ export default function WorkoutTemplatesPage() {
                               return true;
                             }}
                           />
-                        </Td>
-                      </tr>
-                    );
-                  })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                        </div>
+                      </div>
 
-        {/* MOBILE CARDS */}
-        <div className="md:hidden">
-          {loading && (
-            <div className="px-3 py-4 text-sm opacity-60">Loading…</div>
-          )}
-
-          {!loading && filtered.length === 0 && (
-            <div className="px-3 py-4 text-sm opacity-60">
-              Δεν υπάρχουν templates
+                      <div className="mt-2 text-xs text-text-secondary whitespace-normal wrap-break-word leading-snug">
+                        {w.notes ?? '—'}
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
-          )}
 
-          {!loading &&
-            filtered.length > 0 &&
-            paginated.map((w) => {
-              const exCount = w.workout_template_exercises?.length ?? 0;
-              return (
-                <div
-                  key={w.id}
-                  className="border-t border-border/10 bg-secondary/5 px-3 py-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-medium text-sm">
-                        {w.name ?? 'Template'}
-                      </div>
-                      <div className="mt-0.5 text-xs text-text-secondary">
-                        {exCount} ασκήσεις ·{' '}
-                        {new Date(w.updated_at ?? w.created_at).toLocaleDateString('el-GR')}
-                      </div>
-                    </div>
+            {/* Pagination footer */}
+            {!loading && filtered.length > 0 && (
+              <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-border/10">
+                <div>
+                  Εμφάνιση <span className="font-semibold">{startIdx}</span>
+                  {filtered.length > 0 && (
+                    <>
+                      –<span className="font-semibold">{endIdx}</span>
+                    </>
+                  )}{' '}
+                  από <span className="font-semibold">{filtered.length}</span>
+                </div>
 
-                    <div className="flex items-center gap-2">
-                      <IconButton
-                        icon={Send}
-                        label="Ανάθεση"
-                        onClick={() => requireActiveSubscription(() => setAssignRow(w))}
-                      />
-                      <IconButton
-                        icon={Pencil}
-                        label="Επεξεργασία"
-                        onClick={() => requireActiveSubscription(() => setEditRow(w))}
-                      />
-                      <DeleteButton id={w.id} onDeleted={load}
-                        guard={() => {
-                          if (subscriptionInactive) {
-                            setShowSubModal(true);
-                            return false;
-                          }
-                          return true;
-                        }}
-                      />
-                    </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    <span>Γραμμές ανά σελίδα:</span>
+                    <select
+                      className="bg-transparent border border-border/10 rounded px-1 py-0.5"
+                      value={pageSize}
+                      onChange={(e) => setPageSize(Number(e.target.value))}
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                    </select>
                   </div>
 
-                  <div className="mt-2 text-xs text-text-secondary whitespace-normal wrap-break-word leading-snug">
-                    {w.notes ?? '—'}
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page === 1}
+                    >
+                      Προηγ.
+                    </button>
+                    <span>
+                      Σελίδα <span className="font-semibold">{page}</span> από{' '}
+                      <span className="font-semibold">{pageCount}</span>
+                    </span>
+                    <button
+                      className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
+                      onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                      disabled={page === pageCount}
+                    >
+                      Επόμενο
+                    </button>
                   </div>
                 </div>
-              );
-            })}
-        </div>
-
-        {/* Pagination footer */}
-        {!loading && filtered.length > 0 && (
-          <div className="flex items-center justify-between px-3 py-2 text-xs text-text-secondary border-t border-border/10">
-            <div>
-              Εμφάνιση <span className="font-semibold">{startIdx}</span>
-              {filtered.length > 0 && (
-                <>
-                  –<span className="font-semibold">{endIdx}</span>
-                </>
-              )}{' '}
-              από <span className="font-semibold">{filtered.length}</span>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-1">
-                <span>Γραμμές ανά σελίδα:</span>
-                <select
-                  className="bg-transparent border border-border/10 rounded px-1 py-0.5"
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
-                >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                </select>
               </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                >
-                  Προηγ.
-                </button>
-                <span>
-                  Σελίδα <span className="font-semibold">{page}</span> από{' '}
-                  <span className="font-semibold">{pageCount}</span>
-                </span>
-                <button
-                  className="px-2 py-1 rounded border border-border/10 disabled:opacity-40"
-                  onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                  disabled={page === pageCount}
-                >
-                  Επόμενο
-                </button>
-              </div>
-            </div>
+            )}
           </div>
-        )}
+
+          {showCreate && (
+            <CreateWorkoutTemplateModal
+              open={showCreate}
+              onClose={() => setShowCreate(false)}
+              onSaved={load}
+            />
+          )}
+
+          {editRow && (
+            <EditWorkoutTemplateModal
+              open={true}
+              templateId={editRow.id}
+              onClose={() => {
+                setEditRow(null);
+              }}
+              onSaved={() => {
+                setEditRow(null);
+                load();
+              }}
+            />
+          )}
+
+
+          {assignRow && (
+            <AssignTemplateModal
+              row={assignRow}
+              members={members}
+              onClose={() => {
+                setAssignRow(null);
+                load();
+              }}
+            />
+          )}
+
+
+          <SubscriptionRequiredModal
+            open={showSubModal}
+            onClose={() => setShowSubModal(false)}
+          />
+        </div>
       </div>
+      {/* ✅ ALWAYS visible overlay */}
+      {isFree && (
+        <div className="absolute inset-0 z-80 flex items-start justify-center p-6 bg-black/40 pointer-events-auto">
+          {/* ✅ DEBUG MARKER: if you don't see this, overlay is not rendering */}
+          <div className="w-full max-w-xl">
 
-      {showCreate && (
-        <CreateWorkoutTemplateModal
-          open={showCreate}
-          onClose={() => setShowCreate(false)}
-          onSaved={load}
-        />
+            <PlanGate
+              blocked
+              asOverlay
+              allow={["starter", "pro"]}
+              title="Τα Workout Templates είναι διαθέσιμα από Starter"
+              description="Αναβάθμισε για να δημιουργείς templates και να τα αναθέτεις σε μέλη."
+              onUpgradeClick={() => navigate("/settings/billing")}
+            />
+          </div>
+        </div>
       )}
-
-      {editRow && (
-        <EditWorkoutTemplateModal
-          open={true}
-          templateId={editRow.id}
-          onClose={() => {
-            setEditRow(null);
-          }}
-          onSaved={() => {
-            setEditRow(null);
-            load();
-          }}
-        />
-      )}
-
-
-      {assignRow && (
-        <AssignTemplateModal
-          row={assignRow}
-          members={members}
-          onClose={() => {
-            setAssignRow(null);
-            load();
-          }}
-        />
-      )}
-
-
-      <SubscriptionRequiredModal
-        open={showSubModal}
-        onClose={() => setShowSubModal(false)}
-      />
     </div>
   );
 }

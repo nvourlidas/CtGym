@@ -54,6 +54,39 @@ async function assertTenantActive(admin: any, tenantId: string) {
   }
 }
 
+async function getEffectiveMaxMembershipPlans(admin: any, tenantId: string) {
+  const { data: sub, error: subErr } = await admin
+    .from("tenant_subscriptions")
+    .select("plan_id, status")
+    .eq("tenant_id", tenantId)
+    .in("status", ["active", "trial", "past_due"])
+    .maybeSingle();
+
+  if (subErr) throw new Error(subErr.message);
+
+  const planId = sub?.plan_id ?? "free"; // 🔁 change if your free plan id differs
+
+  const { data: plan, error: planErr } = await admin
+    .from("subscription_plans")
+    .select("max_membership_plans")
+    .eq("id", planId)
+    .maybeSingle();
+
+  if (planErr) throw new Error(planErr.message);
+
+  return plan?.max_membership_plans ?? null; // null = unlimited
+}
+
+async function countTenantMembershipPlans(admin: any, tenantId: string) {
+  const { count, error } = await admin
+    .from("membership_plans")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId);
+
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 async function getAuth(req: Request) {
   const auth = req.headers.get("Authorization") ?? "";
   const supa = createClient(URL, ANON, {
@@ -182,6 +215,31 @@ serve(async (req) => {
         details: e?.details ?? null,
       }),
       { status: 402 },
+      req,
+    );
+  }
+
+  // ✅ PLAN LIMIT: membership plan types
+  try {
+    const maxPlans = await getEffectiveMaxMembershipPlans(admin, tenantId);
+    if (maxPlans !== null) {
+      const current = await countTenantMembershipPlans(admin, tenantId);
+      if (current >= maxPlans) {
+        return withCors(
+          JSON.stringify({
+            error: "PLAN_LIMIT:MAX_MEMBERSHIP_PLANS_REACHED",
+            limit: maxPlans,
+            current,
+          }),
+          { status: 409 },
+          req,
+        );
+      }
+    }
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({ error: e?.message ?? "PLAN_LIMIT_CHECK_FAILED" }),
+      { status: 400 },
       req,
     );
   }
