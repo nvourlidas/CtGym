@@ -233,7 +233,7 @@ export default function BillingPage() {
     <div className="p-6 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Billing</h1>
+          <h1 className="text-xl font-semibold">Πληρωμές & Πλάνα</h1>
           <p className="text-sm text-text-secondary">
             Προβολή πλάνου, κατάστασης συνδρομής και ιστορικού πληρωμών.
           </p>
@@ -241,10 +241,10 @@ export default function BillingPage() {
 
         <button
           onClick={() => setPlansModalOpen(true)}
-          className="inline-flex items-center gap-2 rounded-md border border-border/10 bg-secondary/10 hover:bg-secondary/20 px-3 py-2 text-sm font-semibold"
+          className="inline-flex items-center gap-2 rounded-md border border-accent/40 bg-accent text-black hover:bg-accent/70 px-3 py-2 text-sm font-semibold cursor-pointer"
         >
           <Sparkles className="h-4 w-4 opacity-80" />
-          Δες πλάνα
+          Επιλογή Πλάνου
         </button>
       </div>
 

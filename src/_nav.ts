@@ -16,17 +16,41 @@ import {
 } from 'lucide-react';
 
 
+export type PlanTier = 'free' | 'starter' | 'pro';
+
+type NavItem = {
+  type: 'item';
+  label: string;
+  to: string;
+  end?: boolean;
+  roles?: string[];
+  icon?: LucideIcon;
+  minPlan?: Exclude<PlanTier, 'free'>; // ✅ starter | pro
+};
+
+type NavGroupChild = {
+  label: string;
+  to: string;
+  end?: boolean;
+  roles?: string[];
+  icon?: LucideIcon;
+  minPlan?: Exclude<PlanTier, 'free'>; // ✅ starter | pro
+};
+
+type NavGroup = {
+  type: 'group';
+  label: string;
+  roles?: string[];
+  icon?: LucideIcon;
+  minPlan?: Exclude<PlanTier, 'free'>; // ✅ optional: gate whole group
+  children: NavGroupChild[];
+};
+
 export type NavEntry =
   | { type: 'section'; title: string }
   | { type: 'divider' }
-  | { type: 'item'; label: string; to: string; end?: boolean; roles?: string[]; icon?: LucideIcon }
-  | {
-      type: 'group';
-      label: string;
-      roles?: string[];
-      icon?: LucideIcon; // optional icon for the group header
-      children: Array<{ label: string; to: string; end?: boolean; roles?: string[]; icon?: LucideIcon }>;
-    };
+  | NavItem
+  | NavGroup;
 
 export const NAV: NavEntry[] = [
   { type: 'section', title: 'Κυρια' },
@@ -61,8 +85,8 @@ export const NAV: NavEntry[] = [
     ],
   },
 
-  { type: 'item', label: 'Προπονήσεις', to: '/workouttemplates', icon: Dumbbell },
-  { type: 'item', label: 'Ερωτηματολόγια', to: '/questionnaires', icon: ClipboardList },
+  { type: 'item', label: 'Προπονήσεις', to: '/workouttemplates', icon: Dumbbell, minPlan: 'starter'  },
+  { type: 'item', label: 'Ερωτηματολόγια', to: '/questionnaires', icon: ClipboardList, minPlan: 'starter'  },
   {
     type: 'group',
     label: 'Συνδρομές',
@@ -72,7 +96,7 @@ export const NAV: NavEntry[] = [
       { label: 'Συνδρομές', to: '/memberships', icon: BookmarkCheck },
     ],
   },
-  { type: 'item', label: 'Οικονομικά', to: '/finances', icon: EuroIcon },
+  { type: 'item', label: 'Οικονομικά', to: '/finances', icon: EuroIcon, minPlan: 'starter'  },
     { type: 'section', title: 'ριθμισεισ' },
   
   {
@@ -80,7 +104,7 @@ export const NAV: NavEntry[] = [
     label: 'Ρυθμίσεις',
     icon: Settings,
     children: [
-      { label: 'Εμφάνιση εφαρμογής', to: '/settings/themesettings', icon: Palette },
+      { label: 'Εμφάνιση εφαρμογής', to: '/settings/themesettings', icon: Palette, minPlan: 'pro'  },
       { label: 'Πληροφορίες Γυμναστηρίου', to: '/settings/gyminfo', icon: Info },
       { label: 'Ωράριο Γυμναστηρίου', to: '/settings/opninghours', icon: Clock },
       { label: 'Συνδρομή Γυμναστηρίου', to: '/settings/billing', icon: CreditCard },

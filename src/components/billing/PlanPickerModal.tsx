@@ -16,13 +16,8 @@ type PlanRow = {
   monthly_price_cents: number;
   currency: string;
   is_active?: boolean;
-
-  // ✅ LIMITS (null = unlimited)
-  limit_members?: number | null;
-  limit_classes?: number | null;
-  limit_memberships?: number | null;
-  limit_programs?: number | null;
 };
+
 function fmtMoney(cents: number, currency: string) {
   const val = (cents ?? 0) / 100;
   try {
@@ -52,8 +47,7 @@ type FeatureKey =
   | "exports"
   | "theme_customization"
   | "mobile_app"
-  | "support_priority"
-  | "payments_viva";
+  | "support_priority";
 
 const FEATURES: { key: FeatureKey; label: string; hint?: string }[] = [
   { key: "admin_panel", label: "Admin Panel πρόσβαση" },
@@ -68,11 +62,14 @@ const FEATURES: { key: FeatureKey; label: string; hint?: string }[] = [
   { key: "push_notifications", label: "Push Notifications" },
 
   { key: "exports", label: "Export Excel / PDF" },
-  { key: "theme_customization", label: "Custom theme & logo", hint: "Αλλαγή χρωμάτων/branding στο mobile" },
+  {
+    key: "theme_customization",
+    label: "Custom theme & logo",
+    hint: "Αλλαγή χρωμάτων/branding στο mobile",
+  },
 
   { key: "mobile_app", label: "Mobile App για μέλη" },
   { key: "support_priority", label: "Προτεραιότητα υποστήριξης" },
-  { key: "payments_viva", label: "Αυτόματη ενεργοποίηση μέσω Viva" },
 ];
 
 function fmtLimit(v?: number | null) {
@@ -81,77 +78,102 @@ function fmtLimit(v?: number | null) {
   return String(v);
 }
 
-const LIMITS: { key: keyof PlanRow; label: string; hint?: string }[] = [
-  { key: "limit_members", label: "Όριο μελών", hint: "Μέγιστοι ενεργοί χρήστες (members)" },
-  { key: "limit_classes", label: "Όριο Τμημάτων", hint: "Μέγιστος αριθμός Τμημάτων" },
-  { key: "limit_memberships", label: "Όριο Συνδρομών", hint: "Μέγιστες συνδρομές/πακέτα" },
-  { key: "limit_programs", label: "Όριο προγραμμάτων", hint: "Μέγιστος αριθμός programs" },
+/** ✅ Limits */
+type LimitKey = "members" | "classes" | "memberships" | "schedule_days_ahead";
+
+const PLAN_LIMITS: { key: LimitKey; label: string; hint?: string }[] = [
+  { key: "members", label: "Μέλη", hint: "Μέγιστος αριθμός μελών" },
+  { key: "classes", label: "Τμήματα", hint: "Μέγιστος αριθμός τμημάτων" },
+  {
+    key: "memberships",
+    label: "Συνδρομές",
+    hint: "Μέγιστος αριθμός πακέτων/συνδρομών",
+  },
+  {
+    key: "schedule_days_ahead",
+    label: "Προγραμματισμός sessions (ημέρες)",
+    hint: "Πόσες ημέρες μπροστά μπορείς να δημιουργήσεις sessions στο πρόγραμμα",
+  },
 ];
+
+type PlanKey = "free" | "starter" | "pro";
+type PlanLimits = Record<LimitKey, number | null>;
+
+const PLAN_LIMITS_BY_PLAN: Record<PlanKey, PlanLimits> = {
+  free: { members: 25, classes: 3, memberships: 2, schedule_days_ahead: 7 },
+  starter: { members: 120, classes: 10, memberships: 10, schedule_days_ahead: 90 },
+  pro: { members: null, classes: null, memberships: null, schedule_days_ahead: null }, // null => unlimited
+};
 
 /**
  * ✅ Decide plan tier from id/name. (works with your DB rows)
  */
-function planTier(p: PlanRow): "free" | "starter" | "pro" {
+function planTier(p: PlanRow): PlanKey {
   const id = String(p.id ?? "").toLowerCase();
   const name = String(p.name ?? "").toLowerCase();
 
   if (id.includes("pro") || name.includes("pro")) return "pro";
   if (id.includes("starter") || name.includes("starter")) return "starter";
-  // if you have a free row
   if (id.includes("free") || name.includes("free")) return "free";
+
   // fallback: treat unknown paid as starter
   return "starter";
 }
 
+// alias (so your code reads nicely)
+function getPlanKey(p: PlanRow): PlanKey {
+  return planTier(p);
+}
+
 /**
  * ✅ Per-tier feature availability.
- * Adjust these booleans to match your real product packaging.
+ * (Email/Push/Exports/Theme are Pro-only as you requested)
  */
 function featureEnabled(key: FeatureKey, p: PlanRow): boolean {
   const tier = planTier(p);
 
-  // basics for paid tiers
-  const paidBase =
+  const core =
     key === "admin_panel" ||
     key === "members_management" ||
     key === "bookings" ||
-    key === "classes" ||
-    key === "payments_viva";
+    key === "classes";
 
   if (tier === "free") {
-    // free gets limited core access
-    if (paidBase) return false;
-    if (key === "mobile_app") return false;
+    // Free: only core (and mobile if the plan row says it includes mobile)
+    if (core) return true;
+    if (key === "mobile_app") return !!p.includes_mobile;
     return false;
   }
 
   if (tier === "starter") {
-    if (paidBase) return true;
+    if (core) return true;
+    if (key === "mobile_app") return !!p.includes_mobile;
+
+    // Starter: extra ops tools
     if (key === "workout_templates") return true;
     if (key === "questionnaires") return true;
 
-    // Starter: no comms, no export, no theme
-    if (key === "email_campaigns") return false;
-    if (key === "push_notifications") return false;
+    // Pro-only:
+    if (key === "email_campaigns") return true;
+    if (key === "push_notifications") return true;
     if (key === "exports") return false;
     if (key === "theme_customization") return false;
-
-    if (key === "mobile_app") return !!p.includes_mobile;
     if (key === "support_priority") return false;
+    if (key === "payments_viva") return true;
 
     return false;
   }
 
-  // pro
+  // Pro
   if (tier === "pro") {
-    if (paidBase) return true;
+    if (core) return true;
+    if (key === "mobile_app") return !!p.includes_mobile;
     if (key === "workout_templates") return true;
     if (key === "questionnaires") return true;
     if (key === "email_campaigns") return true;
     if (key === "push_notifications") return true;
     if (key === "exports") return true;
     if (key === "theme_customization") return true;
-    if (key === "mobile_app") return !!p.includes_mobile;
     if (key === "support_priority") return true;
     if (key === "payments_viva") return true;
     return false;
@@ -162,11 +184,11 @@ function featureEnabled(key: FeatureKey, p: PlanRow): boolean {
 
 function ValueCell({ ok }: { ok: boolean }) {
   return ok ? (
-    <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-emerald-500/10 border border-emerald-500/25">
-      <Check className="h-4 w-4 text-emerald-300" />
+    <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-emerald-500/10 border border-success/25">
+      <Check className="h-4 w-4 text-success" />
     </span>
   ) : (
-    <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-white/5 border border-white/10">
+    <span className="inline-flex items-center justify-center h-7 w-7 rounded-full bg-white/5 border border-border/10">
       <Minus className="h-4 w-4 text-text-secondary" />
     </span>
   );
@@ -198,6 +220,7 @@ export default function PlanPickerModal({
   const popularId = useMemo(() => {
     const starter = visiblePlans.find((p) => planTier(p) === "starter");
     if (starter) return starter.id;
+
     const sorted = [...visiblePlans].sort(
       (a, b) => (a.monthly_price_cents ?? 0) - (b.monthly_price_cents ?? 0)
     );
@@ -217,12 +240,12 @@ export default function PlanPickerModal({
 
       {/* modal */}
       <div className="absolute inset-0 flex items-start justify-center p-4 md:p-8 overflow-auto">
-        <div className="w-full max-w-6xl rounded-2xl border border-white/10 bg-secondary-background/95 backdrop-blur shadow-2xl">
+        <div className="w-full max-w-6xl rounded-2xl border border-border/10 bg-secondary-background/95 backdrop-blur shadow-2xl">
           {/* Header / hero */}
-          <div className="p-5 md:p-6 border-b border-white/10">
+          <div className="p-5 md:p-6 border-b border-border/10">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <div className="inline-flex items-center gap-2 text-xs font-semibold px-2.5 py-1 rounded-full border border-white/10 bg-white/5">
+                <div className="inline-flex items-center gap-2 text-xs font-semibold px-2.5 py-1 rounded-full border border-border/10 bg-white/5">
                   <Sparkles className="h-4 w-4 opacity-80" />
                   Επιλογή πλάνου
                 </div>
@@ -235,14 +258,14 @@ export default function PlanPickerModal({
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-secondary">
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border/10 bg-white/5 px-2 py-1">
                     <ShieldCheck className="h-4 w-4" />
                     Ασφαλής πληρωμή με Viva
                   </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border/10 bg-white/5 px-2 py-1">
                     Χωρίς συμβόλαιο
                   </span>
-                  <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2 py-1">
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border/10 bg-white/5 px-2 py-1">
                     Ακύρωση οποτεδήποτε
                   </span>
                 </div>
@@ -250,7 +273,7 @@ export default function PlanPickerModal({
 
               <button
                 onClick={onClose}
-                className="shrink-0 inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2"
+                className="shrink-0 inline-flex items-center justify-center rounded-xl border border-border/10 bg-white/5 hover:bg-white/10 px-3 py-2"
                 aria-label="Close modal"
               >
                 <X className="h-4 w-4 opacity-80" />
@@ -270,9 +293,9 @@ export default function PlanPickerModal({
             </div>
           ) : (
             <div className="p-4 md:p-6 space-y-6">
-              {/* ✅ Compare table (marketing + shows ALL features for ALL plans) */}
-              <div className="rounded-2xl border border-white/10 overflow-hidden">
-                <div className="px-4 py-3 bg-secondary/10 border-b border-white/10">
+              {/* ✅ Compare table */}
+              <div className="rounded-2xl border border-border/10 overflow-hidden">
+                <div className="px-4 py-3 bg-secondary/10 border-b border-border/10">
                   <div className="text-sm font-semibold">Σύγκριση χαρακτηριστικών</div>
                   <div className="text-xs text-text-secondary mt-0.5">
                     Όλα τα πλάνα εμφανίζονται — δες γρήγορα τι περιλαμβάνει το καθένα.
@@ -286,34 +309,34 @@ export default function PlanPickerModal({
                         <th className="px-4 py-3 text-xs font-semibold text-text-secondary">
                           Χαρακτηριστικό
                         </th>
+
                         {visiblePlans.map((p) => {
                           const isPopular = p.id === popularId;
                           const isCurrent = currentPlanId === p.id;
 
                           return (
                             <th key={p.id} className="px-4 py-3">
-                              <div className="flex items-center justify-between gap-2">
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <div className="font-semibold truncate">{p.name}</div>
-                                    {isPopular && (
-                                      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] border border-yellow-500/30 bg-yellow-500/10 text-yellow-200">
-                                        <Star className="h-3.5 w-3.5" />
-                                        Most popular
-                                      </span>
-                                    )}
-                                    {isCurrent && (
-                                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] border border-white/10 bg-white/5 text-text-secondary">
-                                        Τρέχον
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="mt-1 text-xs text-text-secondary">
-                                    <span className="font-semibold text-text-primary">
-                                      {fmtMoney(p.monthly_price_cents, p.currency)}
-                                    </span>{" "}
-                                    / μήνα
-                                  </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <div className="font-semibold truncate">{p.name}</div>
+                                  {isPopular && (
+                                    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] border border-yellow-500/30 bg-accent/10 text-accent">
+                                      <Star className="h-3.5 w-3.5" />
+                                      Most popular
+                                    </span>
+                                  )}
+                                  {isCurrent && (
+                                    <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] border border-border/10 bg-white/5 text-text-secondary">
+                                      Τρέχον
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="mt-1 text-xs text-text-secondary">
+                                  <span className="font-semibold text-text-primary">
+                                    {fmtMoney(p.monthly_price_cents, p.currency)}
+                                  </span>{" "}
+                                  / μήνα
                                 </div>
                               </div>
                             </th>
@@ -324,7 +347,7 @@ export default function PlanPickerModal({
 
                     <tbody>
                       {/* ✅ LIMITS section */}
-                      <tr className="border-t border-white/10 bg-secondary/5">
+                      <tr className="border-t border-border/10 bg-secondary/5">
                         <td className="px-4 py-3 text-xs font-semibold text-text-secondary uppercase tracking-wide">
                           Όρια πλάνου
                         </td>
@@ -333,26 +356,50 @@ export default function PlanPickerModal({
                         ))}
                       </tr>
 
-                      {LIMITS.map((l) => (
-                        <tr key={String(l.key)} className="border-t border-white/10 hover:bg-secondary/10">
+                      {PLAN_LIMITS.map((l) => (
+                        <tr
+                          key={String(l.key)}
+                          className="border-t border-border/10 hover:bg-secondary/10"
+                        >
                           <td className="px-4 py-3">
                             <div className="font-medium">{l.label}</div>
-                            {l.hint && <div className="text-[11px] text-text-secondary mt-0.5">{l.hint}</div>}
+                            {l.hint && (
+                              <div className="text-[11px] text-text-secondary mt-0.5">
+                                {l.hint}
+                              </div>
+                            )}
                           </td>
 
-                          {visiblePlans.map((p) => (
-                            <td key={p.id} className="px-4 py-3">
-                              <span className="inline-flex items-center h-8 px-3 rounded-xl border border-white/10 bg-white/5 text-sm font-semibold">
-                                {fmtLimit((p as any)[l.key])}
-                              </span>
-                            </td>
-                          ))}
+                          {visiblePlans.map((p) => {
+                            const key = getPlanKey(p);
+                            const lim = PLAN_LIMITS_BY_PLAN[key];
+                            const value = lim?.[l.key];
+
+                            return (
+                              <td key={p.id} className="px-4 py-3">
+                                <span className="inline-flex items-center h-8 px-3 rounded-xl border border-border/10 bg-white/5 text-sm font-semibold">
+                                  {fmtLimit(value)}
+                                </span>
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
+
+                      {/* ✅ FEATURES section */}
+                      <tr className="border-t border-border/10 bg-secondary/5">
+                        <td className="px-4 py-3 text-xs font-semibold text-text-secondary uppercase tracking-wide">
+                          Χαρακτηριστικά
+                        </td>
+                        {visiblePlans.map((p) => (
+                          <td key={p.id} className="px-4 py-3" />
+                        ))}
+                      </tr>
+
                       {FEATURES.map((f) => (
                         <tr
                           key={f.key}
-                          className="border-t border-white/10 hover:bg-secondary/10"
+                          className="border-t border-border/10 hover:bg-secondary/10"
                         >
                           <td className="px-4 py-3">
                             <div className="font-medium">{f.label}</div>
@@ -375,15 +422,18 @@ export default function PlanPickerModal({
                 </div>
               </div>
 
-              {/* ✅ Plan cards (CTA) */}
+              {/* ✅ Plan cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {visiblePlans.map((p) => {
                   const isCurrent = currentPlanId === p.id;
                   const isPopular = p.id === popularId;
 
+                  const key = getPlanKey(p);
+                  const lim = PLAN_LIMITS_BY_PLAN[key];
+
                   const enabledFeatures = FEATURES.filter((f) =>
                     featureEnabled(f.key, p)
-                  ).slice(0, 7); // keep card concise
+                  ).slice(0, 7);
 
                   return (
                     <div
@@ -392,8 +442,8 @@ export default function PlanPickerModal({
                         "rounded-2xl border p-5 flex flex-col",
                         "bg-secondary/10",
                         isPopular
-                          ? "border-yellow-500/30 shadow-[0_0_0_1px_rgba(234,179,8,0.25)]"
-                          : "border-white/10",
+                          ? "border-accent/30 shadow-[0_0_0_1px_rgba(234,179,8,0.25)]"
+                          : "border-border/10",
                       ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -403,7 +453,7 @@ export default function PlanPickerModal({
                               {p.name}
                             </div>
                             {isPopular && (
-                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] border border-yellow-500/30 bg-yellow-500/10 text-yellow-200">
+                              <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] border border-accennt/30 bg-yellow-500/10 text-accent">
                                 <Star className="h-3.5 w-3.5" />
                                 Popular
                               </span>
@@ -419,16 +469,16 @@ export default function PlanPickerModal({
                           </div>
 
                           <div className="mt-1 text-xs text-text-secondary">
-                            {planTier(p) === "pro"
+                            {key === "pro"
                               ? "Όλα τα Pro εργαλεία για ανάπτυξη & marketing."
-                              : planTier(p) === "starter"
+                              : key === "starter"
                                 ? "Ιδανικό για να ξεκινήσεις οργανωμένα."
                                 : "Βασική πρόσβαση για δοκιμή."}
                           </div>
                         </div>
 
                         {isCurrent && (
-                          <span className="text-[11px] px-2 py-1 rounded-full bg-white/5 border border-white/10 text-text-secondary">
+                          <span className="text-[11px] px-2 py-1 rounded-full bg-white/5 border border-border/10 text-text-secondary">
                             Τρέχον
                           </span>
                         )}
@@ -438,33 +488,45 @@ export default function PlanPickerModal({
                         {enabledFeatures.map((f) => (
                           <li key={f.key} className="flex gap-2">
                             <span className="mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/25">
-                              <Check className="h-3.5 w-3.5 text-emerald-300" />
+                              <Check className="h-3.5 w-3.5 text-success" />
                             </span>
                             <span>{f.label}</span>
                           </li>
                         ))}
+
                         <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-text-secondary">
-                          <div className="rounded-lg border border-white/10 bg-white/5 px-2 py-1">
-                            Μέλη: <span className="font-semibold text-text-primary">{fmtLimit(p.limit_members)}</span>
+                          <div className="rounded-lg border border-border/10 bg-white/5 px-2 py-1">
+                            Μέλη:{" "}
+                            <span className="font-semibold text-text-primary">
+                              {fmtLimit(lim.members)}
+                            </span>
                           </div>
-                          <div className="rounded-lg border border-white/10 bg-white/5 px-2 py-1">
-                            Classes: <span className="font-semibold text-text-primary">{fmtLimit(p.limit_classes)}</span>
+                          <div className="rounded-lg border border-border/10 bg-white/5 px-2 py-1">
+                            Τμήματα:{" "}
+                            <span className="font-semibold text-text-primary">
+                              {fmtLimit(lim.classes)}
+                            </span>
                           </div>
-                          <div className="rounded-lg border border-white/10 bg-white/5 px-2 py-1">
-                            Memberships: <span className="font-semibold text-text-primary">{fmtLimit(p.limit_memberships)}</span>
+                          <div className="rounded-lg border border-border/10 bg-white/5 px-2 py-1">
+                            Συνδρομές:{" "}
+                            <span className="font-semibold text-text-primary">
+                              {fmtLimit(lim.memberships)}
+                            </span>
                           </div>
-                          <div className="rounded-lg border border-white/10 bg-white/5 px-2 py-1">
-                            Programs: <span className="font-semibold text-text-primary">{fmtLimit(p.limit_programs)}</span>
+                          <div className="rounded-lg border border-border/10 bg-white/5 px-2 py-1">
+                            Προγραμματισμός:{" "}
+                            <span className="font-semibold text-text-primary">
+                              {fmtLimit(lim.schedule_days_ahead)}
+                            </span>
                           </div>
                         </div>
+
                         {FEATURES.filter((f) => featureEnabled(f.key, p)).length >
                           enabledFeatures.length && (
                             <li className="text-[11px] opacity-80">
                               +{" "}
-                              {
-                                FEATURES.filter((f) => featureEnabled(f.key, p))
-                                  .length - enabledFeatures.length
-                              }{" "}
+                              {FEATURES.filter((f) => featureEnabled(f.key, p))
+                                .length - enabledFeatures.length}{" "}
                               ακόμα…
                             </li>
                           )}
@@ -475,10 +537,10 @@ export default function PlanPickerModal({
                           className={[
                             "w-full inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold border transition",
                             isCurrent
-                              ? "opacity-60 cursor-not-allowed border-white/10 bg-white/5"
+                              ? "opacity-60 cursor-not-allowed border-border/10 bg-white/5"
                               : isPopular
-                                ? "border-yellow-500/30 bg-yellow-500/15 hover:bg-yellow-500/20"
-                                : "border-white/10 bg-secondary/10 hover:bg-secondary/20",
+                                ? "border-accent/30 bg-accent/15 hover:bg-accent/20"
+                                : "border-border/10 bg-secondary/10 hover:bg-secondary/20",
                           ].join(" ")}
                           disabled={busy || isCurrent}
                           onClick={() => onSubscribe(p.id)}
@@ -511,13 +573,13 @@ export default function PlanPickerModal({
             </div>
           )}
 
-          <div className="p-4 md:p-6 border-t border-white/10 flex items-center justify-between gap-3">
+          <div className="p-4 md:p-6 border-t border-border/10 flex items-center justify-between gap-3">
             <div className="text-[11px] text-text-secondary">
               Οι τιμές είναι μηνιαίες. Η ενεργοποίηση γίνεται αυτόματα μετά την πληρωμή.
             </div>
             <button
               onClick={onClose}
-              className="rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-4 py-2 text-sm font-semibold"
+              className="rounded-xl border border-border/10 bg-white/5 hover:bg-white/10 px-4 py-2 text-sm font-semibold"
             >
               Κλείσιμο
             </button>

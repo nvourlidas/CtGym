@@ -7,7 +7,7 @@ import { NAV, type NavEntry } from '../_nav';
 import type { LucideIcon } from 'lucide-react';
 import logo from '../assets/CTGYM.YELLOW 1080x1080.svg';
 import PlanPickerModal from '../components/billing/PlanPickerModal';
-import { Rocket } from "lucide-react";
+import { LogOut, Rocket } from "lucide-react";
 
 
 type Tenant = { name: string };
@@ -24,6 +24,31 @@ function applyTheme(mode: ThemeMode) {
   document.documentElement.dataset.theme = mode; // matches :root[data-theme="dark"]
   localStorage.setItem('theme', mode);
 }
+
+
+type PlanTier = 'free' | 'starter' | 'pro';
+
+function normalizeTier(raw: any): PlanTier {
+  const s = String(raw ?? '').toLowerCase();
+  if (s.includes('pro')) return 'pro';
+  if (s.includes('starter')) return 'starter';
+  return 'free';
+}
+
+function tierRank(t: PlanTier) {
+  return t === 'free' ? 0 : t === 'starter' ? 1 : 2;
+}
+
+function needsUpgrade(userTier: PlanTier, minPlan?: 'starter' | 'pro') {
+  if (!minPlan) return false;
+  return tierRank(userTier) < tierRank(minPlan);
+}
+
+function planBadgeLabel(minPlan?: 'starter' | 'pro') {
+  if (!minPlan) return null;
+  return minPlan.toUpperCase(); // STARTER / PRO
+}
+
 
 export default function AppShell() {
   const { profile, subscription, subscriptionLoading } = useAuth();
@@ -334,9 +359,17 @@ export default function AppShell() {
 }
 
 function SidebarNav() {
-  const { profile } = useAuth();
+  const { profile, subscription } = useAuth();
   const role = profile?.role ?? 'member';
   const location = useLocation();
+
+  const userTier = useMemo(() => {
+    const raw =
+      (subscription as any)?.plan_id ??
+      (subscription as any)?.tier ??
+      'free';
+    return normalizeTier(raw);
+  }, [subscription]);
 
   // filter by role if provided
   const visible = useMemo(
@@ -371,6 +404,10 @@ function SidebarNav() {
             return <div key={`div-${i}`} className="my-2 border-t border-white/10" />;
           }
           if (e.type === 'item') {
+            const badge = needsUpgrade(userTier, (e as any).minPlan)
+              ? planBadgeLabel((e as any).minPlan)
+              : null;
+
             return (
               <NavItem
                 key={`item-${e.to}-${i}`}
@@ -378,6 +415,7 @@ function SidebarNav() {
                 label={e.label}
                 end={e.end}
                 Icon={e.icon as LucideIcon | undefined}
+                badge={badge}
               />
             );
           }
@@ -387,6 +425,7 @@ function SidebarNav() {
               entry={e}
               currentPath={location.pathname}
               role={role}
+              userTier={userTier}
             />
           );
         })}
@@ -399,10 +438,12 @@ function SidebarGroup({
   entry,
   currentPath,
   role,
+  userTier,
 }: {
   entry: Extract<NavEntry, { type: 'group' }>;
   currentPath: string;
   role: string;
+  userTier: PlanTier;
 }) {
   // auto-open if any child matches current path prefix
   const initiallyOpen = entry.children.some((ch) => currentPath.startsWith(ch.to));
@@ -415,7 +456,12 @@ function SidebarGroup({
     <div className="mb-1">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="w-full flex items-center justify-between rounded-md px-3 py-2 text-md opacity-80 hover:opacity-100 hover:bg-secondary/10"
+        className={[
+          "w-full flex items-center justify-between rounded-md px-3 py-2 text-md transition-colors",
+          open
+            ? "bg-primary/15 text-accent font-medium"
+            : "opacity-80 hover:opacity-100 hover:bg-secondary/10"
+        ].join(" ")}
       >
         <span className="flex items-center gap-2">
           {GroupIcon ? <GroupIcon className="h-8 w-4" /> : null}
@@ -433,16 +479,23 @@ function SidebarGroup({
 
       <div className={`overflow-hidden transition-[max-height] duration-200 ${open ? 'max-h-96' : 'max-h-0'}`}>
         <div className="pl-2">
-          {children.map((ch, idx) => (
-            <NavItem
-              key={`${ch.to}-${idx}`}
-              to={ch.to}
-              label={ch.label}
-              end={ch.end}
-              Icon={ch.icon as LucideIcon | undefined}
-              nested
-            />
-          ))}
+          {children.map((ch, idx) => {
+            const badge = needsUpgrade(userTier, (ch as any).minPlan)
+              ? planBadgeLabel((ch as any).minPlan)
+              : null;
+
+            return (
+              <NavItem
+                key={`${ch.to}-${idx}`}
+                to={ch.to}
+                label={ch.label}
+                end={ch.end}
+                Icon={ch.icon as LucideIcon | undefined}
+                nested
+                badge={badge}
+              />
+            );
+          })}
         </div>
       </div>
     </div>
@@ -455,12 +508,14 @@ function NavItem({
   end,
   Icon,
   nested = false,
+  badge = null,
 }: {
   to: string;
   label: string;
   end?: boolean;
   Icon?: LucideIcon;
   nested?: boolean;
+  badge?: string | null;
 }) {
   return (
     <NavLink
@@ -468,14 +523,27 @@ function NavItem({
       end={end}
       className={({ isActive }) =>
         [
-          'rounded-md px-3 py-2 text-md transition-colors flex items-center gap-2',
+          'rounded-md px-3 py-2 text-md transition-colors flex items-center gap-2 justify-between ',
           nested ? 'ml-1' : '',
-          isActive ? 'bg-primary/90 text-white' : 'opacity-80 hover:opacity-100 hover:bg-secondary/10',
+          isActive
+            ? 'font-semibold text-primary'
+            : 'opacity-80 hover:opacity-100 hover:bg-secondary/10',
         ].join(' ')
       }
     >
-      {Icon ? <Icon className="h-8 w-4" /> : null}
-      <span>{label}</span>
+      <span className="flex items-start gap-2 flex-1 min-w-0">
+        {Icon ? <Icon className="h-4 w-4 shrink-0 mt-0.5" /> : null}
+
+        <span className="wrap-break-word leading-snug">
+          {label}
+        </span>
+      </span>
+
+      {badge ? (
+        <span className="ml-2 shrink-0 rounded-full border border-accent/15 bg-accent/5 text-accent px-2 py-0.5 text-[10px] font-semibold tracking-wide">
+          {badge}
+        </span>
+      ) : null}
     </NavLink>
   );
 }
@@ -492,7 +560,7 @@ function UserMenu({
 
   const boxRef = useRef<HTMLDivElement | null>(null);
 
-    useEffect(() => {
+  useEffect(() => {
     if (!open) return;
 
     const onDown = (e: MouseEvent) => {
@@ -548,7 +616,7 @@ function UserMenu({
                 type="button"
                 onClick={onToggleTheme}
                 className={[
-                  "relative inline-flex h-6 w-11 items-center rounded-full transition",
+                  "relative inline-flex h-6 w-11 items-center rounded-full transition cursor-pointer",
                   theme === "dark" ? "bg-primary" : "bg-black/20",
                 ].join(" ")}
                 aria-label="Toggle theme"
@@ -572,9 +640,10 @@ function UserMenu({
 
           <button
             onClick={signOut}
-            className="w-full text-left px-3 py-2 text-sm hover:bg-border/5"
+            className="w-full text-left px-3 py-2 text-sm hover:bg-border/5 cursor-pointer inline-flex items-center gap-2 text-danger"
           >
-            Sign out
+            <LogOut className="h-4 w-4" />
+            Αποσύνδεση
           </button>
         </div>
       )}

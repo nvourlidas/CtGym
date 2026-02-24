@@ -772,7 +772,7 @@ export default function MembersPage() {
             title={!canSendComms ? "Διαθέσιμο από Starter" : "Αποστολή Push"}
           >
             <BellDot className="h-4 w-4" />
-            Αποστολή Push
+            Αποστολή Ειδοποίησης
             {!canSendComms && <span className="text-[11px] opacity-80">🔒</span>}
           </button>
 

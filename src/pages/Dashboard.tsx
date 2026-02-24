@@ -24,7 +24,11 @@ function titleFromSession(s: SessionForModal) {
 function fmtHM(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("el-GR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 // ✅ HOISTED OUTSIDE Dashboard: stable identity, no remounting subtrees

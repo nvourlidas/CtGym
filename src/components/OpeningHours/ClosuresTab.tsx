@@ -347,7 +347,7 @@ export default function ClosuresTab({ tenantId, tenant_name, exceptions, setExce
                       className="px-3 py-2 rounded-lg text-xs font-medium border border-white/10 bg-accent/20 text-text-primary hover:bg-accent/30 disabled:opacity-50 inline-flex items-center gap-2"
                     >
                       <Bell size={14} />
-                      Push
+                      Ειδοποίηση
                     </button>
                   </div>
 

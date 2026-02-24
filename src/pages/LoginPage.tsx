@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import logo from '../assets/CTGYM.YELLOW 1080x1080.svg';
-import { Rocket } from 'lucide-react';
+import { Rocket, Eye, EyeOff } from 'lucide-react';
 import TenantOnboardingModal from "../components/onboarding/TenantOnboardingModal";
 import CreatedInfoModal from "../components/onboarding/CreatedInfoModal";
 
@@ -17,6 +17,11 @@ export default function LoginPage() {
   const navigate = useNavigate();
 
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  const [showForgot, setShowForgot] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
 
   const [createdInfo, setCreatedInfo] = useState<{ tenantId: string; adminEmail: string } | null>(null);
 
@@ -27,6 +32,13 @@ export default function LoginPage() {
     }
   }, [params]);
 
+  const onKeyDownLogin = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      onLogin();
+    }
+  };
+
   const onLogin = async () => {
     setError(null);
     setPending(true);
@@ -35,7 +47,7 @@ export default function LoginPage() {
         email,
         password: pw,
       });
-      if (error) throw error;
+      if (error) throw new Error('Λανθασμένα στοιχεία εισόδου.');
 
       const userId = data.user?.id;
       if (!userId) throw new Error('Δεν βρέθηκε συνεδρία χρήστη.');
@@ -63,6 +75,33 @@ export default function LoginPage() {
     }
   };
 
+
+  const onForgotPassword = async () => {
+    setResetMsg(null);
+
+    if (!email.trim()) {
+      setResetMsg("Γράψε πρώτα το email σου.");
+      return;
+    }
+
+    setResetBusy(true);
+    try {
+      const redirectTo = `${window.location.origin}/reset-password`;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        redirectTo,
+      });
+
+      if (error) throw error;
+
+      setResetMsg("Σου στείλαμε email με οδηγίες για επαναφορά κωδικού.");
+    } catch (e: any) {
+      setResetMsg(e?.message || "Αποτυχία αποστολής email επαναφοράς.");
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-center bg-[#253649] text-slate-100 px-4 overflow-hidden">
       {/* Animated / glassy background */}
@@ -72,14 +111,14 @@ export default function LoginPage() {
 
         {/* animated blobs */}
         <div
-          className="absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full blur-3xl opacity-30 animate-pulse"
+          className="absolute -top-40 -left-40 h-130 w-130 rounded-full blur-3xl opacity-30 animate-pulse"
           style={{
             background:
               'radial-gradient(circle at 30% 30%, rgba(255,201,71,0.65), rgba(255,201,71,0) 55%)',
           }}
         />
         <div
-          className="absolute -bottom-48 -right-48 h-[620px] w-[620px] rounded-full blur-3xl opacity-25 animate-pulse"
+          className="absolute -bottom-48 -right-48 h-155 w-155 rounded-full blur-3xl opacity-25 animate-pulse"
           style={{
             background:
               'radial-gradient(circle at 60% 60%, rgba(59,130,246,0.55), rgba(59,130,246,0) 55%)',
@@ -88,7 +127,7 @@ export default function LoginPage() {
 
         {/* subtle rotating conic glow */}
         <div
-          className="absolute left-1/2 top-1/2 h-[900px] w-[900px] -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl opacity-[0.10] animate-spin"
+          className="absolute left-1/2 top-1/2 h-225 w-225 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl opacity-[0.10] animate-spin"
           style={{
             animationDuration: '22s',
             background:
@@ -123,24 +162,46 @@ export default function LoginPage() {
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={onKeyDownLogin}
                   type="email"
                   autoComplete="username"
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium text-slate-200" htmlFor="password">
-                  Κωδικός πρόσβασης
-                </label>
+              <div className="relative">
                 <input
                   id="password"
-                  className="w-full rounded-xl border border-white/10 bg-slate-950/35 backdrop-blur px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#ffc947]/80 focus:border-[#ffc947]/50"
+                  className="w-full rounded-xl border border-white/10 bg-slate-950/35 backdrop-blur px-3 py-2 pr-10 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#ffc947]/80 focus:border-[#ffc947]/50"
                   placeholder="••••••••"
                   value={pw}
                   onChange={(e) => setPw(e.target.value)}
-                  type="password"
+                  onKeyDown={onKeyDownLogin}
+                  type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                 />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-white/5 text-slate-300 hover:text-white"
+                  aria-label={showPassword ? 'Απόκρυψη κωδικού' : 'Εμφάνιση κωδικού'}
+                  title={showPassword ? 'Απόκρυψη' : 'Εμφάνιση'}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowForgot(true);
+                    setResetMsg(null);
+                  }}
+                  className="text-xs text-slate-300 hover:text-white underline underline-offset-4 cursor-pointer"
+                >
+                  Ξέχασες τον κωδικό;
+                </button>
               </div>
 
               <button
@@ -152,10 +213,6 @@ export default function LoginPage() {
               </button>
 
               {error && <p className="text-red-400 text-sm">{error}</p>}
-
-              <p className="text-xs text-slate-500 pt-2">
-                Το portal αυτό προορίζεται μόνο για διαχειριστές γυμναστηρίου (admin / owner).
-              </p>
             </div>
 
             {/* RIGHT - CTA / MARKETING */}
@@ -208,8 +265,8 @@ export default function LoginPage() {
                       group relative inline-flex items-center gap-2
                       px-7 py-3 rounded-xl font-semibold text-sm
                       text-black
-                      bg-gradient-to-r from-[#ffc947] via-[#ffb700] to-[#ffc947]
-                      bg-[length:200%_100%]
+                      bg-linear-to-r from-[#ffc947] via-[#ffb700] to-[#ffc947]
+                      bg-size-[200%_100%]
                       animate-[gradientMove_4s_linear_infinite]
                       shadow-xl shadow-[#ffc947]/30
                       transition-all duration-300
@@ -224,9 +281,9 @@ export default function LoginPage() {
                     <span
                       className="
                         pointer-events-none absolute inset-0
-                        bg-gradient-to-r from-transparent via-white/40 to-transparent
-                        translate-x-[-100%]
-                        group-hover:translate-x-[100%]
+                        bg-linear-to-r from-transparent via-white/40 to-transparent
+                        -translate-x-full
+                        group-hover:translate-x-full
                         transition-transform duration-700
                       "
                     />
@@ -277,6 +334,60 @@ export default function LoginPage() {
         tenantId={createdInfo?.tenantId ?? ""}
         onClose={() => setCreatedInfo(null)}
       />
+
+
+
+
+      {showForgot && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setShowForgot(false)}
+          />
+          <div className="relative w-full max-w-md rounded-2xl border border-white/10 bg-slate-900/90 backdrop-blur p-6 shadow-2xl">
+            <div className="text-lg font-semibold">Επαναφορά κωδικού</div>
+            <p className="mt-1 text-sm text-slate-300">
+              Θα σου στείλουμε email με link για να ορίσεις νέο κωδικό.
+            </p>
+
+            <div className="mt-4 space-y-1.5">
+              <label className="text-sm font-medium text-slate-200" htmlFor="reset-email">
+                Email
+              </label>
+              <input
+                id="reset-email"
+                className="w-full rounded-xl border border-white/10 bg-slate-950/35 backdrop-blur px-3 py-2 text-sm placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#ffc947]/80 focus:border-[#ffc947]/50"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                autoComplete="email"
+              />
+            </div>
+
+            {resetMsg && <p className="mt-3 text-sm text-slate-200">{resetMsg}</p>}
+
+            <div className="mt-5 flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowForgot(false)}
+                className="rounded-xl px-4 py-2 text-sm border border-white/10 hover:bg-white/5 cursor-pointer"
+              >
+                Άκυρο
+              </button>
+
+              <button
+                type="button"
+                onClick={onForgotPassword}
+                disabled={resetBusy}
+                className="rounded-xl px-4 py-2 text-sm font-semibold bg-[#ffc947] text-black hover:bg-[#ffc947]/80 disabled:opacity-60 cursor-pointer"
+              >
+                {resetBusy ? "Αποστολή…" : "Στείλε link"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 

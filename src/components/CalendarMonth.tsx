@@ -47,9 +47,13 @@ function sameDay(a: Date, b: Date) {
   );
 }
 function fmtHM(iso?: string | null) {
-  if (!iso) return '';
+  if (!iso) return "";
   const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleTimeString("el-GR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 type Slot = { start: string; end: string };
@@ -339,7 +343,7 @@ export function CalendarMonth({
           </button>
 
           <div className="ml-0 sm:ml-2 font-semibold text-sm sm:text-base">
-            {cursor.toLocaleString(undefined, {
+            {cursor.toLocaleString('el-GR', {
               month: 'long',
               year: 'numeric',
             })}

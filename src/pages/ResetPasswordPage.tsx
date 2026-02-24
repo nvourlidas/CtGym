@@ -73,7 +73,11 @@ export default function ResetPasswordPage() {
       setTimeout(() => navigate('/login'), 900);
     } catch (err: any) {
       console.error('updateUser password error:', err);
-      setMsg(err?.message ?? 'Κάτι πήγε στραβά. Προσπάθησε ξανά.');
+      if (err.code == 'same_password'){
+        setMsg('Ο νέος κωδικός πρέπει να διαφέρει από τον προηγούμενο.');
+      }else{
+        setMsg(err?.message ?? 'Κάτι πήγε στραβά. Προσπάθησε ξανά.');
+      }
     } finally {
       setBusy(false);
     }

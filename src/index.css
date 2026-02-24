@@ -81,6 +81,29 @@
   border: 0 !important;
 }
 
+/* Smooth transition */
+.fc .fc-event {
+  transition: background-color 150ms ease, transform 120ms ease;
+}
+
+/* Month view */
+.fc .fc-daygrid-event:hover {
+  background-color: rgba(255, 201, 71, 0.85) !important; 
+  color: black !important; 
+}
+
+/* Week / Day view */
+.fc .fc-timegrid-event:hover {
+  background-color: rgba(255, 201, 71, 0.85) !important;
+  color: black !important; 
+}
+
+/* If background is applied on inner wrapper */
+.fc .fc-event:hover .fc-event-main {
+  background-color: rgba(255, 201, 71, 0.85) !important;
+  color: black !important; 
+}
+
 
 /* =========================================================
    🔧 Shared utilities (auto-theme via tokens)

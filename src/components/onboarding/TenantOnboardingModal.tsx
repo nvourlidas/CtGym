@@ -279,7 +279,7 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
 
       {/* modal */}
       <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl rounded-2xl border border-blck/10 bg-[#f6f7fb] shadow-2xl overflow-hidden">
+        <div className="w-full max-w-2xl rounded-2xl border border-blck/10 bg-[#f6f7fc] shadow-2xl overflow-hidden">
           {/* header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-black/10">
             <div className="space-y-0.5">
@@ -306,7 +306,7 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
             </div>
             <div className="mt-2 h-2 rounded-full bg-black/20 overflow-hidden">
               <div
-                className="h-full bg-[#2f55d4] transition-all"
+                className="h-full bg-[#2f55d5] transition-all"
                 style={{ width: `${progressPct}%` }}
               />
             </div>
@@ -406,16 +406,6 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
                     onChange={(e) => setGymInfo((p) => ({ ...p, description: e.target.value }))}
                     className="inputTextArea text-black/70"
                     placeholder="Σύντομη περιγραφή..."
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm text-black/60 font-medium">Logo URL (προαιρετικό)</label>
-                  <input
-                    value={gymInfo.logo_url}
-                    onChange={(e) => setGymInfo((p) => ({ ...p, logo_url: e.target.value }))}
-                    className="input text-black/70 placeholder:text-black/20"
-                    placeholder="https://..."
                   />
                 </div>
               </div>

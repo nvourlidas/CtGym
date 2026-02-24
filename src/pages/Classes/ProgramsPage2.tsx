@@ -383,7 +383,7 @@ export default function ProgramsPage() {
                 'align-top',
               ]}
               eventClassNames={() => [
-                'bg-primary/80',
+                'bg-primary',
                 'border-none',
                 'text-white',
                 'text-[11px]',
@@ -393,7 +393,7 @@ export default function ProgramsPage() {
                 'h-11',
                 'py-[2px]',
                 'cursor-pointer',
-                'hover:bg-primary',
+                'hover:bg-primary/90',
               ]}
               moreLinkClassNames={() => [
                 'text-[11px]',
