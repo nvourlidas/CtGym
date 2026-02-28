@@ -9,6 +9,7 @@ import {
   History,
   XCircle,
   Sparkles,
+  RefreshCcw,
 } from 'lucide-react';
 import PlanPickerModal from '../../components/billing/PlanPickerModal';
 
@@ -291,25 +292,41 @@ export default function BillingPage() {
                 </div>
               </div>
 
-              <div className="rounded-md border border-border/10 bg-secondary-background/40 p-3">
-                <div className="text-xs text-text-secondary">Κατάσταση</div>
-                <div className="mt-1 flex items-center gap-2">
-                  {allowed ? (
-                    <>
-                      <CheckCircle2 className="h-4 w-4 text-green-400" />
-                      <span className="text-sm font-semibold">Ενεργή</span>
-                    </>
-                  ) : (
-                    <>
-                      <XCircle className="h-4 w-4 text-red-300" />
-                      <span className="text-sm font-semibold">Μη ενεργή</span>
-                    </>
-                  )}
+              <div className="rounded-md border border-border/10 bg-secondary-background/40 p-3 flex items-start justify-between">
+                <div className="flex flex-col ">
+                  <div className="text-xs text-text-secondary">Κατάσταση</div>
+                  <div className="mt-2 flex items-center gap-2">
+                    {allowed ? (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 text-green-400" />
+                        <span className="text-sm font-semibold">Ενεργή</span>
+                      </>
+                    ) : (
+                      <>
+                        <XCircle className="h-4 w-4 text-red-300" />
+                        <span className="text-sm font-semibold">Μη ενεργή</span>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="mt-1 text-xs text-text-secondary">
+                    Status:{' '}
+                    <span className="text-text-primary font-medium">{sub?.status ?? '—'}</span>
+                  </div>
+
                 </div>
-                <div className="mt-1 text-xs text-text-secondary">
-                  Status:{' '}
-                  <span className="text-text-primary font-medium">{sub?.status ?? '—'}</span>
-                </div>
+                {!allowed && sub?.plan_id && (
+                  <button
+                    type="button"
+                    onClick={() => startCheckout(sub.plan_id)}
+                    disabled={checkoutBusy}
+                    className="inline-flex items-center gap-2 h-9 rounded-md px-4 text-sm font-semibold bg-accent hover:bg-accent/80 text-black shadow-md hover:shadow-lg transition-all  cursor-pointer"
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                    {checkoutBusy ? "Παρακαλώ περίμενε…" : "Ανανέωση"}
+                  </button>
+                )}
+
               </div>
 
               <div className="rounded-md border border-border/10 bg-secondary-background/40 p-3">
@@ -321,14 +338,6 @@ export default function BillingPage() {
                       {fmtDate(sub?.current_period_start)} → {fmtDate(sub?.current_period_end)}
                     </span>
                   </div>
-                  {sub?.grace_until ? (
-                    <div className="mt-1 text-xs text-text-secondary">
-                      Grace έως:{' '}
-                      <span className="text-text-primary font-medium">{fmtDate(sub.grace_until)}</span>
-                    </div>
-                  ) : (
-                    <div className="mt-1 text-xs text-text-secondary">Grace: —</div>
-                  )}
                 </div>
               </div>
             </div>

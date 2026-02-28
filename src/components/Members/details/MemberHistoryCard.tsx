@@ -3,66 +3,43 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
 import type { BookingStatus, HistoryRow } from './types';
 import {
-  addMonths,
-  fmtDayEL,
-  fmtMonthEL,
-  formatDateTimeEL,
-  isSameMonth,
-  parseYMD,
-  toYMD,
-  STATUS_BADGE_CLASS,
-  STATUS_LABEL,
+  addMonths, fmtDayEL, fmtMonthEL, formatDateTimeEL,
+  isSameMonth, parseYMD, toYMD,
+  STATUS_BADGE_CLASS, STATUS_LABEL,
 } from './utils';
 import CreateMemberBookingModal from './CreateMemberBookingModal';
+import { ChevronLeft, ChevronRight, CalendarDays, Plus, Loader2, Clock } from 'lucide-react';
 
 export default function MemberHistoryCard({
-  tenantId,
-  memberId,
-  guard,
+  tenantId, memberId, guard,
 }: {
   tenantId: string;
   memberId: string;
   guard?: () => boolean;
 }) {
-  const [historyRows, setHistoryRows] = useState<HistoryRow[]>([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-
+  const [historyRows, setHistoryRows]         = useState<HistoryRow[]>([]);
+  const [loadingHistory, setLoadingHistory]   = useState(false);
+  const [historyError, setHistoryError]       = useState<string | null>(null);
   const [showCreateBooking, setShowCreateBooking] = useState(false);
 
-  // optional filters kept (not rendered)
   const [historyFrom] = useState<string>('');
-  const [historyTo] = useState<string>('');
+  const [historyTo]   = useState<string>('');
 
   const [historyMonthCursor, setHistoryMonthCursor] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
 
-  const [historySelectedDay, setHistorySelectedDay] = useState<string>(() =>
-    toYMD(new Date()),
-  );
+  const [historySelectedDay, setHistorySelectedDay] = useState<string>(() => toYMD(new Date()));
 
   async function loadHistory() {
     if (!tenantId || !memberId) return;
-
     setLoadingHistory(true);
     setHistoryError(null);
 
     const { data, error } = await supabase
       .from('bookings')
-      .select(
-        `
-          id,
-          status,
-          created_at,
-          class_sessions(
-            starts_at,
-            ends_at,
-            classes(title)
-          )
-        `,
-      )
+      .select(`id, status, created_at, class_sessions(starts_at, ends_at, classes(title))`)
       .eq('tenant_id', tenantId)
       .eq('user_id', memberId)
       .order('created_at', { ascending: false });
@@ -75,54 +52,52 @@ export default function MemberHistoryCard({
     }
 
     const mapped: HistoryRow[] = ((data as any[]) ?? []).map((b) => ({
-      id: b.id,
-      status: b.status,
-      created_at: b.created_at,
+      id:            b.id,
+      status:        b.status,
+      created_at:    b.created_at,
       session_start: b.class_sessions?.starts_at ?? null,
-      session_end: b.class_sessions?.ends_at ?? null,
-      class_title: b.class_sessions?.classes?.title ?? null,
+      session_end:   b.class_sessions?.ends_at   ?? null,
+      class_title:   b.class_sessions?.classes?.title ?? null,
     }));
 
     setHistoryRows(mapped);
     setLoadingHistory(false);
   }
 
-  useEffect(() => {
-    loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, memberId]);
+  useEffect(() => { loadHistory(); }, [tenantId, memberId]);
 
   const filteredHistoryRows = useMemo(() => {
     if (!historyFrom && !historyTo) return historyRows;
-
     const fromDate = historyFrom ? new Date(historyFrom + 'T00:00:00') : null;
-    const toDate = historyTo ? new Date(historyTo + 'T23:59:59') : null;
-
+    const toDate   = historyTo   ? new Date(historyTo   + 'T23:59:59') : null;
     return historyRows.filter((r) => {
       const baseIso = r.session_start ?? r.created_at;
       if (!baseIso) return false;
       const d = new Date(baseIso);
       if (Number.isNaN(d.getTime())) return false;
-
       if (fromDate && d < fromDate) return false;
-      if (toDate && d > toDate) return false;
+      if (toDate   && d > toDate)   return false;
       return true;
     });
   }, [historyRows, historyFrom, historyTo]);
 
   const calendarBlock = useMemo(() => {
+    // Loading
     if (loadingHistory) {
       return (
-        <div className="rounded-md border border-white/10 bg-black/10 p-4 text-sm opacity-70">
-          Loading…
+        <div className="flex items-center justify-center gap-2 py-12 text-text-secondary text-sm">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Φόρτωση…
         </div>
       );
     }
 
-    if (!loadingHistory && filteredHistoryRows.length === 0) {
+    // Empty
+    if (filteredHistoryRows.length === 0) {
       return (
-        <div className="rounded-md border border-white/10 bg-black/10 p-4 text-sm opacity-70">
-          Δεν υπάρχουν κρατήσεις
+        <div className="flex flex-col items-center gap-3 py-12 text-text-secondary">
+          <CalendarDays className="h-8 w-8 opacity-30" />
+          <span className="text-sm">Δεν υπάρχουν κρατήσεις</span>
         </div>
       );
     }
@@ -130,34 +105,26 @@ export default function MemberHistoryCard({
     const byDay = new Map<string, typeof filteredHistoryRows>();
     for (const r of filteredHistoryRows) {
       const base = r.session_start ?? r.created_at;
-      const d = new Date(base);
-      const key = toYMD(d);
-      const arr = byDay.get(key) ?? [];
+      const key  = toYMD(new Date(base));
+      const arr  = byDay.get(key) ?? [];
       arr.push(r);
       byDay.set(key, arr);
     }
 
-    const selectedHasData = byDay.has(historySelectedDay);
     const monthDaysWithData = Array.from(byDay.keys())
       .map(parseYMD)
       .filter((d) => isSameMonth(d, historyMonthCursor))
       .map(toYMD)
       .sort();
 
-    const effectiveSelected = selectedHasData
-      ? historySelectedDay
-      : monthDaysWithData[0] ?? historySelectedDay;
+    const selectedHasData  = byDay.has(historySelectedDay);
+    const effectiveSelected = selectedHasData ? historySelectedDay : (monthDaysWithData[0] ?? historySelectedDay);
 
-    const firstOfMonth = new Date(
-      historyMonthCursor.getFullYear(),
-      historyMonthCursor.getMonth(),
-      1,
-    );
+    // Build calendar cells
+    const firstOfMonth = new Date(historyMonthCursor.getFullYear(), historyMonthCursor.getMonth(), 1);
     const start = new Date(firstOfMonth);
-    const day = start.getDay();
-    const mondayIndex = (day + 6) % 7;
+    const mondayIndex = (start.getDay() + 6) % 7;
     start.setDate(start.getDate() - mondayIndex);
-
     const cells: Date[] = [];
     for (let i = 0; i < 42; i++) {
       const dd = new Date(start);
@@ -167,12 +134,7 @@ export default function MemberHistoryCard({
 
     function getCounts(dayKey: string) {
       const rows = byDay.get(dayKey) ?? [];
-      const counts: Record<BookingStatus, number> = {
-        booked: 0,
-        checked_in: 0,
-        canceled: 0,
-        no_show: 0,
-      };
+      const counts: Record<BookingStatus, number> = { booked: 0, checked_in: 0, canceled: 0, no_show: 0 };
       for (const rr of rows) {
         const s = (rr.status ?? 'booked') as BookingStatus;
         if (counts[s] !== undefined) counts[s] += 1;
@@ -182,83 +144,81 @@ export default function MemberHistoryCard({
 
     const { rows: selectedRows } = getCounts(effectiveSelected);
 
+    const DOT_COLORS: Record<BookingStatus, string> = {
+      booked:     'bg-primary',
+      checked_in: 'bg-success',
+      canceled:   'bg-danger',
+      no_show:    'bg-warning',
+    };
+
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-4">
-        <div className="rounded-md border border-white/10 overflow-hidden">
-          <div className="flex items-center justify-between px-3 py-2 bg-secondary-background/60">
+      <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-3">
+
+        {/* ── Calendar ── */}
+        <div className="rounded-xl border border-border/10 overflow-hidden">
+          {/* Month nav */}
+          <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/10 bg-secondary/5">
             <button
-              className="px-2 py-1 rounded border border-white/20 hover:bg-white/5"
+              type="button"
               onClick={() => setHistoryMonthCursor((m) => addMonths(m, -1))}
-              type="button"
+              className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 text-text-secondary hover:text-text-primary transition-all cursor-pointer"
             >
-              ‹
+              <ChevronLeft className="h-3.5 w-3.5" />
             </button>
-
-            <div className="text-sm font-semibold capitalize">
+            <span className="text-sm font-bold text-text-primary capitalize">
               {fmtMonthEL(historyMonthCursor)}
-            </div>
-
+            </span>
             <button
-              className="px-2 py-1 rounded border border-white/20 hover:bg-white/5"
-              onClick={() => setHistoryMonthCursor((m) => addMonths(m, +1))}
               type="button"
+              onClick={() => setHistoryMonthCursor((m) => addMonths(m, +1))}
+              className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 text-text-secondary hover:text-text-primary transition-all cursor-pointer"
             >
-              ›
+              <ChevronRight className="h-3.5 w-3.5" />
             </button>
           </div>
 
-          <div className="grid grid-cols-7 gap-px bg-white/10">
-            {['Δ', 'Τ', 'Τ', 'Π', 'Π', 'Σ', 'Κ'].map((w, idx) => (
-              <div
-                key={idx}
-                className="bg-black/10 px-2 py-1 text-[11px] text-text-secondary text-center"
-              >
+          {/* Day-of-week headers */}
+          <div className="grid grid-cols-7 border-b border-border/10">
+            {['Δ','Τ','Τ','Π','Π','Σ','Κ'].map((w, idx) => (
+              <div key={idx} className="py-1.5 text-[10px] font-bold text-text-secondary text-center uppercase tracking-wider">
                 {w}
               </div>
             ))}
           </div>
 
-          <div className="grid grid-cols-7 gap-px bg-border/10">
+          {/* Calendar cells */}
+          <div className="grid grid-cols-7">
             {cells.map((d) => {
-              const key = toYMD(d);
-              const inMonth = isSameMonth(d, historyMonthCursor);
+              const key       = toYMD(d);
+              const inMonth   = isSameMonth(d, historyMonthCursor);
               const isSelected = key === effectiveSelected;
               const { counts } = getCounts(key);
-              const total =
-                counts.booked + counts.checked_in + counts.canceled + counts.no_show;
+              const total = counts.booked + counts.checked_in + counts.canceled + counts.no_show;
 
               return (
                 <button
                   key={key}
                   type="button"
                   onClick={() => setHistorySelectedDay(key)}
-                  className={[
-                    'min-h-13.5 bg-bulk-bg/50 px-2 py-1 text-left hover:bg-border/5',
-                    !inMonth ? 'opacity-40' : '',
-                    isSelected ? 'ring-2 ring-primary/60' : '',
-                  ].join(' ')}
                   title={key}
+                  className={[
+                    'relative min-h-11.5 px-1.5 py-1 text-left border-b border-r border-border/5 transition-all duration-100',
+                    !inMonth ? 'opacity-30' : '',
+                    isSelected
+                      ? 'bg-primary/12 ring-1 ring-inset ring-primary/40'
+                      : 'hover:bg-secondary/15 cursor-pointer',
+                    total > 0 && !isSelected ? 'bg-secondary/5' : '',
+                  ].join(' ')}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="text-xs">{d.getDate()}</div>
-                    {total > 0 && (
-                      <div className="text-[11px] text-text-secondary">{total}</div>
-                    )}
+                  <div className={['text-[11px] font-semibold', isSelected ? 'text-primary' : total > 0 ? 'text-text-primary' : 'text-text-secondary'].join(' ')}>
+                    {d.getDate()}
                   </div>
-
                   {total > 0 && (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {counts.booked > 0 && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                      )}
-                      {counts.checked_in > 0 && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                      )}
-                      {counts.canceled > 0 && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-danger" />
-                      )}
-                      {counts.no_show > 0 && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+                    <div className="mt-0.5 flex flex-wrap gap-0.5">
+                      {(Object.entries(counts) as [BookingStatus, number][]).map(([status, count]) =>
+                        count > 0
+                          ? <span key={status} className={`h-1.5 w-1.5 rounded-full ${DOT_COLORS[status]}`} />
+                          : null
                       )}
                     </div>
                   )}
@@ -267,65 +227,65 @@ export default function MemberHistoryCard({
             })}
           </div>
 
-          <div className="px-3 py-2 text-[11px] text-text-secondary border-t border-white/10">
-            Dots: Κρατήθηκε / Checked in / Ακυρώθηκε / Απουσία
+          {/* Legend */}
+          <div className="px-3 py-2 border-t border-border/10 flex flex-wrap gap-x-3 gap-y-1">
+            {[
+              { label: 'Κράτηση',   color: 'bg-primary'  },
+              { label: 'Check-in',  color: 'bg-success'  },
+              { label: 'Ακύρωση',   color: 'bg-danger'   },
+              { label: 'Απουσία',   color: 'bg-warning'  },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center gap-1 text-[10px] text-text-secondary">
+                <span className={`h-1.5 w-1.5 rounded-full ${item.color}`} />
+                {item.label}
+              </div>
+            ))}
           </div>
         </div>
 
-        <div className="rounded-md border border-white/10 overflow-hidden min-w-9">
-          <div className="px-3 py-2 bg-secondary-background/60">
-            <div className="text-sm font-semibold">{fmtDayEL(effectiveSelected)}</div>
-            <div className="text-xs text-text-secondary">
-              {selectedRows.length} Συνεδρία(ες)
+        {/* ── Day detail panel ── */}
+        <div className="rounded-xl border border-border/10 overflow-hidden">
+          <div className="px-4 py-3 border-b border-border/10 bg-secondary/5">
+            <div className="text-sm font-bold text-text-primary capitalize">{fmtDayEL(effectiveSelected)}</div>
+            <div className="text-xs text-text-secondary mt-0.5">
+              {selectedRows.length} Συνεδρία{selectedRows.length !== 1 ? 'ες' : ''}
             </div>
           </div>
 
           {selectedRows.length === 0 ? (
-            <div className="p-4 text-sm opacity-70">Καμία Συνεδρία.</div>
+            <div className="flex flex-col items-center gap-2 py-8 text-text-secondary">
+              <CalendarDays className="h-6 w-6 opacity-30" />
+              <span className="text-xs">Καμία συνεδρία</span>
+            </div>
           ) : (
             <div className="divide-y divide-border/10">
               {selectedRows
                 .slice()
-                .sort((a, b) => {
-                  const aa = new Date(a.session_start ?? a.created_at).getTime();
-                  const bb = new Date(b.session_start ?? b.created_at).getTime();
-                  return aa - bb;
-                })
+                .sort((a, b) => new Date(a.session_start ?? a.created_at).getTime() - new Date(b.session_start ?? b.created_at).getTime())
                 .map((r) => {
                   const status = (r.status ?? 'booked') as BookingStatus;
-                  const start = r.session_start ? new Date(r.session_start) : null;
+                  const start  = r.session_start ? new Date(r.session_start) : null;
 
                   return (
-                    <div key={r.id} className="p-3 hover:bg-secondary/10">
+                    <div key={r.id} className="px-4 py-3 hover:bg-secondary/5 transition-colors">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold truncate">
+                          <div className="text-sm font-semibold text-text-primary truncate">
                             {r.class_title ?? '—'}
                           </div>
-                          <div className="text-xs text-text-secondary">
-                            {start
-                              ? `${start.toLocaleDateString('el-GR')} • ${start.toLocaleTimeString(
-                                  'el-GR',
-                                  { hour: '2-digit', minute: '2-digit' },
-                                )}`
-                              : '—'}
-                          </div>
+                          {start && (
+                            <div className="flex items-center gap-1 mt-0.5 text-xs text-text-secondary">
+                              <Clock className="h-3 w-3 opacity-60" />
+                              {start.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          )}
                         </div>
-
-                        <div className="shrink-0">
-                          <span
-                            className={[
-                              'text-xs px-2 py-1 rounded border capitalize',
-                              STATUS_BADGE_CLASS[status],
-                            ].join(' ')}
-                          >
-                            {STATUS_LABEL[status] ?? status}
-                          </span>
-                        </div>
+                        <span className={['text-[11px] px-2 py-0.5 rounded-lg border font-semibold shrink-0', STATUS_BADGE_CLASS[status]].join(' ')}>
+                          {STATUS_LABEL[status] ?? status}
+                        </span>
                       </div>
-
-                      <div className="mt-2 text-[11px] text-text-secondary">
-                        Κράτηση έγινε: {formatDateTimeEL(r.created_at)}
+                      <div className="mt-1.5 text-[10.5px] text-text-secondary opacity-60">
+                        Κράτηση: {formatDateTimeEL(r.created_at)}
                       </div>
                     </div>
                   );
@@ -338,34 +298,44 @@ export default function MemberHistoryCard({
   }, [filteredHistoryRows, historyMonthCursor, historySelectedDay, loadingHistory]);
 
   return (
-    <div className="rounded-xl border border-border/10 bg-secondary-background text-text-primary shadow 3xl:col-span-1 2xl:col-span-2 xl:col-span-2 md:col-span-2">
-      <div className="border-b border-border/10 px-6 py-3 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-sm font-semibold">Ιστορικό</h2>
-          <div className="text-xs text-text-secondary mt-0.5">
-            Επιλέξτε ημερομηνία για να δείτε τις συνεδρίες.
+    <div className="rounded-2xl border border-border/10 bg-secondary-background text-text-primary shadow-sm 3xl:col-span-1 2xl:col-span-2 xl:col-span-2 md:col-span-2 overflow-hidden">
+
+      {/* Card header */}
+      <div className="px-5 py-4 border-b border-border/10 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
+            <CalendarDays className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-sm font-black text-text-primary tracking-tight">Ιστορικό</h2>
+            <p className="text-[11px] text-text-secondary mt-px">Επιλέξτε ημερομηνία για να δείτε τις συνεδρίες.</p>
           </div>
         </div>
 
         <button
           type="button"
-          onClick={() => {
-            if (guard && !guard()) return;
-            setShowCreateBooking(true);
-          }}
-          className="shrink-0 px-3 py-1.5 rounded-md text-xs bg-primary text-white hover:bg-primary/90"
+          onClick={() => { if (guard && !guard()) return; setShowCreateBooking(true); }}
+          className="
+            group relative inline-flex items-center gap-1.5 h-8 px-3 rounded-xl
+            text-xs font-bold text-white bg-primary hover:bg-primary/90
+            shadow-sm shadow-primary/20 hover:shadow-primary/30 hover:-translate-y-px
+            active:translate-y-0 transition-all duration-150 cursor-pointer overflow-hidden shrink-0
+          "
         >
-          Νέα Κράτηση
+          <span className="absolute inset-0 bg-linear-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+          <Plus className="h-3.5 w-3.5 relative z-10" />
+          <span className="relative z-10 hidden sm:inline">Νέα Κράτηση</span>
         </button>
       </div>
 
-      <div className="p-6 space-y-4">
+      {/* Body */}
+      <div className="p-5 space-y-4">
         {historyError && (
-          <div className="text-sm border border-danger/30 bg-danger/10 text-danger rounded p-3">
+          <div className="flex items-start gap-2 px-4 py-3 rounded-xl border border-danger/25 bg-danger/8 text-danger text-sm">
+            <span className="mt-px shrink-0">⚠</span>
             {historyError}
           </div>
         )}
-
         {calendarBlock}
       </div>
 
@@ -374,10 +344,7 @@ export default function MemberHistoryCard({
           tenantId={tenantId}
           memberId={memberId}
           onClose={() => setShowCreateBooking(false)}
-          onCreated={() => {
-            setShowCreateBooking(false);
-            loadHistory(); // ✅ real refresh
-          }}
+          onCreated={() => { setShowCreateBooking(false); loadHistory(); }}
           guard={guard}
         />
       )}

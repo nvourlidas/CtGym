@@ -107,7 +107,7 @@ export const NAV: NavEntry[] = [
       { label: 'Εμφάνιση εφαρμογής', to: '/settings/themesettings', icon: Palette, minPlan: 'pro'  },
       { label: 'Πληροφορίες Γυμναστηρίου', to: '/settings/gyminfo', icon: Info },
       { label: 'Ωράριο Γυμναστηρίου', to: '/settings/opninghours', icon: Clock },
-      { label: 'Συνδρομή Γυμναστηρίου', to: '/settings/billing', icon: CreditCard },
+      { label: 'Διαχείριση Συνδρομής', to: '/settings/billing', icon: CreditCard },
     ],
   },
 ];

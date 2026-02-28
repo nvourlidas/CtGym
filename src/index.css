@@ -36,7 +36,7 @@
    ========================================================= */
 :root[data-theme="dark"] {
   /* Brand (can stay same or tweak) */
-  --color-primary: #4c6fff;
+  --color-primary: #6481f7;
   --color-secondary: #94a3b8;
   --color-accent: #ffc947;
   --color-success: #11ec53;

@@ -1,6 +1,9 @@
 import { useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
-import { X, ArrowLeft, ArrowRight, Rocket } from "lucide-react";
+import {
+  X, ArrowLeft, ChevronRight, Dumbbell, Info, ShieldCheck,
+  Zap, MapPin, Globe, Phone, Mail, User, Lock, Building2, CheckCircle2,
+} from "lucide-react";
 
 type StepKey = "tenant" | "gymInfo" | "admin";
 
@@ -12,70 +15,79 @@ type Props = {
 };
 
 type GymInfoForm = {
-  email: string;
-  phone: string;
-  address: string;
-  city: string;
-  postal_code: string;
-  website: string;
-  description: string;
-  logo_url: string;
+  email: string; phone: string; address: string; city: string;
+  postal_code: string; website: string; description: string; logo_url: string;
 };
 
-type AdminForm = {
-  email: string;
-  password: string;
-  full_name: string;
-};
+type AdminForm = { email: string; password: string; full_name: string };
 
-
-
-const STEPS: { key: StepKey; title: string }[] = [
-  { key: "tenant", title: "Γυμναστήριο" },
-  { key: "gymInfo", title: "Στοιχεία" },
-  { key: "admin", title: "Διαχειριστής" },
+const STEPS: { key: StepKey; title: string; subtitle: string; icon: React.ReactNode }[] = [
+  { key: "tenant",  title: "Γυμναστήριο", subtitle: "Ξεκινήστε με το όνομα",    icon: <Dumbbell size={14} />    },
+  { key: "gymInfo", title: "Στοιχεία",    subtitle: "Πληροφορίες επικοινωνίας", icon: <Info size={14} />        },
+  { key: "admin",   title: "Διαχειριστής",subtitle: "Πρόσβαση & ασφάλεια",      icon: <ShieldCheck size={14} /> },
 ];
 
 function isValidEmail(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
 
-
 const ERROR_MESSAGES: Record<string, string> = {
   TENANT_NAME_TAKEN: "Υπάρχει ήδη γυμναστήριο με αυτό το όνομα.",
   ADMIN_EMAIL_TAKEN: "Υπάρχει ήδη χρήστης με αυτό το email.",
 };
 
-
 async function resolveFunctionError(err: any, fallback: string) {
   const ctx = err?.context;
-
-  // In your case, ctx IS the Response object
   const res: Response | undefined =
     ctx instanceof Response ? ctx : (ctx?.response instanceof Response ? ctx.response : undefined);
-
   if (res) {
     try {
-      // safest: read JSON directly
       const parsed = await res.clone().json().catch(async () => {
         const text = await res.clone().text();
         try { return JSON.parse(text); } catch { return { error: text }; }
       });
-
-      // If you return a code, map it:
       if (parsed?.code && ERROR_MESSAGES[parsed.code]) return ERROR_MESSAGES[parsed.code];
-
-      // Otherwise show the backend error string:
       if (parsed?.error) return String(parsed.error);
-    } catch { }
+    } catch {}
   }
-
   return String(err?.message || fallback);
 }
 
+function IconInput({
+  icon, value, onChange, placeholder, type = "text", autoComplete,
+}: {
+  icon: React.ReactNode; value: string; onChange: (v: string) => void;
+  placeholder: string; type?: string; autoComplete?: string;
+}) {
+  return (
+    <div className="relative">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none flex">
+        {icon}
+      </span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        type={type}
+        autoComplete={autoComplete}
+        className="w-full pl-9 pr-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-300
+                   bg-white border border-slate-200 rounded-xl outline-none
+                   transition-all duration-150
+                   focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100
+                   hover:border-slate-300"
+      />
+    </div>
+  );
+}
 
-
-
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{label}</label>
+      {children}
+    </div>
+  );
+}
 
 export default function TenantOnboardingModal({ open, onClose, onDone, onCreated }: Props) {
   const [stepIndex, setStepIndex] = useState(0);
@@ -83,399 +95,357 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
 
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [tenantName, setTenantName] = useState("");
   const [tenantId, setTenantId] = useState<string | null>(null);
 
-
-  console.log(tenantId)
+  console.log(tenantId);
 
   const [gymInfo, setGymInfo] = useState<GymInfoForm>({
-    email: "",
-    phone: "",
-    address: "",
-    city: "",
-    postal_code: "",
-    website: "",
-    description: "",
-    logo_url: "",
+    email: "", phone: "", address: "", city: "",
+    postal_code: "", website: "", description: "", logo_url: "",
   });
-
-  const [admin, setAdmin] = useState<AdminForm>({
-    email: "",
-    password: "",
-    full_name: "",
-  });
-
+  const [admin, setAdmin] = useState<AdminForm>({ email: "", password: "", full_name: "" });
 
   const canClose = !pending;
-
-  const progressPct = useMemo(() => {
-    const total = STEPS.length;
-    return Math.round(((stepIndex + 1) / total) * 100);
-  }, [stepIndex]);
+  const progressPct = useMemo(() => Math.round(((stepIndex + 1) / STEPS.length) * 100), [stepIndex]);
 
   const resetAll = () => {
-    setStepIndex(0);
-    setPending(false);
-    setError(null);
-    setTenantName("");
-    setTenantId(null);
-    setGymInfo({
-      email: "",
-      phone: "",
-      address: "",
-      city: "",
-      postal_code: "",
-      website: "",
-      description: "",
-      logo_url: "",
-    });
+    setStepIndex(0); setPending(false); setError(null);
+    setTenantName(""); setTenantId(null);
+    setGymInfo({ email: "", phone: "", address: "", city: "", postal_code: "", website: "", description: "", logo_url: "" });
     setAdmin({ email: "", password: "", full_name: "" });
   };
 
-  const close = () => {
-    if (!canClose) return;
-    resetAll();
-    onClose();
-  };
+  const close = () => { if (!canClose) return; resetAll(); onClose(); };
 
-
-
-  // -------------------------
-  // STEP 1: create tenant
-  // -------------------------
   const createTenant = async () => {
     const name = tenantName.trim();
-    if (name.length < 2) {
-      setError("Βάλε ένα όνομα γυμναστηρίου (τουλάχιστον 2 χαρακτήρες).");
-      return;
-    }
+    if (name.length < 2) { setError("Βάλε ένα όνομα γυμναστηρίου (τουλάχιστον 2 χαρακτήρες)."); return; }
     setError(null);
     setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
   };
 
-
-  // -------------------------
-  // STEP 2: upsert gym_info
-  // -------------------------
   const saveGymInfo = async () => {
-    // (optional) validations here if you want
-    // e.g. if (gymInfo.email && !isValidEmail(gymInfo.email)) { ... }
-
     setError(null);
     setStepIndex((i) => Math.min(i + 1, STEPS.length - 1));
   };
 
-
-  // -------------------------
-  // STEP 3: create admin
-  // -------------------------
   const createAdmin = async () => {
     const name = tenantName.trim();
     const email = admin.email.trim();
     const pw = admin.password;
+    if (name.length < 2) { setError("Λείπει όνομα γυμναστηρίου."); return; }
+    if (!isValidEmail(email)) { setError("Βάλε ένα έγκυρο email για τον διαχειριστή."); return; }
+    if (pw.length < 8) { setError("Ο κωδικός πρέπει να είναι τουλάχιστον 8 χαρακτήρες."); return; }
 
-    if (name.length < 2) {
-      setError("Λείπει όνομα γυμναστηρίου.");
-      return;
-    }
-    if (!isValidEmail(email)) {
-      setError("Βάλε ένα έγκυρο email για τον διαχειριστή.");
-      return;
-    }
-    if (pw.length < 8) {
-      setError("Ο κωδικός πρέπει να είναι τουλάχιστον 8 χαρακτήρες.");
-      return;
-    }
-
-    setPending(true);
-    setError(null);
-
+    setPending(true); setError(null);
     try {
       const { data, error } = await supabase.functions.invoke("onboard-tenant", {
         body: {
           action: "commit_before_payment",
           tenant_name: name,
-
           gym_info: {
-            email: gymInfo.email.trim() || null,
-            phone: gymInfo.phone.trim() || null,
-            address: gymInfo.address.trim() || null,
-            city: gymInfo.city.trim() || null,
-            postal_code: gymInfo.postal_code.trim() || null,
-            website: gymInfo.website.trim() || null,
-            description: gymInfo.description.trim() || null,
-            logo_url: gymInfo.logo_url.trim() || null,
+            email: gymInfo.email.trim() || null, phone: gymInfo.phone.trim() || null,
+            address: gymInfo.address.trim() || null, city: gymInfo.city.trim() || null,
+            postal_code: gymInfo.postal_code.trim() || null, website: gymInfo.website.trim() || null,
+            description: gymInfo.description.trim() || null, logo_url: gymInfo.logo_url.trim() || null,
           },
-
-          admin: {
-            email,
-            password: pw,
-            full_name: admin.full_name.trim() || null,
-            role: "owner",
-          },
+          admin: { email, password: pw, full_name: admin.full_name.trim() || null, role: "owner" },
         },
       });
 
       if (error) throw error;
-
-      if (data?.ok === false) {
-        setError(data.error || "Κάτι πήγε στραβά.");
-        return;
-      }
+      if (data?.ok === false) { setError(data.error || "Κάτι πήγε στραβά."); return; }
       if (!data?.tenant_id) throw new Error("Δεν επιστράφηκε tenant_id.");
 
       const info = { tenantId: data.tenant_id, adminEmail: email };
-
-      // ✅ 1) open CreatedInfo in parent FIRST
       onCreated?.(info);
-
-      // ✅ 2) then close onboarding
       resetAll();
       onClose();
-
-      // optional
       onDone?.(data.tenant_id);
-
     } catch (e: any) {
-      const msg = await resolveFunctionError(
-        e,
-        "Αποτυχία ολοκλήρωσης εγγραφής."
-      );
-      setError(msg);
-    }
-    finally {
+      setError(await resolveFunctionError(e, "Αποτυχία ολοκλήρωσης εγγραφής."));
+    } finally {
       setPending(false);
     }
   };
 
-
-
   const next = async () => {
     if (pending) return;
-
     if (step === "tenant") return createTenant();
     if (step === "gymInfo") return saveGymInfo();
     if (step === "admin") return createAdmin();
   };
 
-  const back = () => {
-    if (pending) return;
-    setError(null);
-    setStepIndex((i) => Math.max(i - 1, 0));
-  };
+  const back = () => { if (pending) return; setError(null); setStepIndex((i) => Math.max(i - 1, 0)); };
 
   if (!open) return null;
 
+  const isFinal = step === "admin";
 
   return (
-    <div className="fixed inset-0 z-50">
-      {/* backdrop */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+      {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60"
+        className="absolute inset-0 bg-slate-800/30 backdrop-blur-sm"
         onClick={canClose ? close : undefined}
       />
 
-      {/* modal */}
-      <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl rounded-2xl border border-blck/10 bg-[#f6f7fc] shadow-2xl overflow-hidden">
-          {/* header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-black/10">
-            <div className="space-y-0.5">
-              <div className="text-sm text-black/70">Νέα εγγραφή γυμναστηρίου</div>
-              <div className="text-lg font-semibold text-black">{STEPS[stepIndex]?.title}</div>
-            </div>
+      {/* Panel */}
+      <div
+        className="relative w-full max-w-140 rounded-2xl bg-white border border-slate-200/80
+                   shadow-[0_24px_60px_-8px_rgba(15,23,42,0.18),0_8px_20px_-4px_rgba(15,23,42,0.08)]
+                   overflow-hidden"
+        style={{ animation: "onboardSlideUp 0.28s cubic-bezier(0.16,1,0.3,1)" }}
+      >
+        {/* Rainbow top bar */}
+        <div className="h-0.75 w-full bg-linear-to-r from-[#4c6fff] via-[#2f55d4] to-indigo-400" />
 
-            <button
-              onClick={close}
-              disabled={!canClose}
-              className="p-2 rounded-lg hover:bg-black/5 disabled:opacity-50 text-black"
-              aria-label="Close"
-              title="Close"
-            >
-              <X size={18} />
-            </button>
+        {/* ── Header ── */}
+        <div className="flex items-start justify-between px-7 pt-6 pb-4">
+          <div>
+            <div className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-100
+                            text-[#2f55d4] text-[10.5px] font-bold uppercase tracking-widest
+                            px-2.5 py-1 rounded-full mb-3">
+              <Zap size={9} />
+              Νέα Εγγραφή Γυμναστηρίου
+            </div>
+            <h2 className="text-[22px] font-black text-slate-800 tracking-tight leading-none">
+              {STEPS[stepIndex].title}
+            </h2>
+            <p className="text-sm text-slate-400 mt-1 font-normal">{STEPS[stepIndex].subtitle}</p>
+          </div>
+          <button
+            onClick={close}
+            disabled={!canClose}
+            className="mt-0.5 p-1.5 rounded-xl text-slate-400 hover:text-slate-600
+                       hover:bg-slate-100 disabled:opacity-30 transition-all cursor-pointer"
+            aria-label="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* ── Step pills ── */}
+        <div className="px-7 pb-4">
+          <div className="flex items-center gap-2">
+            {STEPS.map((s, i) => {
+              const isDone   = i < stepIndex;
+              const isActive = i === stepIndex;
+              const isFuture = i > stepIndex;
+              return (
+                <div key={s.key} className="flex items-center gap-2 flex-1">
+                  <div className={[
+                    "flex items-center gap-2 flex-1 px-3 py-2 rounded-xl border text-[12px] font-semibold transition-all duration-200 select-none",
+                    isDone   ? "bg-indigo-50 border-indigo-200 text-[#2f55d4]" : "",
+                    isActive ? "bg-[#2f55d4] border-[#2f55d4] text-white shadow-md shadow-indigo-200/60" : "",
+                    isFuture ? "bg-slate-50 border-slate-200 text-slate-400" : "",
+                  ].join(" ")}>
+                    <span className={[
+                      "shrink-0 w-5 h-5 rounded-lg flex items-center justify-center",
+                      isDone   ? "bg-indigo-200/50 text-[#2f55d4]" : "",
+                      isActive ? "bg-white/25 text-white" : "",
+                      isFuture ? "bg-slate-200/60 text-slate-400" : "",
+                    ].join(" ")}>
+                      {isDone ? <CheckCircle2 size={12} /> : s.icon}
+                    </span>
+                    <span className="truncate">{s.title}</span>
+                  </div>
+                  {i < STEPS.length - 1 && (
+                    <div className={`w-3 h-px shrink-0 rounded-full transition-colors duration-500 ${i < stepIndex ? "bg-indigo-300" : "bg-slate-200"}`} />
+                  )}
+                </div>
+              );
+            })}
           </div>
 
-          {/* progress */}
-          <div className="px-6 pt-4">
-            <div className="flex items-center justify-between text-xs text-black">
-              <span>Βήμα {stepIndex + 1} / {STEPS.length}</span>
-              <span>{progressPct}%</span>
-            </div>
-            <div className="mt-2 h-2 rounded-full bg-black/20 overflow-hidden">
-              <div
-                className="h-full bg-[#2f55d5] transition-all"
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
+          {/* Thin progress bar */}
+          <div className="mt-3 h-1 rounded-full bg-slate-100 overflow-hidden">
+            <div
+              className="h-full rounded-full bg-linear-to-r from-[#4c6fff] to-[#5fc27c] transition-all duration-500 ease-out"
+              style={{ width: `${progressPct}%` }}
+            />
           </div>
+        </div>
 
-          {/* body */}
-          <div className="px-6 py-5">
-            {error && (
-              <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/40 px-4 py-3 text-sm text-black">
-                {error}
-              </div>
-            )}
+        {/* ── Body ── */}
+        <div className="px-7 pb-5 min-h-58">
 
-            {step === "tenant" && (
-              <div className="space-y-3">
-                <div>
-                  <label className="text-sm text-black/70 font-medium">Όνομα γυμναστηρίου</label>
+          {/* Error banner */}
+          {error && (
+            <div className="flex items-start gap-2.5 mb-4 px-3.5 py-3 rounded-xl
+                            bg-red-50 border border-red-200 text-red-600 text-[13px]">
+              <span className="mt-0.5 shrink-0">⚠</span>
+              {error}
+            </div>
+          )}
+
+          {/* STEP 1 */}
+          {step === "tenant" && (
+            <div className="space-y-3">
+              <Field label="Όνομα γυμναστηρίου">
+                <div className="relative">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-400 pointer-events-none flex">
+                    <Building2 size={20} />
+                  </span>
                   <input
                     value={tenantName}
                     onChange={(e) => setTenantName(e.target.value)}
-                    className="input text-black/70 placeholder:text-black/20"
+                    onKeyDown={(e) => e.key === "Enter" && next()}
                     placeholder="π.χ. Cloudtec Gym"
+                    className="w-full pl-12 pr-4 py-4 text-[19px] font-bold text-slate-800
+                               placeholder:text-slate-300 placeholder:font-normal placeholder:text-base
+                               bg-slate-50 border-2 border-slate-200 rounded-xl outline-none
+                               focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-100/70
+                               transition-all duration-150"
                   />
                 </div>
+              </Field>
+              <div className="flex items-start gap-2.5 px-4 py-3 bg-indigo-50 border border-indigo-100 rounded-xl">
+                <Zap size={14} className="text-indigo-400 shrink-0 mt-px" />
+                <p className="text-xs text-[#2f55d4]/80 leading-relaxed">
+                  Αυτό θα είναι το <strong className="font-bold">αναγνωριστικό</strong> του γυμναστηρίου σας στην πλατφόρμα.
+                </p>
               </div>
-            )}
+            </div>
+          )}
 
-            {step === "gymInfo" && (
-              <div className="space-y-4">
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm text-black/60 font-medium">Email</label>
-                    <input
-                      value={gymInfo.email}
-                      onChange={(e) => setGymInfo((p) => ({ ...p, email: e.target.value }))}
-                      className="input text-black/70 placeholder:text-white"
-                      placeholder="info@yourgym.gr"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-black/60 font-medium">Τηλέφωνο</label>
-                    <input
-                      value={gymInfo.phone}
-                      onChange={(e) => setGymInfo((p) => ({ ...p, phone: e.target.value }))}
-                      className="input text-black/70 placeholder:text-black/20"
-                      placeholder="6900000000"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid sm:grid-cols-3 gap-3">
-                  <div className="sm:col-span-2">
-                    <label className="text-sm text-black/60 font-medium">Διεύθυνση</label>
-                    <input
-                      value={gymInfo.address}
-                      onChange={(e) => setGymInfo((p) => ({ ...p, address: e.target.value }))}
-                      className="input text-black/70 placeholder:text-black/20"
-                      placeholder="Οδός, αριθμός"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-black/60 font-medium">Πόλη</label>
-                    <input
-                      value={gymInfo.city}
-                      onChange={(e) => setGymInfo((p) => ({ ...p, city: e.target.value }))}
-                      className="input text-black/70 placeholder:text-black/20"
-                      placeholder="Θεσσαλονίκη"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-sm text-black/60 font-medium">ΤΚ</label>
-                    <input
-                      value={gymInfo.postal_code}
-                      onChange={(e) => setGymInfo((p) => ({ ...p, postal_code: e.target.value }))}
-                      className="input text-black/70 placeholder:text-black/20"
-                      placeholder="54622"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-black/60 font-medium">Website</label>
-                    <input
-                      value={gymInfo.website}
-                      onChange={(e) => setGymInfo((p) => ({ ...p, website: e.target.value }))}
-                      className="input text-black/70 placeholder:text-black/20"
-                      placeholder="https://yourgym.gr"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-sm text-black/60 font-medium">Περιγραφή</label>
-                  <textarea
-                    value={gymInfo.description}
-                    onChange={(e) => setGymInfo((p) => ({ ...p, description: e.target.value }))}
-                    className="inputTextArea text-black/70"
-                    placeholder="Σύντομη περιγραφή..."
-                  />
-                </div>
+          {/* STEP 2 */}
+          {step === "gymInfo" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Email">
+                  <IconInput icon={<Mail size={14} />} value={gymInfo.email} onChange={(v) => setGymInfo((p) => ({ ...p, email: v }))} placeholder="info@yourgym.gr" />
+                </Field>
+                <Field label="Τηλέφωνο">
+                  <IconInput icon={<Phone size={14} />} value={gymInfo.phone} onChange={(v) => setGymInfo((p) => ({ ...p, phone: v }))} placeholder="6900000000" />
+                </Field>
               </div>
-            )}
-
-            {step === "admin" && (
-              <div className="space-y-4">
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2">
-                    <label className="text-sm text-black/60 font-medium">Ονοματεπώνυμο (προαιρετικό)</label>
-                    <input
-                      value={admin.full_name}
-                      onChange={(e) => setAdmin((p) => ({ ...p, full_name: e.target.value }))}
-                      className="input text-black/70 placeholder:text-black/20"
-                      placeholder="π.χ. Γιώργος Παπαδόπουλος"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label className="text-sm text-black/60 font-medium">Email διαχειριστή</label>
-                    <input
-                      value={admin.email}
-                      onChange={(e) => setAdmin((p) => ({ ...p, email: e.target.value }))}
-                      className="input text-black/70 placeholder:text-black/20"
-                      placeholder="admin@yourgym.gr"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-2">
-                    <label className="text-sm text-black/60 font-medium">Κωδικός</label>
-                    <input
-                      value={admin.password}
-                      onChange={(e) => setAdmin((p) => ({ ...p, password: e.target.value }))}
-                      className="input text-black/70 placeholder:text-black/20"
-                      placeholder="••••••••"
-                      type="password"
-                      autoComplete="new-password"
-                    />
-                  </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <Field label="Διεύθυνση">
+                    <IconInput icon={<MapPin size={14} />} value={gymInfo.address} onChange={(v) => setGymInfo((p) => ({ ...p, address: v }))} placeholder="Οδός, αριθμός" />
+                  </Field>
                 </div>
+                <Field label="Πόλη">
+                  <IconInput icon={<MapPin size={14} />} value={gymInfo.city} onChange={(v) => setGymInfo((p) => ({ ...p, city: v }))} placeholder="Θεσσαλονίκη" />
+                </Field>
               </div>
-            )}
-          </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Τ.Κ.">
+                  <IconInput icon={<MapPin size={14} />} value={gymInfo.postal_code} onChange={(v) => setGymInfo((p) => ({ ...p, postal_code: v }))} placeholder="54622" />
+                </Field>
+                <Field label="Website">
+                  <IconInput icon={<Globe size={14} />} value={gymInfo.website} onChange={(v) => setGymInfo((p) => ({ ...p, website: v }))} placeholder="https://yourgym.gr" />
+                </Field>
+              </div>
+              <Field label="Περιγραφή">
+                <textarea
+                  value={gymInfo.description}
+                  onChange={(e) => setGymInfo((p) => ({ ...p, description: e.target.value }))}
+                  placeholder="Σύντομη περιγραφή του γυμναστηρίου σας..."
+                  rows={2}
+                  className="w-full px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-300
+                             bg-white border border-slate-200 rounded-xl outline-none resize-none
+                             focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100
+                             hover:border-slate-300 transition-all duration-150"
+                />
+              </Field>
+            </div>
+          )}
 
-          {/* footer */}
-          <div className="flex items-center justify-between px-6 py-4 border-t border-black/10">
-            <button
-              onClick={back}
-              disabled={pending || stepIndex === 0}
-              className="inline-flex items-center gap-2 text-sm text-black px-3 py-2 rounded-xl border border-black/10 bg-black/5 hover:bg-black/10 disabled:opacity-70"
-            >
-              <ArrowLeft size={16} />
-              Πίσω
-            </button>
+          {/* STEP 3 */}
+          {step === "admin" && (
+            <div className="space-y-3">
+              <Field label="Ονοματεπώνυμο (προαιρετικό)">
+                <IconInput icon={<User size={14} />} value={admin.full_name} onChange={(v) => setAdmin((p) => ({ ...p, full_name: v }))} placeholder="π.χ. Γιώργος Παπαδόπουλος" />
+              </Field>
+              <Field label="Email διαχειριστή">
+                <IconInput icon={<Mail size={14} />} value={admin.email} onChange={(v) => setAdmin((p) => ({ ...p, email: v }))} placeholder="admin@yourgym.gr" type="email" />
+              </Field>
+              <Field label="Κωδικός">
+                <IconInput icon={<Lock size={14} />} value={admin.password} onChange={(v) => setAdmin((p) => ({ ...p, password: v }))} placeholder="Τουλάχιστον 8 χαρακτήρες" type="password" autoComplete="new-password" />
+              </Field>
+              <div className="flex items-start gap-2.5 px-4 py-3 bg-emerald-50 border border-emerald-100 rounded-xl">
+                <ShieldCheck size={14} className="text-emerald-500 shrink-0 mt-px" />
+                <p className="text-xs text-emerald-700/80 leading-relaxed">
+                  Ο διαχειριστής θα έχει <strong className="font-bold">πλήρη πρόσβαση</strong> στην πλατφόρμα.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* ── Footer ── */}
+        <div className="flex items-center justify-between px-7 py-4 bg-slate-50/80 border-t border-slate-100">
+
+          <button
+            onClick={back}
+            disabled={pending || stepIndex === 0}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl
+                       text-sm font-semibold text-slate-500
+                       bg-white border border-slate-200
+                       hover:bg-slate-50 hover:text-slate-700 hover:border-slate-300
+                       disabled:opacity-30 disabled:cursor-not-allowed
+                       transition-all duration-150 cursor-pointer"
+          >
+            <ArrowLeft size={14} />
+            Πίσω
+          </button>
+
+          <div className="flex items-center gap-3">
+            {/* Step dots */}
+            <div className="flex items-center gap-1.5">
+              {STEPS.map((_, i) => (
+                <div key={i} className={[
+                  "rounded-full transition-all duration-300",
+                  i === stepIndex ? "w-4 h-2 bg-indigo-500" : "",
+                  i < stepIndex  ? "w-2 h-2 bg-indigo-300" : "",
+                  i > stepIndex  ? "w-2 h-2 bg-slate-200"  : "",
+                ].join(" ")} />
+              ))}
+            </div>
+
             <button
               onClick={next}
               disabled={pending}
-              className="inline-flex items-center gap-2 text-sm px-4 py-2 rounded-xl bg-[#4c6fff] hover:bg-[#ffc947] hover:text-black text-white font-semibold disabled:opacity-60 cursor-pointer"
+              className={[
+                "inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold text-white",
+                "transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer",
+                "hover:-translate-y-px active:translate-y-0",
+                isFinal
+                  ? "bg-linear-to-br from-emerald-500 to-teal-500 shadow-lg shadow-emerald-200 hover:shadow-emerald-300"
+                  : "bg-linear-to-br from-[#4c6fff] to-[#2f55d4] shadow-lg shadow-indigo-200 hover:shadow-indigo-300",
+              ].join(" ")}
             >
-              <Rocket size={16} className={pending ? "animate-pulse" : ""} />
-              {pending
-                ? "Παρακαλώ περιμένετε…"
-                : step === "admin"
-                  ? "Ολοκλήρωση Εγγραφής"
-                  : "Επόμενο"}
-              <ArrowRight size={16} />
+              {pending ? (
+                <>
+                  <span className="flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white/80 animate-bounce [animation-delay:0ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-white/80 animate-bounce [animation-delay:150ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-white/80 animate-bounce [animation-delay:300ms]" />
+                  </span>
+                  Παρακαλώ περιμένετε…
+                </>
+              ) : (
+                <>
+                  {isFinal && <ShieldCheck size={15} />}
+                  {isFinal ? "Ολοκλήρωση Εγγραφής" : "Επόμενο"}
+                  {!isFinal && <ChevronRight size={15} />}
+                </>
+              )}
             </button>
           </div>
         </div>
       </div>
+
+      <style>{`
+        @keyframes onboardSlideUp {
+          from { opacity: 0; transform: translateY(18px) scale(0.985); }
+          to   { opacity: 1; transform: translateY(0)    scale(1);     }
+        }
+      `}</style>
     </div>
   );
 }
