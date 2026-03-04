@@ -4,7 +4,7 @@ import { useAuth } from '../../auth';
 import type { LucideIcon } from 'lucide-react';
 import {
   Pencil, Trash2, Loader2, Search, Plus, ChevronLeft, ChevronRight,
-  X, AlertTriangle, CheckCircle2, Dumbbell, Tag, User, Euro, Check,
+  X, Dumbbell, Tag, User, Euro, Check,
   ChevronDown,
 } from 'lucide-react';
 import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
@@ -32,7 +32,7 @@ type Toast = { id: string; title: string; message?: string; variant?: 'error' | 
 
 function ToastHost({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: string) => void }) {
   return (
-    <div className="fixed right-4 top-4 z-[100] flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 pointer-events-none">
+    <div className="fixed right-4 top-4 z-100 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 pointer-events-none">
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -40,7 +40,7 @@ function ToastHost({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: string)
           style={{ animation: 'toastSlideIn 0.25s ease' }}
         >
           <div className={[
-            'h-[3px]',
+            'h-0.75',
             t.variant === 'error'   ? 'bg-danger'  :
             t.variant === 'success' ? 'bg-success'  : 'bg-primary',
           ].join(' ')} />
@@ -234,7 +234,7 @@ export default function ClassesPage() {
             transition-all duration-150 cursor-pointer overflow-hidden shrink-0
           "
         >
-          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+          <span className="absolute inset-0 bg-linear-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
           <Plus className="h-3.5 w-3.5 relative z-10" />
           <span className="relative z-10 hidden sm:inline">Νέο Τμήμα</span>
         </button>
@@ -256,7 +256,7 @@ export default function ClassesPage() {
 
         {/* Desktop table */}
         <div className="hidden md:block overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-180 text-sm">
             <thead>
               <tr className="border-b border-border/10 bg-secondary/5">
                 {['Τίτλος', 'Κατηγορία', 'Προπονητής', 'Drop-in', ''].map((h, i) => (
@@ -559,7 +559,7 @@ function Modal({ title, icon, onClose, children, footer }: { title: string; icon
         className="w-full max-w-lg rounded-2xl border border-border/10 bg-secondary-background text-text-primary shadow-2xl overflow-hidden"
         style={{ animation: 'classModalIn 0.2s ease' }}
       >
-        <div className="h-[3px] w-full bg-gradient-to-r from-primary/0 via-primary to-primary/0" />
+        <div className="h-0.75 w-full bg-linear-to-r from-primary/0 via-primary to-primary/0" />
         <div className="px-5 py-4 border-b border-border/10 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
@@ -624,7 +624,7 @@ function CreateClassModal({ tenantId, categories, coaches, onClose, toast }: { t
       footer={<>
         <button onClick={onClose} className="h-9 px-4 rounded-xl border border-border/15 text-sm font-semibold text-text-secondary hover:text-text-primary hover:bg-secondary/30 transition-all cursor-pointer">Ακύρωση</button>
         <button onClick={submit} disabled={busy} className="group relative inline-flex items-center gap-2 h-9 px-5 rounded-xl text-sm font-bold text-white bg-primary hover:bg-primary/90 shadow-sm shadow-primary/20 hover:-translate-y-px disabled:opacity-50 disabled:translate-y-0 transition-all cursor-pointer overflow-hidden">
-          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+          <span className="absolute inset-0 bg-linear-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
           {busy ? <><Loader2 className="h-3.5 w-3.5 animate-spin relative z-10" /><span className="relative z-10">Δημιουργία…</span></> : <span className="relative z-10">Δημιουργία</span>}
         </button>
       </>}
@@ -665,7 +665,7 @@ function EditClassModal({ row, categories, coaches, onClose }: { row: GymClass; 
       footer={<>
         <button onClick={onClose} className="h-9 px-4 rounded-xl border border-border/15 text-sm font-semibold text-text-secondary hover:text-text-primary hover:bg-secondary/30 transition-all cursor-pointer">Ακύρωση</button>
         <button onClick={submit} disabled={busy} className="group relative inline-flex items-center gap-2 h-9 px-5 rounded-xl text-sm font-bold text-white bg-primary hover:bg-primary/90 shadow-sm shadow-primary/20 hover:-translate-y-px disabled:opacity-50 disabled:translate-y-0 transition-all cursor-pointer overflow-hidden">
-          <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+          <span className="absolute inset-0 bg-linear-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
           {busy ? <><Loader2 className="h-3.5 w-3.5 animate-spin relative z-10" /><span className="relative z-10">Αποθήκευση…</span></> : <span className="relative z-10">Αποθήκευση</span>}
         </button>
       </>}

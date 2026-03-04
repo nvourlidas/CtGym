@@ -51,7 +51,7 @@ export default function SendMemberPushModal({
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('send-push', { body: payload });
+      const {error } = await supabase.functions.invoke('send-push', { body: payload });
       if (error) { setErrorMsg(error.message ?? 'Κάτι πήγε στραβά κατά την αποστολή.'); return; }
       setSuccessMsg('Η ειδοποίηση στάλθηκε με επιτυχία!');
       setBody('');
@@ -74,7 +74,7 @@ export default function SendMemberPushModal({
         style={{ animation: 'pushModalIn 0.2s ease' }}
       >
         {/* Top accent bar */}
-        <div className="h-[3px] w-full bg-gradient-to-r from-primary/0 via-primary to-primary/0" />
+        <div className="h-0.75 w-full bg-linear-to-r from-primary/0 via-primary to-primary/0" />
 
         {/* Header */}
         <div className="px-5 py-4 border-b border-border/10 flex items-center justify-between gap-4">
@@ -166,7 +166,7 @@ export default function SendMemberPushModal({
                   </span>
                 </div>
                 <textarea
-                  className="w-full min-h-[90px] px-3.5 py-2.5 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all resize-none"
+                  className="w-full min-h-22.5 px-3.5 py-2.5 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary placeholder:text-text-secondary outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all resize-none"
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
                   placeholder="Π.χ. Μην ξεχάσεις το σημερινό μάθημα στις 18:00 💪"
@@ -194,13 +194,13 @@ export default function SendMemberPushModal({
           {/* Feedback */}
           {errorMsg && (
             <div className="flex items-start gap-2 px-4 py-3 rounded-xl border border-danger/25 bg-danger/8 text-danger text-sm">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-px" />
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-px" />
               {errorMsg}
             </div>
           )}
           {successMsg && (
             <div className="flex items-start gap-2 px-4 py-3 rounded-xl border border-success/25 bg-success/8 text-success text-sm">
-              <CheckCircle2 className="h-4 w-4 flex-shrink-0 mt-px" />
+              <CheckCircle2 className="h-4 w-4 shrink-0 mt-px" />
               {successMsg}
             </div>
           )}
@@ -227,7 +227,7 @@ export default function SendMemberPushModal({
               transition-all duration-150 cursor-pointer overflow-hidden
             "
           >
-            <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+            <span className="absolute inset-0 bg-linear-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
             {loading
               ? <><Loader2 className="h-3.5 w-3.5 animate-spin relative z-10" /><span className="relative z-10">Αποστολή…</span></>
               : <><Send className="h-3.5 w-3.5 relative z-10" /><span className="relative z-10">Αποστολή Push</span></>

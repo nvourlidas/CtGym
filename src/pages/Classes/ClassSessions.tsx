@@ -87,7 +87,7 @@ function ModalShell({ title, icon, onClose, children, footer }: { title: string;
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="w-full max-w-lg rounded-2xl border border-border/10 bg-secondary-background text-text-primary shadow-2xl overflow-hidden" style={{ animation: 'sessionModalIn 0.2s ease' }}>
-        <div className="h-[3px] w-full bg-gradient-to-r from-primary/0 via-primary to-primary/0" />
+        <div className="h-0.75 w-full bg-linear-to-r from-primary/0 via-primary to-primary/0" />
         <div className="px-5 py-4 border-b border-border/10 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">

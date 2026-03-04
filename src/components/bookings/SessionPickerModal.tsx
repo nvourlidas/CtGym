@@ -98,7 +98,7 @@ export default function SessionPickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-60 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
@@ -107,7 +107,7 @@ export default function SessionPickerModal({
         style={{ animation: 'sessionPickerIn 0.2s ease' }}
       >
         {/* Top accent bar */}
-        <div className="h-[3px] w-full bg-gradient-to-r from-primary/0 via-primary to-primary/0 shrink-0" />
+        <div className="h-0.75 w-full bg-linear-to-r from-primary/0 via-primary to-primary/0 shrink-0" />
 
         {/* Header */}
         <div className="px-5 py-4 border-b border-border/10 flex items-center justify-between gap-4 shrink-0">

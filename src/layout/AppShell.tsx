@@ -21,6 +21,7 @@ function getInitialTheme(): ThemeMode {
 function applyTheme(mode: ThemeMode) {
   document.documentElement.dataset.theme = mode;
   localStorage.setItem('theme', mode);
+  window.dispatchEvent(new Event('storage')); 
 }
 
 type PlanTier = 'free' | 'starter' | 'pro';

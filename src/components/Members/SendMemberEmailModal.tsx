@@ -5,7 +5,7 @@ import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
 import {
   Mail, X, ChevronRight, ChevronLeft, Loader2, AlertTriangle,
-  Users, User, Calendar, KeyRound, Pencil, CheckCircle2, Send,
+  Users, User, Calendar, KeyRound, Pencil, Send,
 } from 'lucide-react';
 
 type SendMemberEmailModalProps = {
@@ -187,7 +187,7 @@ export default function SendMemberEmailModal({
         style={{ animation: 'emailModalIn 0.2s ease' }}
       >
         {/* Top accent bar */}
-        <div className="h-[3px] w-full bg-gradient-to-r from-primary/0 via-primary to-primary/0 shrink-0" />
+        <div className="h-0.75 w-full bg-linear-to-r from-primary/0 via-primary to-primary/0 shrink-0" />
 
         {/* Header */}
         <div className="px-5 py-4 border-b border-border/10 flex items-center justify-between gap-4 shrink-0">
@@ -430,7 +430,7 @@ export default function SendMemberEmailModal({
                     transition-all duration-150 cursor-pointer overflow-hidden
                   "
                 >
-                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+                  <span className="absolute inset-0 bg-linear-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
                   {templateLoading
                     ? <><Loader2 className="h-3.5 w-3.5 animate-spin relative z-10" /><span className="relative z-10">Φόρτωση…</span></>
                     : <><span className="relative z-10">Συνέχεια</span><ChevronRight className="h-3.5 w-3.5 relative z-10" /></>
@@ -457,7 +457,7 @@ export default function SendMemberEmailModal({
                     transition-all duration-150 cursor-pointer overflow-hidden
                   "
                 >
-                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+                  <span className="absolute inset-0 bg-linear-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
                   {sending
                     ? <><Loader2 className="h-3.5 w-3.5 animate-spin relative z-10" /><span className="relative z-10">Αποστολή…</span></>
                     : <><Send className="h-3.5 w-3.5 relative z-10" /><span className="relative z-10">Αποστολή Email</span></>

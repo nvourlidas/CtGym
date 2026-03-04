@@ -1,686 +1,256 @@
 import { useMemo, useState } from "react";
 import AppDatePicker from "../ui/AppDatePicker";
 import SendPushModal from "./SendPushModal";
-import { Bell } from "lucide-react";
+import { Bell, Plus, Trash2, AlertTriangle, CalendarDays, ChevronDown } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 
 type Slot = { start: string; end: string };
+type HolidaySingle = { type:"holiday"; id:string; title:string; date:string; closed:boolean; slots:Slot[] };
+type HolidayRange  = { type:"holiday_range"; id:string; title:string; from:string; to:string; closed:boolean; slots:Slot[] };
+type HolidayItem   = HolidaySingle | HolidayRange;
 
-type HolidaySingle = {
-  type: "holiday";
-  id: string;
-  title: string;
-  date: string; // YYYY-MM-DD (year matters)
-  closed: boolean;
-  slots: Slot[];
-};
+type Props = { tenant_name:string|null; tenantId:string|null; exceptions:any[]; setExceptions:(v:any[]|((prev:any[])=>any[]))=>void; canEdit:boolean };
 
-type HolidayRange = {
-  type: "holiday_range";
-  id: string;
-  title: string;
-  from: string; // YYYY-MM-DD
-  to: string; // YYYY-MM-DD
-  closed: boolean;
-  slots: Slot[];
-};
-
-type HolidayItem = HolidaySingle | HolidayRange;
-
-type Props = {
-  tenant_name: string | null;
-  tenantId: string | null;
-  exceptions: any[];
-  setExceptions: (v: any[] | ((prev: any[]) => any[])) => void;
-  canEdit: boolean;
-};
-
-
-
-
-const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
+const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2,"0")}:00`);
 
 function uid() {
   // @ts-ignore
-  return typeof crypto !== "undefined" && crypto.randomUUID
-    ? // @ts-ignore
-    crypto.randomUUID()
-    : `h_${Math.random().toString(16).slice(2)}_${Date.now()}`;
+  return typeof crypto!=="undefined"&&crypto.randomUUID?crypto.randomUUID():`h_${Math.random().toString(16).slice(2)}_${Date.now()}`;
 }
-
-function isHolidayItem(x: any): x is HolidayItem {
-  return x?.type === "holiday" || x?.type === "holiday_range";
-}
-
-function isoToKey(iso: string) {
-  // YYYY-MM-DD -> number for sort (e.g. 2026-02-03 => 20260203)
-  if (!iso || iso.length < 10) return 0;
-  const y = iso.slice(0, 4);
-  const m = iso.slice(5, 7);
-  const d = iso.slice(8, 10);
-  const n = parseInt(`${y}${m}${d}`, 10);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function timeToMinutes(t: string) {
-  const [hh, mm] = t.split(":").map((x) => parseInt(x, 10));
-  if (Number.isNaN(hh) || Number.isNaN(mm)) return NaN;
-  return hh * 60 + mm;
-}
-
-function validateSlots(slots: Slot[]): string[] {
+function isHolidayItem(x: any): x is HolidayItem { return x?.type==="holiday"||x?.type==="holiday_range"; }
+function isoToKey(iso: string) { if(!iso||iso.length<10) return 0; const n=parseInt(iso.slice(0,4)+iso.slice(5,7)+iso.slice(8,10),10); return Number.isFinite(n)?n:0; }
+function timeToMinutes(t: string) { const [hh,mm]=t.split(":").map((x)=>parseInt(x,10)); if(Number.isNaN(hh)||Number.isNaN(mm)) return NaN; return hh*60+mm; }
+function validateSlots(slots: Slot[]) {
   const errors: string[] = [];
-
-  for (let i = 0; i < slots.length; i++) {
-    const s = slots[i];
-    if (!s.start || !s.end) {
-      errors.push(`Το ωράριο #${i + 1} δεν έχει ώρα έναρξης/λήξης.`);
-      continue;
-    }
-    const a = timeToMinutes(s.start);
-    const b = timeToMinutes(s.end);
-    if (!Number.isFinite(a) || !Number.isFinite(b)) {
-      errors.push(`Το ωράριο #${i + 1} έχει μη έγκυρη ώρα.`);
-      continue;
-    }
-    if (a >= b) errors.push(`Στο ωράριο #${i + 1} η έναρξη πρέπει να είναι πριν τη λήξη.`);
+  for (let i=0;i<slots.length;i++) {
+    const s=slots[i]; if(!s.start||!s.end){errors.push(`Ωράριο #${i+1}: λείπει ώρα.`);continue;}
+    const a=timeToMinutes(s.start),b=timeToMinutes(s.end);
+    if(!Number.isFinite(a)||!Number.isFinite(b)){errors.push(`Ωράριο #${i+1}: μη έγκυρη ώρα.`);continue;}
+    if(a>=b) errors.push(`Ωράριο #${i+1}: η έναρξη πρέπει να είναι πριν τη λήξη.`);
   }
-
-  const normalized = slots
-    .filter((s) => s.start && s.end)
-    .map((s) => ({ ...s, a: timeToMinutes(s.start), b: timeToMinutes(s.end) }))
-    .filter((s) => Number.isFinite(s.a) && Number.isFinite(s.b))
-    .sort((x, y) => x.a - y.a);
-
-  for (let i = 1; i < normalized.length; i++) {
-    const prev = normalized[i - 1];
-    const cur = normalized[i];
-    if (cur.a < prev.b) {
-      errors.push(`Υπάρχει επικάλυψη ωραρίων (${prev.start}-${prev.end}) και (${cur.start}-${cur.end}).`);
-    }
-  }
-
+  const norm=slots.filter((s)=>s.start&&s.end).map((s)=>({...s,a:timeToMinutes(s.start),b:timeToMinutes(s.end)})).filter((s)=>Number.isFinite(s.a)&&Number.isFinite(s.b)).sort((x,y)=>x.a-y.a);
+  for(let i=1;i<norm.length;i++){if(norm[i].a<norm[i-1].b) errors.push(`Επικάλυψη ωραρίων (${norm[i-1].start}-${norm[i-1].end}) και (${norm[i].start}-${norm[i].end}).`);}
   return errors;
 }
+function formatHolidayLabel(h: HolidayItem) { return h.type==="holiday"?h.date:`${h.from} → ${h.to}`; }
 
-function formatHolidayLabel(h: HolidayItem) {
-  if (h.type === "holiday") return h.date;
-  return `${h.from} → ${h.to}`;
+function ModeBtn({ active, onClick, disabled, children }: any) {
+  return (
+    <button type="button" disabled={disabled} onClick={onClick}
+      className={["h-8 px-4 rounded-xl border text-sm font-semibold transition-all cursor-pointer disabled:opacity-50", active?"bg-primary text-white border-primary shadow-sm shadow-primary/30":"border-border/15 text-text-secondary hover:text-text-primary hover:bg-secondary/30"].join(" ")}
+    >{children}</button>
+  );
+}
+
+function TimeSelect({ value, onChange, disabled }: { value:string; onChange:(v:string)=>void; disabled:boolean }) {
+  return (
+    <div className="relative">
+      <select value={value} disabled={disabled} onChange={(e)=>onChange(e.target.value)}
+        className="h-8 pl-3 pr-8 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary appearance-none outline-none focus:border-primary/40 transition-all disabled:opacity-50 cursor-pointer"
+      >
+        {HOURS.map((h)=><option key={h} value={h} className="bg-secondary-background">{h}</option>)}
+      </select>
+      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-text-secondary pointer-events-none" />
+    </div>
+  );
 }
 
 export default function HolidaysTab({ tenantId, tenant_name, exceptions, setExceptions, canEdit }: Props) {
   const holidays = useMemo(() => {
-    const list = (Array.isArray(exceptions) ? exceptions : [])
-      .filter(isHolidayItem)
-      .map((x) => x as HolidayItem);
-
-    list.sort((a, b) => {
-      const ka = a.type === "holiday" ? isoToKey(a.date) : isoToKey(a.from);
-      const kb = b.type === "holiday" ? isoToKey(b.date) : isoToKey(b.from);
-      return ka - kb || a.title.localeCompare(b.title);
-    });
-
+    const list=(Array.isArray(exceptions)?exceptions:[]).filter(isHolidayItem).map((x)=>x as HolidayItem);
+    list.sort((a,b)=>{ const ka=a.type==="holiday"?isoToKey(a.date):isoToKey(a.from); const kb=b.type==="holiday"?isoToKey(b.date):isoToKey(b.from); return ka-kb||a.title.localeCompare(b.title); });
     return list;
   }, [exceptions]);
 
-  const [mode, setMode] = useState<"single" | "range">("single");
-
-  const [form, setForm] = useState<{
-    title: string;
-    date: string;
-    from: string;
-    to: string;
-    closed: boolean;
-    slots: Slot[];
-  }>({
-    title: "",
-    date: "",
-    from: "",
-    to: "",
-    closed: true,
-    slots: [],
-  });
-
+  const [mode, setMode]         = useState<"single"|"range">("single");
+  const [form, setForm]         = useState({ title:"", date:"", from:"", to:"", closed:true, slots:[] as Slot[] });
+  const [formError, setFormError] = useState<string|null>(null);
   const [pushOpen, setPushOpen] = useState(false);
-  const [pushContext, setPushContext] = useState<{
-    id: string;
-    label: string;
-    kind: "holiday" | "holiday_range";
-    date?: string;
-    from?: string;
-    to?: string;
-  } | null>(null);
-
-
-  const [formError, setFormError] = useState<string | null>(null);
+  const [pushContext, setPushContext] = useState<{ id:string; label:string; kind:"holiday"|"holiday_range"; date?:string; from?:string; to?:string }|null>(null);
 
   function setHolidayInExceptions(updated: HolidayItem) {
-    setExceptions((prev: any[]) => {
-      const next = Array.isArray(prev) ? [...prev] : [];
-      const idx = next.findIndex((x) => isHolidayItem(x) && x.id === updated.id);
-      if (idx >= 0) next[idx] = updated;
-      return next;
-    });
+    setExceptions((prev:any[])=>{ const next=[...(Array.isArray(prev)?prev:[])]; const idx=next.findIndex((x)=>isHolidayItem(x)&&x.id===updated.id); if(idx>=0) next[idx]=updated; return next; });
   }
-
   function removeHoliday(id: string) {
-    setExceptions((prev: any[]) =>
-      (Array.isArray(prev) ? prev : []).filter((x) => !(isHolidayItem(x) && x.id === id))
-    );
+    setExceptions((prev:any[])=>(Array.isArray(prev)?prev:[]).filter((x)=>!(isHolidayItem(x)&&x.id===id)));
   }
 
   function addHoliday() {
     setFormError(null);
-
-    const title = form.title.trim();
-    if (!title) {
-      setFormError("Γράψε μια ονομασία (π.χ. Χριστούγεννα).");
-      return;
+    const title=form.title.trim(); if(!title){setFormError("Γράψε μια ονομασία (π.χ. Χριστούγεννα)."); return;}
+    const slots=form.closed?[]:form.slots.length?form.slots:[{start:"10:00",end:"14:00"}];
+    if(!form.closed){const errs=validateSlots(slots); if(errs.length){setFormError(errs[0]);return;}}
+    if(mode==="single"){
+      if(!form.date){setFormError("Επίλεξε ημερομηνία."); return;}
+      setExceptions((prev:any[])=>[...(Array.isArray(prev)?prev:[]),{type:"holiday",id:uid(),title,date:form.date,closed:form.closed,slots}as HolidaySingle]);
+      setForm({title:"",date:"",from:"",to:"",closed:true,slots:[]}); return;
     }
-
-    const slots = form.closed
-      ? []
-      : form.slots.length
-        ? form.slots
-        : [{ start: "10:00", end: "14:00" }];
-
-    if (!form.closed) {
-      const slotErrs = validateSlots(slots);
-      if (slotErrs.length) {
-        setFormError(slotErrs[0]);
-        return;
-      }
-    }
-
-    if (mode === "single") {
-      if (!form.date) {
-        setFormError("Επίλεξε ημερομηνία.");
-        return;
-      }
-
-      const item: HolidaySingle = {
-        type: "holiday",
-        id: uid(),
-        title,
-        date: form.date,
-        closed: form.closed,
-        slots,
-      };
-
-      setExceptions((prev: any[]) => {
-        const next = Array.isArray(prev) ? [...prev] : [];
-        next.push(item);
-        return next;
-      });
-
-      setForm({ title: "", date: "", from: "", to: "", closed: true, slots: [] });
-      setMode("single");
-      return;
-    }
-
-    // range
-    if (!form.from || !form.to) {
-      setFormError("Επίλεξε 'Από' και 'Έως'.");
-      return;
-    }
-
-    if (isoToKey(form.from) > isoToKey(form.to)) {
-      setFormError("Το 'Από' πρέπει να είναι πριν (ή ίδια) από το 'Έως'.");
-      return;
-    }
-
-    const item: HolidayRange = {
-      type: "holiday_range",
-      id: uid(),
-      title,
-      from: form.from,
-      to: form.to,
-      closed: form.closed,
-      slots,
-    };
-
-    setExceptions((prev: any[]) => {
-      const next = Array.isArray(prev) ? [...prev] : [];
-      next.push(item);
-      return next;
-    });
-
-    setForm({ title: "", date: "", from: "", to: "", closed: true, slots: [] });
-    setMode("single");
+    if(!form.from||!form.to){setFormError("Επίλεξε 'Από' και 'Έως'."); return;}
+    if(isoToKey(form.from)>isoToKey(form.to)){setFormError("Το 'Από' πρέπει να είναι πριν το 'Έως'."); return;}
+    setExceptions((prev:any[])=>[...(Array.isArray(prev)?prev:[]),{type:"holiday_range",id:uid(),title,from:form.from,to:form.to,closed:form.closed,slots}as HolidayRange]);
+    setForm({title:"",date:"",from:"",to:"",closed:true,slots:[]});
   }
 
   const hint = useMemo(() => {
-    if (mode === "single") {
-      if (!form.date) return null;
-      const k = isoToKey(form.date);
-
-      const overlap = holidays.find((h) => {
-        if (h.type === "holiday") return isoToKey(h.date) === k;
-        return k >= isoToKey(h.from) && k <= isoToKey(h.to);
-      });
-
-      return overlap
-        ? `Προσοχή: υπάρχει ήδη αργία/εύρος που καλύπτει αυτή την ημερομηνία (${overlap.title}).`
-        : null;
-    }
-
-    if (!form.from || !form.to) return null;
-    const a = isoToKey(form.from);
-    const b = isoToKey(form.to);
-    if (a > b) return null;
-
-    const overlap = holidays.find((h) => {
-      if (h.type === "holiday") {
-        const k = isoToKey(h.date);
-        return k >= a && k <= b;
-      }
-      const ha = isoToKey(h.from);
-      const hb = isoToKey(h.to);
-      return !(b < ha || a > hb);
-    });
-
-    return overlap ? `Προσοχή: το εύρος τέμνει υπάρχουσα αργία/εύρος (${overlap.title}).` : null;
+    if(mode==="single"){ if(!form.date) return null; const k=isoToKey(form.date); const o=holidays.find((h)=>h.type==="holiday"?isoToKey(h.date)===k:k>=isoToKey(h.from)&&k<=isoToKey(h.to)); return o?`Προσοχή: υπάρχει ήδη αργία που καλύπτει αυτή την ημερομηνία (${o.title}).`:null; }
+    if(!form.from||!form.to) return null; const a=isoToKey(form.from); const b=isoToKey(form.to); if(a>b) return null;
+    const o=holidays.find((h)=>{ if(h.type==="holiday"){const k=isoToKey(h.date); return k>=a&&k<=b;} const ha=isoToKey(h.from),hb=isoToKey(h.to); return !(b<ha||a>hb); });
+    return o?`Προσοχή: το εύρος τέμνει υπάρχουσα αργία (${o.title}).`:null;
   }, [mode, form.date, form.from, form.to, holidays]);
 
   return (
-    <div className="space-y-3">
-      {/* Add form */}
-      <div className="rounded-xl border border-border/10 bg-secondary-background p-4">
-        <div className="text-sm font-semibold text-text-primary">Αργίες</div>
-        <div className="text-sm text-text-secondary mt-1">
-          Πρόσθεσε αργίες για συγκεκριμένη χρονιά (το έτος ΔΕΝ αγνοείται).
+    <div className="space-y-4">
+      {/* ── Add form ── */}
+      <div className="rounded-xl border border-border/10 bg-secondary/5 p-4 space-y-4">
+        <div>
+          <div className="text-sm font-bold text-text-primary">Νέα αργία</div>
+          <div className="text-xs text-text-secondary mt-0.5">Πρόσθεσε αργίες για συγκεκριμένη χρονιά (το έτος ΔΕΝ αγνοείται).</div>
         </div>
 
-        {/* Mode */}
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={!canEdit}
-            onClick={() => setMode("single")}
-            className={[
-              "px-3 py-2 rounded-lg text-sm font-medium border",
-              mode === "single"
-                ? "bg-success/25 border-white/20 text-text-primary"
-                : "bg-transparent border-white/10 text-text-secondary hover:bg-black/10",
-              !canEdit ? "opacity-60" : "",
-            ].join(" ")}
-          >
-            Μία ημέρα
-          </button>
-
-          <button
-            type="button"
-            disabled={!canEdit}
-            onClick={() => setMode("range")}
-            className={[
-              "px-3 py-2 rounded-lg text-sm font-medium border",
-              mode === "range"
-                ? "bg-success/25 border-white/20 text-text-primary"
-                : "bg-transparent border-white/10 text-text-secondary hover:bg-black/10",
-              !canEdit ? "opacity-60" : "",
-            ].join(" ")}
-          >
-            Εύρος ημερομηνιών
-          </button>
+        <div className="flex items-center gap-1 p-1 rounded-xl border border-border/15 bg-secondary-background w-fit">
+          <ModeBtn active={mode==="single"} onClick={()=>setMode("single")} disabled={!canEdit}>Μία ημέρα</ModeBtn>
+          <ModeBtn active={mode==="range"}  onClick={()=>setMode("range")}  disabled={!canEdit}>Εύρος ημερομηνιών</ModeBtn>
         </div>
 
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-3">
-          <div className="md:col-span-6">
-            <label className="text-xs text-text-secondary block mb-1">Ονομασία</label>
-            <input
-              value={form.title}
-              onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-              disabled={!canEdit}
-              className="input"
-              placeholder="π.χ. Χριστούγεννα"
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+          <div className="md:col-span-5 space-y-1.5">
+            <label className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Ονομασία</label>
+            <input value={form.title} onChange={(e)=>setForm((p)=>({...p,title:e.target.value}))} disabled={!canEdit} placeholder="π.χ. Χριστούγεννα"
+              className="w-full h-9 px-3.5 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all placeholder:text-text-secondary disabled:opacity-50"
             />
           </div>
 
-          {mode === "single" ? (
-            <div className="md:col-span-4">
-              <label className="text-xs text-text-secondary block mb-1">Ημερομηνία</label>
-              <AppDatePicker
-                valueIso={form.date}
-                onChangeIso={(iso) => setForm((p) => ({ ...p, date: iso }))}
-                disabled={!canEdit}
-              />
+          {mode==="single"?(
+            <div className="md:col-span-4 space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Ημερομηνία</label>
+              <AppDatePicker valueIso={form.date} onChangeIso={(iso)=>setForm((p)=>({...p,date:iso}))} disabled={!canEdit} />
             </div>
-          ) : (
-            <div className="md:col-span-4">
-              <label className="text-xs text-text-secondary block mb-1">Από / Έως</label>
+          ):(
+            <div className="md:col-span-4 space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Από / Έως</label>
               <div className="flex gap-2">
-                <AppDatePicker
-                  valueIso={form.from}
-                  onChangeIso={(iso) =>
-                    setForm((p) => {
-                      if (iso && p.to && isoToKey(iso) > isoToKey(p.to)) return p;
-                      return { ...p, from: iso };
-                    })
-                  }
-                  disabled={!canEdit}
-                />
-
-                <AppDatePicker
-                  valueIso={form.to}
-                  onChangeIso={(iso) =>
-                    setForm((p) => {
-                      if (iso && p.from && isoToKey(p.from) > isoToKey(iso)) return p;
-                      return { ...p, to: iso };
-                    })
-                  }
-                  disabled={!canEdit}
-                />
+                <AppDatePicker valueIso={form.from} disabled={!canEdit} onChangeIso={(iso)=>setForm((p)=>{ if(iso&&p.to&&isoToKey(iso)>isoToKey(p.to)) return p; return {...p,from:iso}; })} />
+                <AppDatePicker valueIso={form.to}   disabled={!canEdit} onChangeIso={(iso)=>setForm((p)=>{ if(iso&&p.from&&isoToKey(p.from)>isoToKey(iso)) return p; return {...p,to:iso}; })} />
               </div>
             </div>
           )}
 
-          <div className="md:col-span-2 flex items-end">
-            <label className="flex items-center gap-2 text-sm text-text-secondary">
-              <input
-                type="checkbox"
-                checked={form.closed}
-                disabled={!canEdit}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, closed: e.target.checked, slots: e.target.checked ? [] : p.slots }))
-                }
-              />
+          <div className="md:col-span-3 flex items-end pb-0.5">
+            <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer select-none">
+              <div className={["relative w-9 h-5 rounded-full border transition-all", form.closed?"bg-primary border-primary/60":"bg-secondary/20 border-border/20"].join(" ")} onClick={()=>!canEdit||setForm((p)=>({...p,closed:!p.closed,slots:!p.closed?[]:p.slots}))}>
+                <span className={["absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all", form.closed?"left-4":"left-0.5"].join(" ")} />
+              </div>
               Κλειστό
             </label>
           </div>
         </div>
 
+        {/* Special hours for form */}
         {!form.closed && (
-          <div className="mt-3 rounded-lg border border-white/10 bg-black/10 p-3">
-            <div className="text-xs text-text-secondary mb-2">Ειδικό ωράριο (μόνο πλήρεις ώρες)</div>
-
-            {(form.slots.length ? form.slots : [{ start: "10:00", end: "14:00" }]).map((s, idx) => (
-              <div key={idx} className="flex flex-wrap items-center gap-2 mb-2 last:mb-0">
-                <div className="text-xs text-text-secondary w-10">#{idx + 1}</div>
-
-                <select
-                  value={s.start}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setForm((p) => {
-                      const base = p.slots.length ? p.slots : [{ start: "10:00", end: "14:00" }];
-                      const slots = base.map((x, i) => (i === idx ? { ...x, start: v } : x));
-                      return { ...p, slots };
-                    });
-                  }}
-                  className="px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-sm text-text-primary disabled:opacity-60"
-                >
-                  {HOURS.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
-                    </option>
-                  ))}
-                </select>
-
-                <span className="text-text-secondary text-sm">→</span>
-
-                <select
-                  value={s.end}
-                  disabled={!canEdit}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setForm((p) => {
-                      const base = p.slots.length ? p.slots : [{ start: "10:00", end: "14:00" }];
-                      const slots = base.map((x, i) => (i === idx ? { ...x, end: v } : x));
-                      return { ...p, slots };
-                    });
-                  }}
-                  className="px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-sm text-text-primary disabled:opacity-60"
-                >
-                  {HOURS.map((h) => (
-                    <option key={h} value={h}>
-                      {h}
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  type="button"
-                  disabled={!canEdit}
-                  onClick={() => {
-                    setForm((p) => {
-                      const base = p.slots.length ? p.slots : [{ start: "10:00", end: "14:00" }];
-                      const slots = base.filter((_, i) => i !== idx);
-                      return { ...p, slots };
-                    });
-                  }}
-                  className="ml-auto px-3 py-2 rounded-lg text-xs font-medium border border-danger/30 bg-danger/10 text-danger disabled:opacity-50"
-                >
-                  Αφαίρεση
-                </button>
+          <div className="rounded-xl border border-border/10 bg-secondary-background p-3 space-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Ειδικό ωράριο</div>
+            {(form.slots.length?form.slots:[{start:"10:00",end:"14:00"}]).map((s,idx)=>(
+              <div key={idx} className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-text-secondary w-6">#{idx+1}</span>
+                <TimeSelect value={s.start} disabled={!canEdit} onChange={(v)=>setForm((p)=>{ const base=p.slots.length?p.slots:[{start:"10:00",end:"14:00"}]; return {...p,slots:base.map((x,i)=>i===idx?{...x,start:v}:x)}; })} />
+                <span className="text-text-secondary text-xs">→</span>
+                <TimeSelect value={s.end}   disabled={!canEdit} onChange={(v)=>setForm((p)=>{ const base=p.slots.length?p.slots:[{start:"10:00",end:"14:00"}]; return {...p,slots:base.map((x,i)=>i===idx?{...x,end:v}:x)}; })} />
+                <button type="button" disabled={!canEdit} onClick={()=>setForm((p)=>{ const base=p.slots.length?p.slots:[{start:"10:00",end:"14:00"}]; return {...p,slots:base.filter((_,i)=>i!==idx)}; })} className="ml-auto h-7 w-7 rounded-xl border border-danger/20 flex items-center justify-center text-danger hover:bg-danger/10 transition-all disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3" /></button>
               </div>
             ))}
-
-            <button
-              type="button"
-              disabled={!canEdit}
-              onClick={() =>
-                setForm((p) => {
-                  const base = p.slots.length ? p.slots : [{ start: "10:00", end: "14:00" }];
-                  return { ...p, slots: [...base, { start: "10:00", end: "14:00" }] };
-                })
-              }
-              className="mt-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 bg-black/20 text-text-primary disabled:opacity-50"
-            >
-              + Προσθήκη ωραρίου
-            </button>
+            <button type="button" disabled={!canEdit} onClick={()=>setForm((p)=>{ const base=p.slots.length?p.slots:[{start:"10:00",end:"14:00"}]; return {...p,slots:[...base,{start:"10:00",end:"14:00"}]}; })} className="inline-flex items-center gap-1 h-7 px-3 rounded-xl border border-border/15 text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-secondary/30 disabled:opacity-50 cursor-pointer transition-all"><Plus className="h-3 w-3" />Ωράριο</button>
           </div>
         )}
 
-        {hint && <div className="mt-3 text-xs text-warning">{hint}</div>}
+        {hint && <div className="flex items-center gap-2 text-xs text-warning px-3 py-2 rounded-xl border border-warning/25 bg-warning/8"><AlertTriangle className="h-3.5 w-3.5 shrink-0" />{hint}</div>}
+        {formError && <div className="flex items-center gap-2 text-xs text-danger px-3 py-2 rounded-xl border border-danger/25 bg-danger/8"><AlertTriangle className="h-3.5 w-3.5 shrink-0" />{formError}</div>}
 
-        {formError && (
-          <div className="mt-3 text-sm border border-danger/30 bg-danger/10 text-danger rounded-lg p-3">
-            {formError}
-          </div>
-        )}
-
-        <div className="mt-4">
-          <button
-            type="button"
-            disabled={!canEdit}
-            onClick={addHoliday}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-primary text-white disabled:opacity-50"
-          >
-            Προσθήκη αργίας
-          </button>
-        </div>
+        <button type="button" disabled={!canEdit} onClick={addHoliday}
+          className="group relative inline-flex items-center gap-1.5 h-8 px-4 rounded-xl text-sm font-bold text-white bg-primary hover:bg-primary/90 shadow-sm disabled:opacity-50 transition-all cursor-pointer overflow-hidden"
+        >
+          <span className="absolute inset-0 bg-linear-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+          <Plus className="h-3.5 w-3.5 relative z-10" /><span className="relative z-10">Προσθήκη αργίας</span>
+        </button>
       </div>
 
-      {/* List */}
-      <div className="rounded-xl border border-border/10 bg-secondary-background p-4">
-        <div className="text-sm font-semibold text-text-primary mb-3">Λίστα αργιών</div>
+      {/* ── List ── */}
+      <div className="rounded-xl border border-border/10 bg-secondary-background overflow-hidden">
+        <div className="px-4 py-3 border-b border-border/10 flex items-center gap-2">
+          <CalendarDays className="h-3.5 w-3.5 text-text-secondary" />
+          <span className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Λίστα αργιών</span>
+          {holidays.length>0 && <span className="ml-auto text-[11px] text-text-secondary">{holidays.length} εγγραφές</span>}
+        </div>
 
-        {holidays.length === 0 ? (
-          <div className="text-sm text-text-secondary">Δεν έχεις προσθέσει αργίες ακόμα.</div>
-        ) : (
-          <div className="space-y-3">
-            {holidays.map((h) => (
-              <div key={h.id} className="rounded-lg border border-border/10 bg-bulk-bg/5 p-3">
+        {holidays.length===0?(
+          <div className="flex flex-col items-center gap-2 py-10 text-text-secondary">
+            <CalendarDays className="h-7 w-7 opacity-20" />
+            <span className="text-sm">Δεν έχεις προσθέσει αργίες ακόμα.</span>
+          </div>
+        ):(
+          <div className="divide-y divide-border/5">
+            {holidays.map((h)=>(
+              <div key={h.id} className="p-4 space-y-3 hover:bg-secondary/5 transition-colors">
+                {/* Header */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="text-sm font-semibold text-text-primary">{h.title}</div>
-                    <div className="text-xs text-text-secondary">{formatHolidayLabel(h)}</div>
-                    <div className="text-xs px-2 py-1 rounded border border-white/10 bg-danger/20 text-text-primary">
-                      {h.closed ? "Κλειστό" : "Ειδικό ωράριο"}
-                    </div>
-                    <button
-                      type="button"
-                      disabled={!canEdit}
-                      onClick={() => {
-                        setPushContext({
-                          id: h.id,
-                          kind: h.type,
-                          label: `${h.title} (${formatHolidayLabel(h)})`,
-                          ...(h.type === "holiday" ? { date: h.date } : { from: h.from, to: h.to }),
-                        });
-                        setPushOpen(true);
-                      }}
-                      className="px-3 py-2 rounded-lg text-xs font-medium border border-white/10 bg-accent/20 text-text-primary hover:bg-accent/30 disabled:opacity-50 inline-flex items-center gap-2"
-                    >
-                      <Bell size={14} />
-                      Ειδοποίηση
-                    </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`text-[10.5px] font-bold px-2.5 py-1 rounded-lg border ${h.closed?"border-danger/35 bg-danger/10 text-danger":"border-success/35 bg-success/10 text-success"}`}>
+                      {h.closed?"Κλειστό":"Ειδικό ωράριο"}
+                    </span>
+                    <span className="text-xs text-text-secondary font-mono">{formatHolidayLabel(h)}</span>
+                    <span className="text-sm font-bold text-text-primary">{h.title}</span>
+                    {h.type==="holiday_range" && <span className="text-[10.5px] font-bold px-2 py-0.5 rounded-lg border border-sky-500/30 bg-sky-500/8 text-sky-400">Εύρος</span>}
                   </div>
-
-                  <button
-                    type="button"
-                    disabled={!canEdit}
-                    onClick={() => removeHoliday(h.id)}
-                    className="px-3 py-2 rounded-lg text-xs font-medium border border-danger/30 bg-danger/10 text-danger disabled:opacity-50"
-                  >
-                    Διαγραφή
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button type="button" disabled={!canEdit} onClick={()=>{ setPushContext({id:h.id,kind:h.type,label:`${h.title} (${formatHolidayLabel(h)})`,...(h.type==="holiday"?{date:h.date}:{from:h.from,to:h.to})}); setPushOpen(true); }} className="inline-flex items-center gap-1.5 h-7 px-3 rounded-xl border border-border/15 text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-secondary/30 transition-all disabled:opacity-50 cursor-pointer"><Bell className="h-3 w-3" />Ειδοποίηση</button>
+                    <button type="button" disabled={!canEdit} onClick={()=>removeHoliday(h.id)} className="h-7 w-7 rounded-xl border border-danger/20 flex items-center justify-center text-danger hover:bg-danger/10 transition-all disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3" /></button>
+                  </div>
                 </div>
 
                 {/* Inline edit */}
-                <div className="mt-3 grid grid-cols-1 md:grid-cols-12 gap-3">
-                  <div className="md:col-span-6">
-                    <label className="text-xs text-text-secondary block mb-1">Ονομασία</label>
-                    <input
-                      value={h.title}
-                      disabled={!canEdit}
-                      onChange={(e) => setHolidayInExceptions({ ...h, title: e.target.value } as HolidayItem)}
-                      className="input"
-                    />
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                  <div className="md:col-span-5 space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Ονομασία</label>
+                    <input value={h.title} disabled={!canEdit} onChange={(e)=>setHolidayInExceptions({...h,title:e.target.value}as HolidayItem)} className="w-full h-9 px-3.5 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary outline-none focus:border-primary/40 transition-all disabled:opacity-50" />
                   </div>
-
-                  {h.type === "holiday" ? (
-                    <div className="md:col-span-4">
-                      <label className="text-xs text-text-secondary block mb-1">Ημερομηνία</label>
-                      <AppDatePicker
-                        valueIso={h.date}
-                        disabled={!canEdit}
-                        onChangeIso={(iso) => setHolidayInExceptions({ ...h, date: iso } as HolidayItem)}
-                      />
+                  {h.type==="holiday"?(
+                    <div className="md:col-span-4 space-y-1.5">
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Ημερομηνία</label>
+                      <AppDatePicker valueIso={h.date} disabled={!canEdit} onChangeIso={(iso)=>setHolidayInExceptions({...h,date:iso}as HolidayItem)} />
                     </div>
-                  ) : (
-                    <div className="md:col-span-4">
-                      <label className="text-xs text-text-secondary block mb-1">Από / Έως</label>
+                  ):(
+                    <div className="md:col-span-4 space-y-1.5">
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Από / Έως</label>
                       <div className="flex gap-2">
-                        <AppDatePicker
-                          valueIso={h.from}
-                          disabled={!canEdit}
-                          onChangeIso={(iso) => {
-                            if (iso && h.to && isoToKey(iso) > isoToKey(h.to)) return;
-
-                            setHolidayInExceptions({ ...h, from: iso } as HolidayItem);
-                          }}
-                        />
-                        <AppDatePicker
-                          valueIso={h.to}
-                          disabled={!canEdit}
-                          onChangeIso={(iso) => {
-                            if (iso && h.from && isoToKey(h.from) > isoToKey(iso)) return;
-
-                            setHolidayInExceptions({ ...h, to: iso } as HolidayItem);
-                          }}
-                        />
+                        <AppDatePicker valueIso={h.from} disabled={!canEdit} onChangeIso={(iso)=>{ if(iso&&h.to&&isoToKey(iso)>isoToKey(h.to)) return; setHolidayInExceptions({...h,from:iso}as HolidayItem); }} />
+                        <AppDatePicker valueIso={h.to}   disabled={!canEdit} onChangeIso={(iso)=>{ if(iso&&h.from&&isoToKey(h.from)>isoToKey(iso)) return; setHolidayInExceptions({...h,to:iso}as HolidayItem); }} />
                       </div>
-                      <div className="mt-1 text-[11px] text-text-secondary">
-                        (Αν το “Από” είναι μετά το “Έως”, πρώτα άλλαξε το “Έως”.)
-                      </div>
+                      <div className="text-[10.5px] text-text-secondary opacity-60">(Αν το "Από" είναι μετά το "Έως", πρώτα άλλαξε το "Έως".)</div>
                     </div>
                   )}
-
-                  <div className="md:col-span-2 flex items-end">
-                    <label className="flex items-center gap-2 text-sm text-text-secondary">
-                      <input
-                        type="checkbox"
-                        checked={h.closed}
-                        disabled={!canEdit}
-                        onChange={(e) =>
-                          setHolidayInExceptions({
-                            ...h,
-                            closed: e.target.checked,
-                            slots: e.target.checked
-                              ? []
-                              : h.slots?.length
-                                ? h.slots
-                                : [{ start: "10:00", end: "14:00" }],
-                          })
-                        }
-                      />
+                  <div className="md:col-span-3 flex items-end pb-0.5">
+                    <label className="flex items-center gap-2 text-sm text-text-secondary cursor-pointer select-none">
+                      <div className={["relative w-9 h-5 rounded-full border transition-all", h.closed?"bg-primary border-primary/60":"bg-secondary/20 border-border/20"].join(" ")} onClick={()=>!canEdit||setHolidayInExceptions({...h,closed:!h.closed,slots:!h.closed?[]:h.slots?.length?h.slots:[{start:"10:00",end:"14:00"}]})}>
+                        <span className={["absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all",h.closed?"left-4":"left-0.5"].join(" ")} />
+                      </div>
                       Κλειστό
                     </label>
                   </div>
                 </div>
 
+                {/* Special hours for existing */}
                 {!h.closed && (
-                  <div className="mt-3 rounded-lg border border-white/10 bg-black/10 p-3">
-                    <div className="text-xs text-text-secondary mb-2">Ειδικό ωράριο (μόνο πλήρεις ώρες)</div>
-
-                    {(h.slots?.length ? h.slots : [{ start: "10:00", end: "14:00" }]).map((s, idx) => (
-                      <div key={idx} className="flex flex-wrap items-center gap-2 mb-2 last:mb-0">
-                        <div className="text-xs text-text-secondary w-10">#{idx + 1}</div>
-
-                        <select
-                          value={s.start}
-                          disabled={!canEdit}
-                          onChange={(e) => {
-                            const base = h.slots?.length ? h.slots : [{ start: "10:00", end: "14:00" }];
-                            const slots = base.map((x, i) => (i === idx ? { ...x, start: e.target.value } : x));
-                            setHolidayInExceptions({ ...h, slots } as HolidayItem);
-                          }}
-                          className="px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-sm text-text-primary disabled:opacity-60"
-                        >
-                          {HOURS.map((hr) => (
-                            <option key={hr} value={hr}>
-                              {hr}
-                            </option>
-                          ))}
-                        </select>
-
-                        <span className="text-text-secondary text-sm">→</span>
-
-                        <select
-                          value={s.end}
-                          disabled={!canEdit}
-                          onChange={(e) => {
-                            const base = h.slots?.length ? h.slots : [{ start: "10:00", end: "14:00" }];
-                            const slots = base.map((x, i) => (i === idx ? { ...x, end: e.target.value } : x));
-                            setHolidayInExceptions({ ...h, slots } as HolidayItem);
-                          }}
-                          className="px-3 py-2 rounded-lg bg-black/20 border border-white/10 text-sm text-text-primary disabled:opacity-60"
-                        >
-                          {HOURS.map((hr) => (
-                            <option key={hr} value={hr}>
-                              {hr}
-                            </option>
-                          ))}
-                        </select>
-
-                        <button
-                          type="button"
-                          disabled={!canEdit}
-                          onClick={() => {
-                            const base = h.slots?.length ? h.slots : [{ start: "10:00", end: "14:00" }];
-                            const slots = base.filter((_, i) => i !== idx);
-                            setHolidayInExceptions({ ...h, slots } as HolidayItem);
-                          }}
-                          className="ml-auto px-3 py-2 rounded-lg text-xs font-medium border border-danger/30 bg-danger/10 text-danger disabled:opacity-50"
-                        >
-                          Αφαίρεση
-                        </button>
+                  <div className="rounded-xl border border-border/10 bg-secondary-background p-3 space-y-2">
+                    <div className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Ειδικό ωράριο</div>
+                    {(h.slots?.length?h.slots:[{start:"10:00",end:"14:00"}]).map((s,idx)=>(
+                      <div key={idx} className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-text-secondary w-6">#{idx+1}</span>
+                        <TimeSelect value={s.start} disabled={!canEdit} onChange={(v)=>{ const base=h.slots?.length?h.slots:[{start:"10:00",end:"14:00"}]; setHolidayInExceptions({...h,slots:base.map((x,i)=>i===idx?{...x,start:v}:x)}as HolidayItem); }} />
+                        <span className="text-text-secondary text-xs">→</span>
+                        <TimeSelect value={s.end}   disabled={!canEdit} onChange={(v)=>{ const base=h.slots?.length?h.slots:[{start:"10:00",end:"14:00"}]; setHolidayInExceptions({...h,slots:base.map((x,i)=>i===idx?{...x,end:v}:x)}as HolidayItem); }} />
+                        <button type="button" disabled={!canEdit} onClick={()=>{ const base=h.slots?.length?h.slots:[{start:"10:00",end:"14:00"}]; setHolidayInExceptions({...h,slots:base.filter((_,i)=>i!==idx)}as HolidayItem); }} className="ml-auto h-7 w-7 rounded-xl border border-danger/20 flex items-center justify-center text-danger hover:bg-danger/10 transition-all disabled:opacity-40 cursor-pointer"><Trash2 className="h-3 w-3" /></button>
                       </div>
                     ))}
-
-                    <button
-                      type="button"
-                      disabled={!canEdit}
-                      onClick={() => {
-                        const base = h.slots?.length ? h.slots : [{ start: "10:00", end: "14:00" }];
-                        setHolidayInExceptions({ ...h, slots: [...base, { start: "10:00", end: "14:00" }] } as HolidayItem);
-                      }}
-                      className="mt-2 px-3 py-1.5 rounded-lg text-xs font-medium border border-white/10 bg-black/20 text-text-primary disabled:opacity-50"
-                    >
-                      + Προσθήκη ωραρίου
-                    </button>
+                    <button type="button" disabled={!canEdit} onClick={()=>{ const base=h.slots?.length?h.slots:[{start:"10:00",end:"14:00"}]; setHolidayInExceptions({...h,slots:[...base,{start:"10:00",end:"14:00"}]}as HolidayItem); }} className="inline-flex items-center gap-1 h-7 px-3 rounded-xl border border-border/15 text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-secondary/30 disabled:opacity-50 cursor-pointer transition-all"><Plus className="h-3 w-3" />Ωράριο</button>
                   </div>
                 )}
               </div>
@@ -688,43 +258,19 @@ export default function HolidaysTab({ tenantId, tenant_name, exceptions, setExce
           </div>
         )}
       </div>
-      {!canEdit && <div className="text-xs text-text-secondary">Δεν έχεις δικαιώματα για επεξεργασία.</div>}
+
+      {!canEdit && <div className="text-xs text-text-secondary opacity-60">Δεν έχεις δικαιώματα για επεξεργασία.</div>}
 
       <SendPushModal
-        open={pushOpen}
-        onClose={() => {
-          setPushOpen(false);
-          setPushContext(null);
-        }}
-        canEdit={canEdit}
-        contextLabel={pushContext ? `Αργία: ${pushContext.label}` : "Αργία"}
-        defaultTitle={tenant_name ? tenant_name : 'Cloudtec Gym'}
-        defaultMessage=""
-        onSend={async ({ title, message }) => {
-          if (!tenantId) throw new Error("Missing tenantId");
-
-          const { error } = await supabase.functions.invoke("send-push", {
-            body: {
-              tenant_id: tenantId,
-              send_to_all: true,
-              title,
-              body: message,
-              type: "closure", 
-              data: {
-                kind: pushContext?.kind ?? "closure",
-                id: pushContext?.id,
-                date: pushContext?.date,
-                from: pushContext?.from,
-                to: pushContext?.to,
-                label: pushContext?.label ?? null,
-              },
-            },
-          });
-
-          if (error) throw error;
+        open={pushOpen} onClose={()=>{ setPushOpen(false); setPushContext(null); }} canEdit={canEdit}
+        contextLabel={pushContext?`Αργία: ${pushContext.label}`:"Αργία"}
+        defaultTitle={tenant_name??'Cloudtec Gym'} defaultMessage=""
+        onSend={async({title,message})=>{
+          if(!tenantId) throw new Error("Missing tenantId");
+          const{error}=await supabase.functions.invoke("send-push",{body:{tenant_id:tenantId,send_to_all:true,title,body:message,type:"closure",data:{kind:pushContext?.kind??"closure",id:pushContext?.id,date:pushContext?.date,from:pushContext?.from,to:pushContext?.to,label:pushContext?.label??null}}});
+          if(error) throw error;
         }}
       />
-
     </div>
   );
 }

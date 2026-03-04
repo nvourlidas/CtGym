@@ -2,1583 +2,860 @@ import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import type { DragEvent } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
-import { Trash2 } from 'lucide-react';
+import {
+  Trash2, ChevronLeft, ChevronRight, CalendarDays, Users, Search,
+  X, AlertTriangle, CheckCircle2, Loader2, Check, ChevronDown,
+  CalendarPlus, GripVertical, Eye, Zap, Clock,
+} from 'lucide-react';
 import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
 
 type Member = { id: string; full_name: string | null; email: string | null };
-
 type SessionClassRel = {
-  id: string;
-  title: string;
-  drop_in_enabled: boolean | null;
-  drop_in_price: number | null;
-  member_drop_in_price: number | null;
+  id: string; title: string;
+  drop_in_enabled: boolean | null; drop_in_price: number | null; member_drop_in_price: number | null;
 };
-
 type BookingWithProfile = {
-  id: string;
-  user_id: string;
-  status: string | null;
-  booking_type: string | null;
-  drop_in_price: number | null;
-  drop_in_paid: boolean | null;
-  profiles: {
-    id: string;
-    full_name: string | null;
-    email: string | null;
-  } | null;
+  id: string; user_id: string; status: string | null; booking_type: string | null;
+  drop_in_price: number | null; drop_in_paid: boolean | null;
+  profiles: { id: string; full_name: string | null; email: string | null } | null;
 };
-
 type SessionWithRelations = {
-  id: string;
-  tenant_id: string;
-  class_id: string | null;
-  starts_at: string;
-  ends_at: string | null;
-  // μπορεί να έρθει σαν object ή array
-  classes: SessionClassRel | SessionClassRel[] | null;
-  bookings: BookingWithProfile[];
+  id: string; tenant_id: string; class_id: string | null; starts_at: string; ends_at: string | null;
+  classes: SessionClassRel | SessionClassRel[] | null; bookings: BookingWithProfile[];
+};
+type Feedback = { type: 'success' | 'error'; message: string } | null;
+type DropInPromptState = { memberId: string; sessionId: string } | null;
+type BulkPreview = {
+  matchingCount: number; alreadyBookedCount: number; toCreateCount: number;
+  sessionsToCreate: { id: string; starts_at: string }[];
 };
 
-type Feedback =
-  | {
-    type: 'success' | 'error';
-    message: string;
-  }
-  | null;
-
-type DropInPromptState = {
-  memberId: string;
-  sessionId: string;
-} | null;
-
-/* ------------ small helpers ------------ */
+// ── Helpers ───────────────────────────────────────────────────────────────
 
 function getSessionClass(s: SessionWithRelations): SessionClassRel | null {
   if (!s.classes) return null;
   return Array.isArray(s.classes) ? s.classes[0] ?? null : s.classes;
 }
-
-function pad2(n: number): string {
-  return String(n).padStart(2, '0');
+function pad2(n: number) { return String(n).padStart(2, '0'); }
+function isoToLocalHHMM(iso: string) { const d = new Date(iso); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+function normalizeHHMM(v: string) { const [h,m] = v.split(':'); return `${pad2(Number(h||0))}:${pad2(Number(m||0))}`; }
+function toDateInputValue(d: Date) { return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+function dateInputToLocalStart(v: string) { const [y,m,d] = v.split('-').map(Number); return new Date(y,(m||1)-1,d||1,0,0,0,0); }
+function formatDateDMY(date: Date) { return `${pad2(date.getDate())}/${pad2(date.getMonth()+1)}/${date.getFullYear()}`; }
+function startOfWeekMonday(date: Date) { const d = new Date(date); const day = d.getDay(); const diff = day===0?-6:1-day; d.setDate(d.getDate()+diff); d.setHours(0,0,0,0); return d; }
+function addDaysSimple(date: Date, days: number) { const d = new Date(date); d.setDate(d.getDate()+days); return d; }
+function formatTimeRange(startIso: string, endIso: string | null) {
+  const s = new Date(startIso);
+  const base = `${pad2(s.getHours())}:${pad2(s.getMinutes())}`;
+  if (!endIso) return base;
+  const e = new Date(endIso);
+  return `${base} – ${pad2(e.getHours())}:${pad2(e.getMinutes())}`;
 }
 
-function isoToLocalHHMM(iso: string): string {
-  const d = new Date(iso);
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
-
-function normalizeHHMM(value: string): string {
-  // handles "9:0" -> "09:00"
-  const [hRaw, mRaw] = value.split(':');
-  const h = pad2(Number(hRaw || 0));
-  const m = pad2(Number(mRaw || 0));
-  return `${h}:${m}`;
-}
-
-function toDateInputValue(d: Date): string {
-  const y = d.getFullYear();
-  const m = pad2(d.getMonth() + 1);
-  const day = pad2(d.getDate());
-  return `${y}-${m}-${day}`;
-}
-
-function dateInputToLocalStart(value: string): Date {
-  const [y, m, d] = value.split('-').map((x) => Number(x));
-  return new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0);
-}
-
-function formatDateDMY(date: Date): string {
-  const dd = String(date.getDate()).padStart(2, '0');
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const yyyy = date.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
-}
-
-function startOfWeekMonday(date: Date): Date {
-  const d = new Date(date);
-  const day = d.getDay(); // 0=Sun,1=Mon,...6=Sat
-  const diff = day === 0 ? -6 : 1 - day; // Monday as first
-  d.setDate(d.getDate() + diff);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function addDaysSimple(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
-
-function formatTimeRange(startIso: string, endIso: string | null): string {
-  const start = new Date(startIso);
-  const sh = String(start.getHours()).padStart(2, '0');
-  const sm = String(start.getMinutes()).padStart(2, '0');
-
-  if (!endIso) return `${sh}:${sm}`;
-
-  const end = new Date(endIso);
-  const eh = String(end.getHours()).padStart(2, '0');
-  const em = String(end.getMinutes()).padStart(2, '0');
-  return `${sh}:${sm} – ${eh}:${em}`;
-}
-
-// Monday–Sunday labels (we'll display columns Monday-first)
 const WEEKDAY_LABELS = ['Δευ', 'Τρι', 'Τετ', 'Πεμ', 'Παρ', 'Σαβ', 'Κυρ'];
+const MEMBERSHIP_ERROR_CODES = ['no_active_membership', 'membership_category_mismatch', 'no_eligible_membership_for_booking'];
+function isMembershipErrorMessage(msg: string) { return MEMBERSHIP_ERROR_CODES.some((c) => msg.includes(c)); }
 
-// errors from book_session that mean: "no valid membership"
-const MEMBERSHIP_ERROR_CODES = [
-  'no_active_membership',
-  'membership_category_mismatch',
-  'no_eligible_membership_for_booking',
-];
+// ── Shared mini UI ────────────────────────────────────────────────────────
 
-function isMembershipErrorMessage(msg: string): boolean {
-  return MEMBERSHIP_ERROR_CODES.some((code) => msg.includes(code));
+function FeedbackBanner({ feedback, onDismiss }: { feedback: Feedback; onDismiss: () => void }) {
+  if (!feedback) return null;
+  const isOk = feedback.type === 'success';
+  return (
+    <div className={['flex items-start justify-between gap-3 px-4 py-3 rounded-xl border text-sm mb-4', isOk ? 'border-success/30 bg-success/8 text-success' : 'border-danger/30 bg-danger/8 text-danger'].join(' ')}>
+      <div className="flex items-start gap-2">
+        {isOk ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" /> : <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />}
+        <span>{feedback.message}</span>
+      </div>
+      <button onClick={onDismiss} className="opacity-60 hover:opacity-100 shrink-0 cursor-pointer"><X className="h-3.5 w-3.5" /></button>
+    </div>
+  );
 }
 
-/* ------------ Bulk Bookings Modal ------------ */
+function ModalShell({ title, icon, subtitle, onClose, children, footer, maxW = 'max-w-lg' }: { title: string; icon?: React.ReactNode; subtitle?: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; maxW?: string }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-sm p-3">
+      <div className={`w-full ${maxW} rounded-2xl border border-border/10 bg-secondary-background text-text-primary shadow-2xl overflow-hidden`} style={{ animation: 'bulkModalIn 0.2s ease' }}>
+        <div className="h-0.75 bg-linear-to-r from-primary/0 via-primary to-primary/0" />
+        <div className="px-5 py-4 border-b border-border/10 flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0 mt-0.5">
+              {icon ?? <CalendarPlus className="h-4 w-4 text-primary" />}
+            </div>
+            <div>
+              <h2 className="font-black text-text-primary tracking-tight">{title}</h2>
+              {subtitle && <p className="text-[11px] text-text-secondary mt-0.5">{subtitle}</p>}
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-xl border border-border/10 hover:bg-secondary/30 text-text-secondary hover:text-text-primary transition-all cursor-pointer shrink-0">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-5 max-h-[75vh] overflow-y-auto space-y-4">{children}</div>
+        {footer && <div className="px-5 py-4 border-t border-border/10 flex justify-end gap-2">{footer}</div>}
+      </div>
+      <style>{`@keyframes bulkModalIn { from { opacity:0; transform:translateY(16px) scale(0.98); } to { opacity:1; transform:none; } }`}</style>
+    </div>
+  );
+}
 
-type BulkModalProps = {
-  open: boolean;
-  tenantId: string;
-  members: Member[];
-  classes: SessionClassRel[];
-  onClose: () => void;
-  onDone: () => void; // refresh current week after success
-};
+function FormField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1.5">
+      <label className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">{label}</label>
+      {children}
+    </div>
+  );
+}
 
-type BulkPreview = {
-  matchingCount: number;
-  alreadyBookedCount: number;
-  toCreateCount: number;
-  sessionsToCreate: { id: string; starts_at: string }[];
-};
+function PrimaryBtn({ busy, busyLabel, label, onClick, disabled }: { busy: boolean; busyLabel: string; label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={busy || disabled} className="group relative inline-flex items-center gap-2 h-9 px-5 rounded-xl text-sm font-bold text-white bg-primary hover:bg-primary/90 shadow-sm shadow-primary/20 hover:-translate-y-px disabled:opacity-50 disabled:translate-y-0 transition-all cursor-pointer overflow-hidden">
+      <span className="absolute inset-0 bg-linear-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+      {busy ? <><Loader2 className="h-3.5 w-3.5 animate-spin relative z-10" /><span className="relative z-10">{busyLabel}</span></> : <span className="relative z-10">{label}</span>}
+    </button>
+  );
+}
 
-function BulkBookingsModal({
-  open,
-  tenantId,
-  members,
-  classes,
-  onClose,
-  onDone,
-}: BulkModalProps) {
-  const today = new Date();
-  const defaultFrom = toDateInputValue(today);
-  const defaultTo = toDateInputValue(addDaysSimple(today, 30));
+function SecondaryBtn({ label, onClick, disabled }: { label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button onClick={onClick} disabled={disabled} className="h-9 px-4 rounded-xl border border-border/15 text-sm font-semibold text-text-secondary hover:text-text-primary hover:bg-secondary/30 disabled:opacity-40 transition-all cursor-pointer">
+      {label}
+    </button>
+  );
+}
 
-  const [memberSearch, setMemberSearch] = useState('');
-  const [memberId, setMemberId] = useState<string>('');
-  const [classId, setClassId] = useState<string>('');
-  const [weekdayIdx, setWeekdayIdx] = useState<number>(0); // 0=Mon ... 6=Sun
-  const [startTime, setStartTime] = useState<string>('19:00');
-  const [fromDate, setFromDate] = useState<string>(defaultFrom);
-  const [toDate, setToDate] = useState<string>(defaultTo);
-
-  const [classDropdownOpen, setClassDropdownOpen] = useState(false);
-  const [classSearch, setClassSearch] = useState('');
-  const classDropdownRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!classDropdownOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (!classDropdownRef.current) return;
-      if (!classDropdownRef.current.contains(e.target as Node)) {
-        setClassDropdownOpen(false);
-      }
-    };
-    window.addEventListener('mousedown', handler);
-    return () => window.removeEventListener('mousedown', handler);
-  }, [classDropdownOpen]);
-
-  const filteredClasses = classes.filter((c) => {
-    if (!classSearch) return true;
-    return c.title.toLowerCase().includes(classSearch.toLowerCase());
-  });
-
-
-
-  const [allowDropInFallback, setAllowDropInFallback] = useState<boolean>(false);
-
-  const [preview, setPreview] = useState<BulkPreview | null>(null);
-  const [loadingPreview, setLoadingPreview] = useState(false);
-
-  const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number }>({
-    done: 0,
-    total: 0,
-  });
-
-  const [resultMsg, setResultMsg] = useState<Feedback>(null);
-
+// Searchable dropdown shared
+function SearchableDropdown({ options, value, onChange, placeholder, disabled }: { options: { id: string; label: string; sublabel?: string }[]; value: string; onChange: (v: string) => void; placeholder: string; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
-
-    // reset when opened
-    setMemberSearch('');
-    setMemberId('');
-    setClassId('');
-    setWeekdayIdx(0);
-    setStartTime('19:00');
-    setFromDate(defaultFrom);
-    setToDate(defaultTo);
-    setAllowDropInFallback(false);
-
-    setPreview(null);
-    setLoadingPreview(false);
-    setRunning(false);
-    setProgress({ done: 0, total: 0 });
-    setResultMsg(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const h = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    window.addEventListener('mousedown', h);
+    return () => window.removeEventListener('mousedown', h);
   }, [open]);
 
-  const filteredMembers = useMemo(() => {
-    const q = memberSearch.trim().toLowerCase();
-    if (!q) return members;
-    return members.filter((m) => {
-      const name = (m.full_name || '').toLowerCase();
-      const email = (m.email || '').toLowerCase();
-      return (
-        name.includes(q) ||
-        email.includes(q) ||
-        m.id.toLowerCase().includes(q)
-      );
-    });
-  }, [members, memberSearch]);
+  const filtered = options.filter((o) => !search || o.label.toLowerCase().includes(search.toLowerCase()) || (o.sublabel ?? '').toLowerCase().includes(search.toLowerCase()));
+  const selected = options.find((o) => o.id === value);
 
-  const selectedMember = useMemo(
-    () => members.find((m) => m.id === memberId) ?? null,
-    [members, memberId],
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => !disabled && setOpen((v) => !v)} disabled={disabled}
+        className="w-full h-9 flex items-center justify-between gap-2 pl-3.5 pr-3 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary hover:border-primary/30 disabled:opacity-50 transition-all cursor-pointer"
+      >
+        <span className={selected ? 'text-text-primary truncate' : 'text-text-secondary truncate'}>{selected ? selected.label : placeholder}</span>
+        <ChevronDown className={['h-3.5 w-3.5 text-text-secondary transition-transform shrink-0', open ? 'rotate-180' : ''].join(' ')} />
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1.5 w-full rounded-xl border border-border/15 bg-secondary-background shadow-xl overflow-hidden">
+          <div className="p-2 border-b border-border/10">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-text-secondary pointer-events-none" />
+              <input autoFocus className="w-full h-8 pl-7 pr-3 rounded-lg border border-border/15 bg-secondary/10 text-sm text-text-primary outline-none focus:border-primary/40 transition-all" placeholder="Αναζήτηση…" value={search} onChange={(e) => setSearch(e.target.value)} />
+            </div>
+          </div>
+          <div className="max-h-52 overflow-y-auto">
+            {filtered.length === 0 && <div className="px-3 py-3 text-xs text-text-secondary">Δεν βρέθηκαν αποτελέσματα</div>}
+            {filtered.map((o) => (
+              <button key={o.id} type="button" onClick={() => { onChange(o.id); setOpen(false); setSearch(''); }}
+                className={['w-full flex items-start gap-2 px-3.5 py-2.5 text-sm text-left hover:bg-secondary/20 transition-colors', o.id === value ? 'bg-primary/8' : ''].join(' ')}
+              >
+                {o.id === value && <Check className="h-3 w-3 text-primary mt-0.5 shrink-0" />}
+                <div className={o.id === value ? '' : 'pl-5'}>
+                  <div className={o.id === value ? 'text-primary font-semibold' : 'text-text-primary'}>{o.label}</div>
+                  {o.sublabel && <div className="text-[11px] text-text-secondary">{o.sublabel}</div>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
+}
 
-  const selectedClass = useMemo(
-    () => classes.find((c) => c.id === classId) ?? null,
-    [classes, classId],
-  );
+// ── Bulk Bookings Modal ───────────────────────────────────────────────────
 
-  const canUseDropInFallback = Boolean(selectedClass?.drop_in_enabled);
+function BulkBookingsModal({ open, tenantId, members, classes, onClose, onDone }: {
+  open: boolean; tenantId: string; members: Member[]; classes: SessionClassRel[];
+  onClose: () => void; onDone: () => void;
+}) {
+  const today = new Date();
+  const [memberId, setMemberId]                     = useState('');
+  const [classId, setClassId]                       = useState('');
+  const [weekdayIdx, setWeekdayIdx]                 = useState(0);
+  const [startTime, setStartTime]                   = useState('19:00');
+  const [fromDate, setFromDate]                     = useState(toDateInputValue(today));
+  const [toDate, setToDate]                         = useState(toDateInputValue(addDaysSimple(today,30)));
+  const [allowDropInFallback, setAllowDropInFallback] = useState(false);
+  const [preview, setPreview]                       = useState<BulkPreview | null>(null);
+  const [loadingPreview, setLoadingPreview]         = useState(false);
+  const [running, setRunning]                       = useState(false);
+  const [progress, setProgress]                     = useState({ done: 0, total: 0 });
+  const [resultMsg, setResultMsg]                   = useState<Feedback>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setMemberId(''); setClassId(''); setWeekdayIdx(0); setStartTime('19:00');
+    setFromDate(toDateInputValue(today)); setToDate(toDateInputValue(addDaysSimple(today,30)));
+    setAllowDropInFallback(false); setPreview(null); setLoadingPreview(false);
+    setRunning(false); setProgress({ done:0, total:0 }); setResultMsg(null);
+  }, [open]);
+
+  const selectedClass  = useMemo(() => classes.find((c) => c.id === classId) ?? null, [classes, classId]);
+  const canUseDropIn   = Boolean(selectedClass?.drop_in_enabled);
+
+  const memberOptions  = useMemo(() => members.map((m) => ({ id: m.id, label: m.full_name || m.email || m.id, sublabel: m.email ?? undefined })), [members]);
+  const classOptions   = useMemo(() => classes.map((c) => ({ id: c.id, label: c.title })), [classes]);
 
   const validate = (): string | null => {
     if (!memberId) return 'Επίλεξε μέλος.';
     if (!classId) return 'Επίλεξε Τμήμα.';
     if (!fromDate || !toDate) return 'Συμπλήρωσε ημερομηνίες.';
-    const a = dateInputToLocalStart(fromDate);
-    const b = dateInputToLocalStart(toDate);
-    if (a.getTime() > b.getTime()) return 'Το "Από" δεν μπορεί να είναι μετά το "Έως".';
-    const hhmm = normalizeHHMM(startTime);
-    if (!/^\d{2}:\d{2}$/.test(hhmm)) return 'Η ώρα πρέπει να είναι σε μορφή HH:MM.';
+    if (dateInputToLocalStart(fromDate).getTime() > dateInputToLocalStart(toDate).getTime()) return 'Το "Από" δεν μπορεί να είναι μετά το "Έως".';
+    if (!/^\d{2}:\d{2}$/.test(normalizeHHMM(startTime))) return 'Η ώρα πρέπει να είναι σε μορφή HH:MM.';
     return null;
   };
 
   async function buildPreview(): Promise<BulkPreview | null> {
-    const validation = validate();
-    if (validation) {
-      setResultMsg({ type: 'error', message: validation });
-      return null;
-    }
-
-    setResultMsg(null);
-    setLoadingPreview(true);
-    setPreview(null);
-
+    const err = validate();
+    if (err) { setResultMsg({ type:'error', message: err }); return null; }
+    setResultMsg(null); setLoadingPreview(true); setPreview(null);
     try {
       const from = dateInputToLocalStart(fromDate);
-      const to = dateInputToLocalStart(toDate);
-      const toExclusive = addDaysSimple(to, 1); // inclusive range
+      const to   = addDaysSimple(dateInputToLocalStart(toDate), 1);
+      const days = Math.round((to.getTime() - from.getTime()) / 86400000);
+      if (days > 370) { setResultMsg({ type:'error', message:'Το εύρος ημερομηνιών είναι πολύ μεγάλο (πάνω από 12 μήνες).' }); setLoadingPreview(false); return null; }
 
-      // hard guard for huge ranges (optional safety)
-      const days = Math.round((toExclusive.getTime() - from.getTime()) / (1000 * 60 * 60 * 24));
-      if (days > 370) {
-        setResultMsg({
-          type: 'error',
-          message: 'Το εύρος ημερομηνιών είναι πολύ μεγάλο (πάνω από 12 μήνες).',
-        });
-        setLoadingPreview(false);
-        return null;
-      }
+      const { data: sessionRows, error: sessErr } = await supabase.from('class_sessions')
+        .select('id,starts_at,class_id').eq('tenant_id', tenantId).eq('class_id', classId)
+        .gte('starts_at', from.toISOString()).lt('starts_at', to.toISOString()).order('starts_at');
 
-      // fetch sessions in range (for selected class)
-      const { data: sessionRows, error: sessErr } = await supabase
-        .from('class_sessions')
-        .select('id, starts_at, class_id')
-        .eq('tenant_id', tenantId)
-        .eq('class_id', classId)
-        .gte('starts_at', from.toISOString())
-        .lt('starts_at', toExclusive.toISOString())
-        .order('starts_at', { ascending: true });
-
-      if (sessErr) {
-        console.error(sessErr);
-        setResultMsg({ type: 'error', message: 'Σφάλμα κατά τη φόρτωση sessions.' });
-        setLoadingPreview(false);
-        return null;
-      }
+      if (sessErr) { setResultMsg({ type:'error', message:'Σφάλμα κατά τη φόρτωση sessions.' }); setLoadingPreview(false); return null; }
 
       const wantedTime = normalizeHHMM(startTime);
-
       const matching = (sessionRows ?? []).filter((s: any) => {
         const d = new Date(s.starts_at);
-        const dow = d.getDay(); // Sunday=0
-        const mondayIndex = dow === 0 ? 6 : dow - 1; // 0=Mon..6=Sun
-        if (mondayIndex !== weekdayIdx) return false;
-
-        const hhmm = `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-        return hhmm === wantedTime;
+        const dow = d.getDay();
+        const mi  = dow===0?6:dow-1;
+        return mi === weekdayIdx && `${pad2(d.getHours())}:${pad2(d.getMinutes())}` === wantedTime;
       });
 
       if (matching.length === 0) {
-        const prev: BulkPreview = {
-          matchingCount: 0,
-          alreadyBookedCount: 0,
-          toCreateCount: 0,
-          sessionsToCreate: [],
-        };
-        setPreview(prev);
-        setLoadingPreview(false);
-        return prev;
+        const prev: BulkPreview = { matchingCount:0, alreadyBookedCount:0, toCreateCount:0, sessionsToCreate:[] };
+        setPreview(prev); setLoadingPreview(false); return prev;
       }
 
-      const sessionIds = matching.map((s: any) => s.id);
+      const { data: existing, error: bErr } = await supabase.from('bookings')
+        .select('id,session_id,status').eq('tenant_id', tenantId).eq('user_id', memberId).in('session_id', matching.map((s: any) => s.id));
 
-      // check existing bookings for that member in those sessions
-      const { data: existing, error: bErr } = await supabase
-        .from('bookings')
-        .select('id, session_id, status')
-        .eq('tenant_id', tenantId)
-        .eq('user_id', memberId)
-        .in('session_id', sessionIds);
+      if (bErr) { setResultMsg({ type:'error', message:'Σφάλμα κατά τον έλεγχο κρατήσεων.' }); setLoadingPreview(false); return null; }
 
-      if (bErr) {
-        console.error(bErr);
-        setResultMsg({ type: 'error', message: 'Σφάλμα κατά τον έλεγχο υπαρχουσών κρατήσεων.' });
-        setLoadingPreview(false);
-        return null;
-      }
-
-      const activeBookedSessionIds = new Set(
-        (existing ?? [])
-          .filter((b: any) => (b.status ?? '') !== 'canceled')
-          .map((b: any) => b.session_id),
-      );
-
-      const sessionsToCreate = matching
-        .filter((s: any) => !activeBookedSessionIds.has(s.id))
-        .map((s: any) => ({ id: s.id, starts_at: s.starts_at }));
-
-      const prev: BulkPreview = {
-        matchingCount: matching.length,
-        alreadyBookedCount: matching.length - sessionsToCreate.length,
-        toCreateCount: sessionsToCreate.length,
-        sessionsToCreate,
-      };
-
-      setPreview(prev);
-      setLoadingPreview(false);
-      return prev;
-    } catch (e: any) {
-      console.error(e);
-      setResultMsg({ type: 'error', message: e?.message || 'Κάτι πήγε στραβά.' });
-      setLoadingPreview(false);
-      return null;
-    }
+      const bookedIds = new Set((existing ?? []).filter((b: any) => (b.status ?? '') !== 'canceled').map((b: any) => b.session_id));
+      const sessionsToCreate = matching.filter((s: any) => !bookedIds.has(s.id)).map((s: any) => ({ id: s.id, starts_at: s.starts_at }));
+      const prev: BulkPreview = { matchingCount: matching.length, alreadyBookedCount: matching.length - sessionsToCreate.length, toCreateCount: sessionsToCreate.length, sessionsToCreate };
+      setPreview(prev); setLoadingPreview(false); return prev;
+    } catch(e: any) { setResultMsg({ type:'error', message: e?.message || 'Κάτι πήγε στραβά.' }); setLoadingPreview(false); return null; }
   }
 
   async function runBulkCreate() {
     const prev = preview ?? (await buildPreview());
     if (!prev) return;
-
     if (prev.toCreateCount === 0) {
-      setResultMsg({
-        type: 'error',
-        message:
-          prev.matchingCount === 0
-            ? 'Δεν βρέθηκαν sessions που να ταιριάζουν.'
-            : 'Όλα τα sessions είναι ήδη κλεισμένα για αυτό το μέλος.',
-      });
+      setResultMsg({ type:'error', message: prev.matchingCount===0 ? 'Δεν βρέθηκαν sessions που να ταιριάζουν.' : 'Όλα τα sessions είναι ήδη κλεισμένα.' });
       return;
     }
-
-    setRunning(true);
-    setResultMsg(null);
-    setProgress({ done: 0, total: prev.sessionsToCreate.length });
-
-    let ok = 0;
-    let failed = 0;
-
-    const allowDropIn = allowDropInFallback && canUseDropInFallback;
-
-    for (let i = 0; i < prev.sessionsToCreate.length; i++) {
+    setRunning(true); setResultMsg(null); setProgress({ done:0, total:prev.sessionsToCreate.length });
+    let ok=0, failed=0;
+    const allowDropIn = allowDropInFallback && canUseDropIn;
+    for (let i=0; i<prev.sessionsToCreate.length; i++) {
       const s = prev.sessionsToCreate[i];
-      setProgress({ done: i, total: prev.sessionsToCreate.length });
-
+      setProgress({ done:i, total:prev.sessionsToCreate.length });
       try {
-        // 1) membership attempt
-        const { error } = await supabase.rpc('book_session', {
-          p_tenant_id: tenantId,
-          p_session_id: s.id,
-          p_user_id: memberId,
-          p_booking_type: 'membership',
-        });
-
-        if (!error) {
-          ok++;
-          continue;
+        const { error } = await supabase.rpc('book_session', { p_tenant_id:tenantId, p_session_id:s.id, p_user_id:memberId, p_booking_type:'membership' });
+        if (!error) { ok++; continue; }
+        if (allowDropIn && isMembershipErrorMessage(error.message || '')) {
+          const { error: e2 } = await supabase.rpc('book_session', { p_tenant_id:tenantId, p_session_id:s.id, p_user_id:memberId, p_booking_type:'drop_in' });
+          if (!e2) { ok++; continue; }
         }
-
-        const msg = error.message || '';
-
-        // 2) optional drop-in fallback
-        if (allowDropIn && isMembershipErrorMessage(msg)) {
-          const { error: e2 } = await supabase.rpc('book_session', {
-            p_tenant_id: tenantId,
-            p_session_id: s.id,
-            p_user_id: memberId,
-            p_booking_type: 'drop_in',
-          });
-
-          if (!e2) {
-            ok++;
-            continue;
-          }
-
-          failed++;
-          continue;
-        }
-
-        // other errors
         failed++;
-      } catch (e) {
-        failed++;
-      } finally {
-        setProgress({ done: i + 1, total: prev.sessionsToCreate.length });
-      }
+      } catch { failed++; }
+      finally { setProgress({ done:i+1, total:prev.sessionsToCreate.length }); }
     }
-
     setRunning(false);
-
-    if (ok > 0) {
-      onDone(); // refresh current week view
-    }
-
-    setResultMsg({
-      type: failed === 0 ? 'success' : 'error',
-      message:
-        failed === 0
-          ? `Ολοκληρώθηκε! Δημιουργήθηκαν ${ok} κρατήσεις.`
-          : `Ολοκληρώθηκε με σφάλματα. Επιτυχίες: ${ok} • Αποτυχίες: ${failed}`,
-    });
-
-    // refresh preview after run
+    if (ok > 0) onDone();
+    setResultMsg({ type:failed===0?'success':'error', message:failed===0 ? `Ολοκληρώθηκε! Δημιουργήθηκαν ${ok} κρατήσεις.` : `Ολοκληρώθηκε με σφάλματα. Επιτυχίες: ${ok} • Αποτυχίες: ${failed}` });
     await buildPreview();
   }
 
   if (!open) return null;
 
+  const progressPct = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3">
-      <div className="w-full max-w-lg rounded-xl border border-border/15 bg-secondary-background p-4 shadow-xl">
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <h3 className="text-sm font-semibold text-text-primary">Μαζικές κρατήσεις</h3>
-            <p className="text-[11px] text-text-primary/60">
-              Θα δημιουργηθούν κρατήσεις για όλα τα sessions στο εύρος ημερομηνιών που
-              είναι στην επιλεγμένη ημέρα και ξεκινάνε στην επιλεγμένη ώρα.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="text-xs text-text-primary/60 hover:text-text-primary"
-            disabled={running}
-          >
-            ✕
-          </button>
-        </div>
+    <ModalShell
+      title="Μαζικές Κρατήσεις"
+      subtitle="Δημιουργία κρατήσεων για ένα μέλος σε εύρος ημερομηνιών"
+      onClose={onClose}
+      footer={<>
+        <SecondaryBtn label="Κλείσιμο" onClick={onClose} disabled={running} />
+        <PrimaryBtn busy={running} busyLabel="Δημιουργία…" label="Δημιουργία κρατήσεων" onClick={runBulkCreate} />
+      </>}
+    >
+      {/* Feedback */}
+      {resultMsg && <FeedbackBanner feedback={resultMsg} onDismiss={() => setResultMsg(null)} />}
 
-        {resultMsg && (
-          <div
-            className={`mb-3 rounded-md px-3 py-2 text-[11px] ${resultMsg.type === 'success'
-              ? 'bg-emerald-900/40 text-emerald-500 border border-emerald-500/40'
-              : 'bg-red-900/40 text-red-100 border border-red-500/40'
-              }`}
-          >
-            {resultMsg.message}
+      {/* Member */}
+      <FormField label="Μέλος *">
+        <SearchableDropdown options={memberOptions} value={memberId} onChange={setMemberId} placeholder="— επίλεξε μέλος —" disabled={running} />
+      </FormField>
+
+      {/* Class */}
+      <FormField label="Τμήμα *">
+        <SearchableDropdown options={classOptions} value={classId} onChange={setClassId} placeholder="— επίλεξε τμήμα —" disabled={running} />
+        {selectedClass && (
+          <div className="text-[11px] text-text-secondary mt-1">
+            Drop-in: {selectedClass.drop_in_enabled ? `Ναι (${selectedClass.drop_in_price ?? 0}€)` : 'Όχι'}
           </div>
         )}
+      </FormField>
 
-        {/* Member picker */}
-        <div className="mb-3">
-          <div className="mb-1 text-[11px] text-text-primary/70">Μέλος</div>
-          <input
-            className="w-full rounded-md bg-bulk-bg/20 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            placeholder="Αναζήτηση μέλους…"
-            value={memberSearch}
-            onChange={(e) => setMemberSearch(e.target.value)}
-            disabled={running}
-          />
-          <div className="mt-2 max-h-36 overflow-y-auto rounded-md border border-border/10 bg-bulk-bg/20 p-1">
-            {filteredMembers.slice(0, 50).map((m) => {
-              const selected = m.id === memberId;
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setMemberId(m.id)}
-                  disabled={running}
-                  className={`w-full rounded-md px-3 py-2 text-left text-xs ${selected
-                    ? 'bg-primary/20 border border-primary/40 text-text-primary'
-                    : 'bg-transparent hover:bg-border/5 text-text-primary/90'
-                    }`}
-                >
-                  <div className="font-medium">
-                    {m.full_name || m.email || m.id}
-                  </div>
-                  {m.email && (
-                    <div className="text-[11px] text-text-primary/50">{m.email}</div>
-                  )}
-                </button>
-              );
-            })}
-            {filteredMembers.length === 0 && (
-              <div className="px-3 py-2 text-xs text-text-primary/40 italic">
-                Δεν βρέθηκαν μέλη.
-              </div>
-            )}
-          </div>
-
-          {selectedMember && (
-            <div className="mt-2 text-[11px] text-text-primary/60">
-              Επιλεγμένο: <span className="font-semibold text-text-primary">{selectedMember.full_name || selectedMember.email || selectedMember.id}</span>
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {/* Class */}
-          <div>
-            <div className="mb-1 text-[11px] text-text-primary/70">Τμήμα</div>
-            <div ref={classDropdownRef} className="relative">
-              <button
-                type="button"
-                disabled={running}
-                onClick={() => setClassDropdownOpen((v) => !v)}
-                className="w-full rounded-md bg-bulk-bg/80 border border-border/15 px-3 py-2 text-xs text-text-primary flex items-center justify-between disabled:opacity-50"
-              >
-                <span className="truncate">
-                  {selectedClass ? selectedClass.title : '— Επιλογή Τμήματος —'}
-                </span>
-                <span className="ml-2 text-[10px] opacity-70">
-                  {classDropdownOpen ? '▲' : '▼'}
-                </span>
-              </button>
-
-              {classDropdownOpen && (
-                <div className="absolute z-50 mt-1 w-full rounded-md border border-border/15 bg-secondary-background shadow-lg">
-                  {/* Search */}
-                  <div className="p-2 border-b border-border/10">
-                    <input
-                      autoFocus
-                      className="w-full rounded-md bg-bulk-bg/80 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                      placeholder="Αναζήτηση τμήματος…"
-                      value={classSearch}
-                      onChange={(e) => setClassSearch(e.target.value)}
-                    />
-                  </div>
-
-                  {/* List */}
-                  <div className="max-h-60 overflow-y-auto">
-                    {filteredClasses.length === 0 && (
-                      <div className="px-3 py-2 text-xs text-text-secondary">
-                        Δεν βρέθηκαν τμήματα
-                      </div>
-                    )}
-
-                    {filteredClasses.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className={
-                          'w-full px-3 py-2 text-left text-xs hover:bg-white/5 ' +
-                          (c.id === classId ? 'bg-white/10' : '')
-                        }
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setClassId(c.id);
-                          setClassDropdownOpen(false);
-                        }}
-                      >
-                        {c.title}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-            {selectedClass && (
-              <div className="mt-1 text-[11px] text-text-primary/50">
-                Drop-in: {selectedClass.drop_in_enabled ? 'Ναι' : 'Όχι'}
-              </div>
-            )}
-          </div>
-
-          {/* Weekday */}
-          <div>
-            <div className="mb-1 text-[11px] text-text-primary/70">Ημέρα εβδομάδας</div>
+      {/* Weekday + Time */}
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Ημέρα εβδομάδας">
+          <div className="relative">
             <select
-              className="w-full rounded-md bg-bulk-bg/80 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              value={weekdayIdx}
-              onChange={(e) => setWeekdayIdx(Number(e.target.value))}
-              disabled={running}
+              className="w-full h-9 pl-3.5 pr-9 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary appearance-none outline-none focus:border-primary/40 transition-all cursor-pointer disabled:opacity-50"
+              value={weekdayIdx} onChange={(e) => setWeekdayIdx(Number(e.target.value))} disabled={running}
             >
-              {WEEKDAY_LABELS.map((l, idx) => (
-                <option key={l} value={idx}>
-                  {l}
-                </option>
-              ))}
+              {WEEKDAY_LABELS.map((l,i) => <option key={l} value={i}>{l}</option>)}
             </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary pointer-events-none" />
           </div>
+        </FormField>
+        <FormField label="Ώρα έναρξης">
+          <input type="time" disabled={running}
+            className="w-full h-9 px-3.5 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary outline-none focus:border-primary/40 transition-all disabled:opacity-50"
+            value={normalizeHHMM(startTime)} onChange={(e) => setStartTime(e.target.value)}
+          />
+        </FormField>
+      </div>
 
-          {/* Start time */}
-          <div>
-            <div className="mb-1 text-[11px] text-text-primary/70">Ώρα έναρξης</div>
-            <input
-              type="time"
-              className="w-full rounded-md bg-bulk-bg/20 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              value={normalizeHHMM(startTime)}
-              onChange={(e) => setStartTime(e.target.value)}
-              disabled={running}
-            />
-          </div>
+      {/* Date range */}
+      <div className="grid grid-cols-2 gap-3">
+        <FormField label="Από">
+          <input type="date" disabled={running}
+            className="w-full h-9 px-3.5 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary outline-none focus:border-primary/40 transition-all disabled:opacity-50"
+            value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+          />
+        </FormField>
+        <FormField label="Έως">
+          <input type="date" disabled={running}
+            className="w-full h-9 px-3.5 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary outline-none focus:border-primary/40 transition-all disabled:opacity-50"
+            value={toDate} onChange={(e) => setToDate(e.target.value)}
+          />
+        </FormField>
+      </div>
 
-          {/* Date range */}
-          <div>
-            <div className="mb-1 text-[11px] text-text-primary/70">Από</div>
-            <input
-              type="date"
-              className="w-full rounded-md bg-bulk-bg/20 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              disabled={running}
-            />
-          </div>
-
-          <div className="md:col-span-2">
-            <div className="mb-1 text-[11px] text-text-primary/70">Έως</div>
-            <input
-              type="date"
-              className="w-full rounded-md bg-bulk-bg/20 border border-border/15 px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              disabled={running}
-            />
-          </div>
+      {/* Drop-in fallback */}
+      <div className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border border-border/10 bg-secondary/5">
+        <div>
+          <div className="text-sm font-semibold text-text-primary">Fallback σε Drop-in</div>
+          <div className="text-[11px] text-text-secondary mt-0.5">Αν δεν υπάρχει συνδρομή, κάνε κράτηση ως drop-in (μόνο αν επιτρέπεται).</div>
         </div>
-
-        {/* Drop-in fallback */}
-        <div className="mt-3 flex items-center justify-between gap-3 rounded-md border border-border/10 bg-bulk-bg/20 px-3 py-2">
-          <div>
-            <div className="text-[12px] text-text-primary/90 font-semibold">Fallback σε Drop-in</div>
-            <div className="text-[11px] text-text-primary/60">
-              Αν δεν υπάρχει συνδρομή, κάνε κράτηση ως drop-in (μόνο αν επιτρέπεται).
-            </div>
-          </div>
-
-          <label className="inline-flex items-center gap-2 text-xs text-text-primary/80">
-            <input
-              type="checkbox"
-              checked={allowDropInFallback}
-              onChange={(e) => setAllowDropInFallback(e.target.checked)}
-              disabled={running || !canUseDropInFallback}
-            />
-            Ενεργό
-          </label>
-        </div>
-        {!canUseDropInFallback && allowDropInFallback && (
-          <div className="mt-1 text-[11px] text-accent">
-            Το Τμήμα δεν επιτρέπει drop-in — το fallback δεν θα χρησιμοποιηθεί.
-          </div>
-        )}
-
-        {/* Preview */}
-        <div className="mt-3 rounded-md border border-border/10 bg-bulk-bg/20 px-3 py-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="text-[11px] text-text-primary/70">Προεπισκόπηση</div>
-            <button
-              type="button"
-              onClick={buildPreview}
-              disabled={running || loadingPreview}
-              className="rounded-md border border-border/20 px-2 py-1 text-[11px] text-text-primary/80 hover:bg-white/10 disabled:opacity-50"
-            >
-              {loadingPreview ? 'Υπολογισμός…' : 'Υπολογισμός'}
-            </button>
-          </div>
-
-          {preview && (
-            <div className="mt-2 text-[11px] text-text-primary/70 space-y-1">
-              <div>
-                Sessions που ταιριάζουν: <span className="font-semibold text-text-primary">{preview.matchingCount}</span>
-              </div>
-              <div>
-                Ήδη κλεισμένα: <span className="font-semibold text-text-primary">{preview.alreadyBookedCount}</span>
-              </div>
-              <div>
-                Θα δημιουργηθούν: <span className="font-semibold text-text-primary">{preview.toCreateCount}</span>
-              </div>
-              {preview.toCreateCount > 0 && (
-                <div className="mt-2 text-[11px] text-text-primary/50">
-                  Πρώτα 5:{" "}
-                  {preview.sessionsToCreate.slice(0, 5).map((s) => isoToLocalHHMM(s.starts_at)).join(', ')}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Progress */}
-        {running && (
-          <div className="mt-3 text-[11px] text-text-primary/70">
-            Εκτέλεση: <span className="font-semibold text-text-primary">{progress.done}</span> /{' '}
-            <span className="font-semibold text-text-primary">{progress.total}</span>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={running}
-            className="rounded-md border border-border/20 px-3 py-1.5 text-[12px] text-text-primary/80 hover:bg-border/10 disabled:opacity-50"
-          >
-            Κλείσιμο
-          </button>
-          <button
-            type="button"
-            onClick={runBulkCreate}
-            disabled={running}
-            className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
-          >
-            {running ? 'Δημιουργία…' : 'Δημιουργία κρατήσεων'}
-          </button>
+        <div
+          onClick={() => !running && canUseDropIn && setAllowDropInFallback((v) => !v)}
+          className={['w-10 h-6 rounded-full border-2 flex items-center transition-all cursor-pointer shrink-0', allowDropInFallback && canUseDropIn ? 'bg-primary border-primary justify-end' : 'bg-secondary/20 border-border/30 justify-start', running || !canUseDropIn ? 'opacity-40 cursor-not-allowed' : ''].join(' ')}
+        >
+          <div className="w-4 h-4 rounded-full bg-white shadow mx-0.5" />
         </div>
       </div>
-    </div>
+      {!canUseDropIn && allowDropInFallback && (
+        <p className="text-[11px] text-warning">Το Τμήμα δεν επιτρέπει drop-in — το fallback δεν θα χρησιμοποιηθεί.</p>
+      )}
+
+      {/* Preview */}
+      <div className="rounded-xl border border-border/10 bg-secondary/5 px-4 py-3 space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-bold uppercase tracking-widest text-text-secondary">Προεπισκόπηση</span>
+          <button type="button" onClick={buildPreview} disabled={running || loadingPreview}
+            className="h-7 px-3 rounded-lg border border-border/15 text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-secondary/30 disabled:opacity-40 transition-all cursor-pointer"
+          >
+            {loadingPreview ? <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Υπολογισμός…</span> : 'Υπολογισμός'}
+          </button>
+        </div>
+
+        {preview && (
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: 'Ταιριάζουν', value: preview.matchingCount, color: 'text-text-primary' },
+              { label: 'Ήδη κλεισμένα', value: preview.alreadyBookedCount, color: 'text-text-secondary' },
+              { label: 'Θα δημιουργηθούν', value: preview.toCreateCount, color: 'text-primary' },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="text-center px-2 py-2 rounded-lg border border-border/10 bg-secondary/5">
+                <div className={`text-lg font-black ${color}`}>{value}</div>
+                <div className="text-[10px] text-text-secondary mt-0.5">{label}</div>
+              </div>
+            ))}
+            {preview.toCreateCount > 0 && (
+              <div className="col-span-3 text-[11px] text-text-secondary">
+                Πρώτα: {preview.sessionsToCreate.slice(0,5).map((s) => isoToLocalHHMM(s.starts_at)).join(', ')}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      {running && (
+        <div className="space-y-2">
+          <div className="flex justify-between text-xs text-text-secondary">
+            <span>Εκτέλεση…</span>
+            <span className="font-bold text-text-primary">{progress.done}/{progress.total}</span>
+          </div>
+          <div className="h-2 rounded-full bg-secondary/20 overflow-hidden">
+            <div className="h-full bg-primary rounded-full transition-all duration-300" style={{ width: `${progressPct}%` }} />
+          </div>
+        </div>
+      )}
+    </ModalShell>
   );
 }
 
-/* ------------ Page ------------ */
+// ── Main page ─────────────────────────────────────────────────────────────
 
 export default function AdminBulkBookingsPage() {
   const { profile, subscription } = useAuth();
   const tenantId = profile?.tenant_id ?? null;
 
-  const [showSubModal, setShowSubModal] = useState(false);
-
-  const [members, setMembers] = useState<Member[]>([]);
-  const [membersLoading, setMembersLoading] = useState(false);
-  const [memberSearch, setMemberSearch] = useState('');
-
-  const [classes, setClasses] = useState<SessionClassRel[]>([]);
-  const [classesLoading, setClassesLoading] = useState(false);
-
-  console.log('classes', classesLoading);
-
-  const [sessions, setSessions] = useState<SessionWithRelations[]>([]);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-
-  const [weekStart, setWeekStart] = useState<Date>(() =>
-    startOfWeekMonday(new Date()),
-  );
-
-  const [creatingBookingForSession, setCreatingBookingForSession] =
-    useState<string | null>(null);
-  const [feedback, setFeedback] = useState<Feedback>(null);
-
-  const [dropInPrompt, setDropInPrompt] = useState<DropInPromptState>(null);
-  const [dropInLoading, setDropInLoading] = useState(false);
-
-  // session details modal state
-  const [detailsSessionId, setDetailsSessionId] = useState<string | null>(null);
-
-  const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null);
-
-  // bulk modal
-  const [bulkModalOpen, setBulkModalOpen] = useState(false);
-
+  const [showSubModal, setShowSubModal]               = useState(false);
+  const [members, setMembers]                         = useState<Member[]>([]);
+  const [membersLoading, setMembersLoading]           = useState(false);
+  const [memberSearch, setMemberSearch]               = useState('');
+  const [classes, setClasses]                         = useState<SessionClassRel[]>([]);
+  const [sessions, setSessions]                       = useState<SessionWithRelations[]>([]);
+  const [sessionsLoading, setSessionsLoading]         = useState(false);
+  const [weekStart, setWeekStart]                     = useState<Date>(() => startOfWeekMonday(new Date()));
+  const [creatingBookingForSession, setCreatingBookingForSession] = useState<string | null>(null);
+  const [feedback, setFeedback]                       = useState<Feedback>(null);
+  const [dropInPrompt, setDropInPrompt]               = useState<DropInPromptState>(null);
+  const [dropInLoading, setDropInLoading]             = useState(false);
+  const [detailsSessionId, setDetailsSessionId]       = useState<string | null>(null);
+  const [deletingBookingId, setDeletingBookingId]     = useState<string | null>(null);
+  const [bulkModalOpen, setBulkModalOpen]             = useState(false);
 
   const subscriptionInactive = !subscription?.is_active;
-
   function requireActiveSubscription(action: () => void) {
-    if (subscriptionInactive) {
-      setShowSubModal(true);
-      return;
-    }
+    if (subscriptionInactive) { setShowSubModal(true); return; }
     action();
   }
 
-
-  /* ------------ load members ------------ */
-
   useEffect(() => {
     if (!tenantId) return;
-
-    const loadMembers = async () => {
-      setMembersLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, full_name, email')
-          .eq('tenant_id', tenantId)
-          .eq('role', 'member')
-          .order('full_name', { ascending: true });
-
-        if (error) {
-          console.error(error);
-          setFeedback({
-            type: 'error',
-            message: 'Σφάλμα κατά τη φόρτωση μελών.',
-          });
-        } else {
-          setMembers(data ?? []);
-        }
-      } finally {
+    setMembersLoading(true);
+    supabase.from('profiles').select('id,full_name,email').eq('tenant_id', tenantId).eq('role','member').order('full_name')
+      .then(({ data, error }) => {
+        if (error) setFeedback({ type:'error', message:'Σφάλμα κατά τη φόρτωση μελών.' });
+        else setMembers(data ?? []);
         setMembersLoading(false);
-      }
-    };
-
-    loadMembers();
+      });
   }, [tenantId]);
-
-  /* ------------ load classes ------------ */
 
   useEffect(() => {
     if (!tenantId) return;
-
-    const loadClasses = async () => {
-      setClassesLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('classes')
-          .select('id, title, drop_in_enabled, drop_in_price, member_drop_in_price')
-          .eq('tenant_id', tenantId)
-          .order('title', { ascending: true });
-
-        if (error) {
-          console.error(error);
-          setFeedback({
-            type: 'error',
-            message: 'Σφάλμα κατά τη φόρτωση τμημάτων.',
-          });
-        } else {
-          setClasses(((data ?? []) as unknown) as SessionClassRel[]);
-        }
-      } finally {
-        setClassesLoading(false);
-      }
-    };
-
-    loadClasses();
+    supabase.from('classes').select('id,title,drop_in_enabled,drop_in_price,member_drop_in_price').eq('tenant_id', tenantId).order('title')
+      .then(({ data }) => setClasses((data ?? []) as unknown as SessionClassRel[]));
   }, [tenantId]);
-
-  /* ------------ load sessions for current week ------------ */
 
   const loadSessions = useCallback(async () => {
     if (!tenantId) return;
-
     setSessionsLoading(true);
-    try {
-      const weekEnd = addDaysSimple(weekStart, 7); // [weekStart, weekEnd)
-
-      const { data, error } = await supabase
-        .from('class_sessions')
-        .select(
-          `
-          id,
-          tenant_id,
-          class_id,
-          starts_at,
-          ends_at,
-          classes (
-            id,
-            title,
-            drop_in_enabled,
-            drop_in_price,
-            member_drop_in_price
-          ),
-          bookings (
-            id,
-            user_id,
-            status,
-            booking_type,
-            drop_in_price,
-            drop_in_paid,
-            profiles (
-              id,
-              full_name,
-              email
-            )
-          )
-        `,
-        )
-        .eq('tenant_id', tenantId)
-        .gte('starts_at', weekStart.toISOString())
-        .lt('starts_at', weekEnd.toISOString())
-        .order('starts_at', { ascending: true });
-
-      if (error) {
-        console.error(error);
-        setFeedback({
-          type: 'error',
-          message: 'Σφάλμα κατά τη φόρτωση μαθημάτων.',
-        });
-      } else {
-        setSessions(((data ?? []) as unknown) as SessionWithRelations[]);
-      }
-    } finally {
-      setSessionsLoading(false);
-    }
+    const weekEnd = addDaysSimple(weekStart, 7);
+    const { data, error } = await supabase.from('class_sessions')
+      .select(`id,tenant_id,class_id,starts_at,ends_at,classes(id,title,drop_in_enabled,drop_in_price,member_drop_in_price),bookings(id,user_id,status,booking_type,drop_in_price,drop_in_paid,profiles(id,full_name,email))`)
+      .eq('tenant_id', tenantId).gte('starts_at', weekStart.toISOString()).lt('starts_at', weekEnd.toISOString()).order('starts_at');
+    if (error) setFeedback({ type:'error', message:'Σφάλμα κατά τη φόρτωση μαθημάτων.' });
+    else setSessions((data ?? []) as unknown as SessionWithRelations[]);
+    setSessionsLoading(false);
   }, [tenantId, weekStart]);
 
-  useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+  useEffect(() => { loadSessions(); }, [loadSessions]);
 
-  /* ------------ computed helpers ------------ */
-
-  const weekLabel = (() => {
-    const end = addDaysSimple(weekStart, 6);
-    return `${formatDateDMY(weekStart)} – ${formatDateDMY(end)}`;
-  })();
-
+  const weekLabel = useMemo(() => `${formatDateDMY(weekStart)} – ${formatDateDMY(addDaysSimple(weekStart, 6))}`, [weekStart]);
   const filteredMembers = useMemo(() => {
     const q = memberSearch.trim().toLowerCase();
     if (!q) return members;
-
-    return members.filter((m) => {
-      const name = (m.full_name || '').toLowerCase();
-      const email = (m.email || '').toLowerCase();
-      return (
-        name.includes(q) ||
-        email.includes(q) ||
-        m.id.toLowerCase().includes(q)
-      );
-    });
+    return members.filter((m) => (m.full_name||'').toLowerCase().includes(q) || (m.email||'').toLowerCase().includes(q) || m.id.toLowerCase().includes(q));
   }, [members, memberSearch]);
 
-  // group sessions by weekday (0 = Monday, ..., 6 = Sunday)
   const sessionsByDay: Record<number, SessionWithRelations[]> = useMemo(() => {
     const map: Record<number, SessionWithRelations[]> = {};
     for (const s of sessions) {
-      const d = new Date(s.starts_at);
-      const dow = d.getDay(); // 0-6, Sunday=0
-      const mondayIndex = dow === 0 ? 6 : dow - 1; // 0=Mon,6=Sun
-      if (!map[mondayIndex]) map[mondayIndex] = [];
-      map[mondayIndex].push(s);
+      const dow = new Date(s.starts_at).getDay();
+      const mi  = dow===0?6:dow-1;
+      if (!map[mi]) map[mi] = [];
+      map[mi].push(s);
     }
     return map;
   }, [sessions]);
 
-  /* ------------ week navigation ------------ */
-
-  function handleWeekChange(direction: 'prev' | 'next' | 'this') {
-    if (direction === 'this') {
-      setWeekStart(startOfWeekMonday(new Date()));
-    } else {
-      setWeekStart((prev) =>
-        addDaysSimple(prev, direction === 'next' ? 7 : -7),
-      );
-    }
+  function handleWeekChange(dir: 'prev' | 'next' | 'this') {
+    if (dir === 'this') setWeekStart(startOfWeekMonday(new Date()));
+    else setWeekStart((prev) => addDaysSimple(prev, dir==='next'?7:-7));
   }
 
-  /* ------------ drag & drop handlers ------------ */
-
-  function handleMemberDragStart(
-    e: DragEvent<HTMLButtonElement>,
-    memberId: string,
-  ) {
+  function handleMemberDragStart(e: DragEvent<HTMLButtonElement>, memberId: string) {
     e.dataTransfer.setData('text/plain', memberId);
     e.dataTransfer.effectAllowed = 'copyMove';
   }
 
-  async function handleDropOnSession(
-    e: DragEvent<HTMLDivElement>,
-    sessionId: string,
-  ) {
-    e.preventDefault();
-    e.stopPropagation();
-
+  async function handleDropOnSession(e: DragEvent<HTMLDivElement>, sessionId: string) {
+    e.preventDefault(); e.stopPropagation();
     const memberId = e.dataTransfer.getData('text/plain');
-    if (!memberId) return;
-
-    await createBookingForMember(memberId, sessionId);
+    if (memberId) await createBookingForMember(memberId, sessionId);
   }
-
-  /* ------------ booking logic ------------ */
 
   async function createBookingForMember(memberId: string, sessionId: string) {
     if (!tenantId) return;
-
     const session = sessions.find((s) => s.id === sessionId);
     if (!session) return;
-
-    // already booked?
-    const alreadyBooked =
-      session.bookings?.some((b) => b.user_id === memberId && (b.status ?? '') !== 'canceled') ??
-      false;
-    if (alreadyBooked) {
-      setFeedback({
-        type: 'error',
-        message: 'Το μέλος είναι ήδη κλεισμένο σε αυτό το μάθημα.',
-      });
-      return;
+    if (session.bookings?.some((b) => b.user_id === memberId && (b.status ?? '') !== 'canceled')) {
+      setFeedback({ type:'error', message:'Το μέλος είναι ήδη κλεισμένο σε αυτό το μάθημα.' }); return;
     }
-
-    setCreatingBookingForSession(sessionId);
-    setFeedback(null);
-
+    setCreatingBookingForSession(sessionId); setFeedback(null);
     try {
-      // 1️⃣ Try membership booking first
-      const { error } = await supabase.rpc('book_session', {
-        p_tenant_id: tenantId,
-        p_session_id: sessionId,
-        p_user_id: memberId,
-        p_booking_type: 'membership',
-      });
-
+      const { error } = await supabase.rpc('book_session', { p_tenant_id:tenantId, p_session_id:sessionId, p_user_id:memberId, p_booking_type:'membership' });
       if (error) {
         const msg = error.message || '';
-
-        // Capacity or other hard errors -> just show them
-        if (!isMembershipErrorMessage(msg)) {
-          setFeedback({
-            type: 'error',
-            message: msg || 'Κάτι πήγε στραβά κατά την κράτηση.',
-          });
-          return;
-        }
-
-        // 2️⃣ Membership problem but class may allow drop-in → ask with modal
+        if (!isMembershipErrorMessage(msg)) { setFeedback({ type:'error', message: msg || 'Κάτι πήγε στραβά.' }); return; }
         const cls = getSessionClass(session);
-        const dropInAllowed = Boolean(cls?.drop_in_enabled);
-
-        if (!dropInAllowed) {
-          setFeedback({
-            type: 'error',
-            message:
-              'Το μέλος δεν έχει κατάλληλη ενεργή συνδρομή και το μάθημα δεν επιτρέπει drop-in.',
-          });
-          return;
-        }
-
-        // open modal and let the user decide
-        setDropInPrompt({ memberId, sessionId });
-        return;
+        if (!cls?.drop_in_enabled) { setFeedback({ type:'error', message:'Το μέλος δεν έχει κατάλληλη συνδρομή και το μάθημα δεν επιτρέπει drop-in.' }); return; }
+        setDropInPrompt({ memberId, sessionId }); return;
       }
-
-      // success as membership
       await loadSessions();
-      setFeedback({
-        type: 'success',
-        message: 'Η κράτηση με συνδρομή δημιουργήθηκε με επιτυχία.',
-      });
-    } catch (e: any) {
-      console.error(e);
-      setFeedback({
-        type: 'error',
-        message: e?.message || 'Κάτι πήγε στραβά κατά την κράτηση.',
-      });
-    } finally {
-      setCreatingBookingForSession(null);
-    }
+      setFeedback({ type:'success', message:'Η κράτηση με συνδρομή δημιουργήθηκε με επιτυχία.' });
+    } catch(e: any) { setFeedback({ type:'error', message: e?.message || 'Κάτι πήγε στραβά.' }); }
+    finally { setCreatingBookingForSession(null); }
   }
 
   async function handleDeleteBooking(bookingId: string) {
-    if (!tenantId) return;
-
-    if (!window.confirm('Να διαγραφεί οριστικά αυτή η κράτηση;')) return;
-
-    setDeletingBookingId(bookingId);
-    setFeedback(null);
-
+    if (!tenantId || !window.confirm('Να διαγραφεί οριστικά αυτή η κράτηση;')) return;
+    setDeletingBookingId(bookingId); setFeedback(null);
     try {
-      const res = await supabase.functions.invoke('booking-delete', {
-        body: { id: bookingId },
-      });
-
+      const res = await supabase.functions.invoke('booking-delete', { body: { id: bookingId } });
       const errMsg = (res.data as any)?.error ?? res.error?.message ?? '';
-
-      if (res.error || (res.data as any)?.error) {
-        console.error(res.error, res.data);
-        setFeedback({
-          type: 'error',
-          message: errMsg || 'Σφάλμα κατά τη διαγραφή της κράτησης.',
-        });
-        return;
-      }
-
-      await loadSessions(); // refresh modal + grid
-
-      setFeedback({
-        type: 'success',
-        message: 'Η κράτηση διαγράφηκε.',
-      });
-    } catch (e: any) {
-      console.error(e);
-      setFeedback({
-        type: 'error',
-        message: e?.message || 'Κάτι πήγε στραβά κατά τη διαγραφή.',
-      });
-    } finally {
-      setDeletingBookingId(null);
-    }
+      if (res.error || (res.data as any)?.error) { setFeedback({ type:'error', message: errMsg || 'Σφάλμα κατά τη διαγραφή.' }); return; }
+      await loadSessions();
+      setFeedback({ type:'success', message:'Η κράτηση διαγράφηκε.' });
+    } catch(e: any) { setFeedback({ type:'error', message: e?.message || 'Κάτι πήγε στραβά.' }); }
+    finally { setDeletingBookingId(null); }
   }
 
   async function confirmDropIn() {
     if (!tenantId || !dropInPrompt) return;
-
     const { memberId, sessionId } = dropInPrompt;
-    setDropInLoading(true);
-    setFeedback(null);
-
+    setDropInLoading(true); setFeedback(null);
     try {
-      const { error } = await supabase.rpc('book_session', {
-        p_tenant_id: tenantId,
-        p_session_id: sessionId,
-        p_user_id: memberId,
-        p_booking_type: 'drop_in',
-      });
-
-      if (error) {
-        const msg = error.message || '';
-        setFeedback({
-          type: 'error',
-          message: msg || 'Κάτι πήγε στραβά κατά την κράτηση drop-in.',
-        });
-        return;
-      }
-
+      const { error } = await supabase.rpc('book_session', { p_tenant_id:tenantId, p_session_id:sessionId, p_user_id:memberId, p_booking_type:'drop_in' });
+      if (error) { setFeedback({ type:'error', message: error.message || 'Κάτι πήγε στραβά.' }); return; }
       await loadSessions();
-      setFeedback({
-        type: 'success',
-        message: 'Η κράτηση ως drop-in δημιουργήθηκε με επιτυχία.',
-      });
+      setFeedback({ type:'success', message:'Η κράτηση ως drop-in δημιουργήθηκε με επιτυχία.' });
       setDropInPrompt(null);
-    } catch (e: any) {
-      console.error(e);
-      setFeedback({
-        type: 'error',
-        message: e?.message || 'Κάτι πήγε στραβά κατά την κράτηση drop-in.',
-      });
-    } finally {
-      setDropInLoading(false);
-    }
+    } catch(e: any) { setFeedback({ type:'error', message: e?.message || 'Κάτι πήγε στραβά.' }); }
+    finally { setDropInLoading(false); }
   }
-
-  /* ------------ render ------------ */
 
   if (!tenantId) {
     return (
-      <div className="p-4 md:p-6">
-        <p className="text-sm text-red-300">
-          Δεν βρέθηκε tenant_id στο προφίλ διαχειριστή.
-        </p>
+      <div className="p-6">
+        <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-danger/25 bg-danger/8 text-danger text-sm">
+          <AlertTriangle className="h-4 w-4 shrink-0" />Δεν βρέθηκε tenant_id στο προφίλ διαχειριστή.
+        </div>
       </div>
     );
   }
 
+  const detailsSession = sessions.find((s) => s.id === detailsSessionId) ?? null;
+
   return (
     <>
-      {/* MAIN LAYOUT – responsive */}
-      <div className="flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-6">
-        {/* SIDEBAR: MEMBERS – full width on mobile, fixed width on desktop */}
-        <aside className="w-full md:w-70 md:h-[calc(100vh)] order-2 md:order-1 flex flex-col rounded-xl border border-border/10 bg-secondary-background/70 p-4">
-          <h2 className="text-sm font-semibold text-text-primary mb-2">Μέλη</h2>
-          <p className="text-[11px] text-text-primary/60 mb-3">
-            Σύρε ένα μέλος και άφησέ το πάνω σε μάθημα για να δημιουργήσεις κράτηση (κυρίως σε desktop).
-          </p>
+      <div className="flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-4 h-full">
 
-          <input
-            className="w-full rounded-md bg-secondary-background border border-border/15 px-3 py-1.5 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            placeholder="Αναζήτηση μέλους…"
-            value={memberSearch}
-            onChange={(e) => setMemberSearch(e.target.value)}
-          />
-
-          <div className="mt-3 flex-1 overflow-y-auto pr-1 space-y-1">
-            {membersLoading && (
-              <div className="text-xs text-text-primary/60">Φόρτωση μελών…</div>
-            )}
-
-            {!membersLoading && filteredMembers.length === 0 && (
-              <div className="text-xs text-text-primary/40 italic">
-                Δεν βρέθηκαν μέλη.
+        {/* ── Sidebar: Members ── */}
+        <aside className="w-full md:w-68 order-2 md:order-1 flex flex-col rounded-2xl border border-border/10 bg-secondary-background shadow-sm overflow-hidden">
+          {/* Header */}
+          <div className="px-4 pt-4 pb-3 border-b border-border/10">
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="w-7 h-7 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
+                <Users className="h-3.5 w-3.5 text-primary" />
               </div>
-            )}
+              <div>
+                <h2 className="text-sm font-black text-text-primary tracking-tight">Μέλη</h2>
+                <p className="text-[10px] text-text-secondary">{membersLoading ? '…' : `${filteredMembers.length} μέλη`}</p>
+              </div>
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3 w-3 text-text-secondary pointer-events-none" />
+              <input
+                className="w-full h-8 pl-8 pr-3 rounded-xl border border-border/15 bg-secondary/10 text-xs text-text-primary placeholder:text-text-secondary outline-none focus:border-primary/40 transition-all"
+                placeholder="Αναζήτηση μέλους…"
+                value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)}
+              />
+            </div>
+            <p className="text-[10px] text-text-secondary mt-2 opacity-70">Σύρε ένα μέλος σε μάθημα για κράτηση</p>
+          </div>
 
-            {!membersLoading &&
-              filteredMembers.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  draggable
-                  onDragStart={(e) => handleMemberDragStart(e, m.id)}
-                  className="w-full rounded-md bg-bulk-bg/20 border border-border/10 px-3 py-2 text-left text-xs text-text-primary hover:bg-white/5 cursor-grab active:cursor-grabbing"
-                  title="Σύρε για να κλείσεις θέση (σε desktop)"
-                >
-                  <div className="font-medium">
-                    {m.full_name || m.email || m.id}
-                  </div>
-                  {m.email && (
-                    <div className="text-[11px] text-text-primary/60">{m.email}</div>
-                  )}
-                </button>
-              ))}
+          {/* Member list */}
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {membersLoading && <div className="flex items-center justify-center gap-1.5 py-6 text-text-secondary text-xs"><Loader2 className="h-3.5 w-3.5 animate-spin" />Φόρτωση…</div>}
+            {!membersLoading && filteredMembers.length === 0 && <div className="text-xs text-text-secondary opacity-50 text-center py-6 italic">Δεν βρέθηκαν μέλη.</div>}
+            {!membersLoading && filteredMembers.map((m) => (
+              <button
+                key={m.id} type="button" draggable
+                onDragStart={(e) => handleMemberDragStart(e, m.id)}
+                className="w-full flex items-center gap-2.5 rounded-xl border border-border/10 bg-secondary/5 hover:bg-secondary/20 px-3 py-2 text-left transition-colors cursor-grab active:cursor-grabbing group"
+              >
+                <GripVertical className="h-3 w-3 text-text-secondary opacity-30 group-hover:opacity-60 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-text-primary truncate">{m.full_name || m.email || m.id}</div>
+                  {m.email && <div className="text-[10px] text-text-secondary truncate">{m.email}</div>}
+                </div>
+              </button>
+            ))}
           </div>
         </aside>
 
-        {/* MAIN: WEEK CALENDAR – first on mobile */}
-        <main className="order-1 md:order-2 flex-1 flex flex-col rounded-xl border border-border/10 bg-secondary-background/70 p-3 md:p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-3 gap-2">
-            <div>
-              <h1 className="text-sm font-semibold text-text-primary">Πρόγραμμα εβδομάδας</h1>
-              <p className="text-[11px] text-text-primary/60">{weekLabel}</p>
+        {/* ── Main: Week calendar ── */}
+        <main className="order-1 md:order-2 flex-1 flex flex-col rounded-2xl border border-border/10 bg-secondary-background shadow-sm overflow-hidden">
+          {/* Toolbar */}
+          <div className="px-4 py-3 border-b border-border/10">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
+                  <CalendarDays className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <div>
+                  <h1 className="text-sm font-black text-text-primary tracking-tight">Πρόγραμμα εβδομάδας</h1>
+                  <p className="text-[10px] text-text-secondary">{weekLabel}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button onClick={() => handleWeekChange('prev')}
+                  className="h-8 w-8 rounded-xl border border-border/15 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-secondary/30 transition-all cursor-pointer">
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <button onClick={() => handleWeekChange('this')}
+                  className="h-8 px-3 rounded-xl border border-border/15 text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-secondary/30 transition-all cursor-pointer">
+                  Σήμερα
+                </button>
+                <button onClick={() => handleWeekChange('next')}
+                  className="h-8 w-8 rounded-xl border border-border/15 flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-secondary/30 transition-all cursor-pointer">
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+
+                <button
+                  onClick={() => requireActiveSubscription(() => setBulkModalOpen(true))}
+                  className="group relative inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-bold text-white bg-primary hover:bg-primary/90 shadow-sm shadow-primary/20 hover:-translate-y-px transition-all cursor-pointer overflow-hidden"
+                >
+                  <span className="absolute inset-0 bg-linear-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+                  <CalendarPlus className="h-3.5 w-3.5 relative z-10" />
+                  <span className="relative z-10 hidden sm:inline">Μαζικές κρατήσεις</span>
+                </button>
+              </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => handleWeekChange('prev')}
-                className="rounded-md border border-border/20 px-2 py-1 text-xs text-text-primary/80 hover:bg-border/10"
-              >
-                ◀ Προηγούμενη
-              </button>
-              <button
-                type="button"
-                onClick={() => handleWeekChange('this')}
-                className="rounded-md border border-border/20 px-2 py-1 text-xs text-text-primary/80 hover:bg-border/10"
-              >
-                Σήμερα
-              </button>
-              <button
-                type="button"
-                onClick={() => handleWeekChange('next')}
-                className="rounded-md border border-border/20 px-2 py-1 text-xs text-text-primary/80 hover:bg-border/10"
-              >
-                Επόμενη ▶
-              </button>
-
-              {/* ✅ NEW: Bulk bookings button */}
-              <button
-                type="button"
-                onClick={() => requireActiveSubscription(() => setBulkModalOpen(true))}
-                className="rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-slate-900 hover:bg-amber-300"
-                title="Δημιουργία κρατήσεων για ένα μέλος σε εύρος ημερομηνιών"
-              >
-                Μαζικές κρατήσεις
-              </button>
-            </div>
+            {/* Feedback */}
+            {feedback && (
+              <div className="mt-3">
+                <FeedbackBanner feedback={feedback} onDismiss={() => setFeedback(null)} />
+              </div>
+            )}
           </div>
 
-          {feedback && (
-            <div
-              className={`mb-3 flex items-start justify-between rounded-md px-3 py-2 text-[11px] ${feedback.type === 'success'
-                ? 'bg-emerald-900/40 text-white border border-emerald-500/40'
-                : 'bg-red-900/40 text-red-100 border border-red-500/40'
-                }`}
-            >
-              <span>{feedback.message}</span>
-              <button
-                type="button"
-                onClick={() => setFeedback(null)}
-                className="ml-2 text-xs opacity-70 hover:opacity-100"
-              >
-                ×
-              </button>
-            </div>
-          )}
+          {/* Week grid */}
+          <div className="flex-1 p-3 overflow-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-2 h-full min-h-80">
+              {WEEKDAY_LABELS.map((label, idx) => {
+                const dayDate     = addDaysSimple(weekStart, idx);
+                const daySessions = sessionsByDay[idx] ?? [];
+                const isToday     = formatDateDMY(dayDate) === formatDateDMY(new Date());
 
-          {/* grid: 1 column on mobile, 2 on small tablets, 7 on desktop */}
-          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 md:gap-2 md:min-h-120">
-            {WEEKDAY_LABELS.map((label, idx) => {
-              const dayDate = addDaysSimple(weekStart, idx);
-              const daySessions = sessionsByDay[idx] ?? [];
+                return (
+                  <div key={label} className={['flex flex-col rounded-xl border overflow-hidden', isToday ? 'border-primary/30 bg-primary/3' : 'border-border/10 bg-secondary/3'].join(' ')}>
+                    {/* Day header */}
+                    <div className={['px-2.5 py-2 border-b flex items-center justify-between', isToday ? 'border-primary/20 bg-primary/8' : 'border-border/8 bg-secondary/5'].join(' ')}>
+                      <div>
+                        <div className={['text-[11px] font-black uppercase tracking-wider', isToday ? 'text-primary' : 'text-text-secondary'].join(' ')}>{label}</div>
+                        <div className="text-[10px] text-text-secondary">{formatDateDMY(dayDate)}</div>
+                      </div>
+                      {isToday && <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}
+                    </div>
 
-              return (
-                <div
-                  key={label}
-                  className="flex flex-col rounded-lg border border-border/10 bg-secondary-background p-2"
-                >
-                  <div className="border-b border-border/10 pb-1 mb-1 flex items-baseline justify-between gap-2">
-                    <div>
-                      <div className="text-[11px] font-semibold text-text-primary/90">
-                        {label}
-                      </div>
-                      <div className="text-[10px] text-text-primary/50">
-                        {formatDateDMY(dayDate)}
-                      </div>
+                    {/* Sessions */}
+                    <div className="flex-1 p-1.5 space-y-1.5 overflow-y-auto">
+                      {sessionsLoading && idx === 0 && (
+                        <div className="flex items-center justify-center gap-1 py-4 text-text-secondary text-[11px]">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        </div>
+                      )}
+                      {!sessionsLoading && daySessions.length === 0 && (
+                        <div className="text-[10px] text-text-secondary opacity-30 text-center py-4 italic">Χωρίς μαθήματα</div>
+                      )}
+                      {daySessions.map((s) => {
+                        const cls         = getSessionClass(s);
+                        const bookingCount = s.bookings?.length ?? 0;
+                        const isCreating  = creatingBookingForSession === s.id;
+
+                        return (
+                          <div
+                            key={s.id}
+                            className="rounded-lg border border-border/10 bg-secondary-background/80 p-2 text-[11px] space-y-1.5 hover:border-primary/20 hover:bg-primary/3 transition-all"
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => requireActiveSubscription(() => handleDropOnSession(e, s.id))}
+                          >
+                            <div className="flex items-start justify-between gap-1">
+                              <span className="font-bold text-text-primary truncate leading-tight">{cls?.title ?? 'Μάθημα'}</span>
+                              {isCreating && <Loader2 className="h-3 w-3 animate-spin text-primary shrink-0" />}
+                            </div>
+
+                            <div className="flex items-center gap-1 text-[10px] text-text-secondary">
+                              <Clock className="h-2.5 w-2.5 shrink-0" />
+                              {formatTimeRange(s.starts_at, s.ends_at)}
+                            </div>
+
+                            <div className="flex items-center justify-between gap-1">
+                              <div className="flex items-center gap-1 text-[10px] text-text-secondary">
+                                <Users className="h-2.5 w-2.5 shrink-0" />
+                                <span className="font-semibold text-text-primary">{bookingCount}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setDetailsSessionId(s.id); }}
+                                className="flex items-center gap-0.5 text-[10px] text-primary hover:text-primary/80 font-semibold cursor-pointer"
+                              >
+                                <Eye className="h-2.5 w-2.5" />Προβολή
+                              </button>
+                            </div>
+
+                            <div className="text-[9px] text-text-secondary opacity-30 border-t border-border/5 pt-1">
+                              Ρίξε μέλος εδώ
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
-
-                  <div className="flex-1 space-y-2 overflow-y-auto pr-1">
-                    {sessionsLoading && idx === 0 && (
-                      <div className="text-[11px] text-text-primary/60">Φόρτωση μαθημάτων…</div>
-                    )}
-
-                    {!sessionsLoading && daySessions.length === 0 && (
-                      <div className="text-[11px] text-text-primary/30 italic">Χωρίς μαθήματα.</div>
-                    )}
-
-                    {daySessions.map((s) => (
-                      <div
-                        key={s.id}
-                        className="rounded-md bg-bulk-bg/20 border border-border/15 p-2 text-[11px] text-text-primary/90 space-y-1"
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => requireActiveSubscription(() => handleDropOnSession(e, s.id))}
-                      >
-                        <div className="flex items-center justify-between gap-1">
-                          <span className="font-semibold truncate">
-                            {getSessionClass(s)?.title ?? 'Μάθημα'}
-                          </span>
-                          <span className="text-[10px] text-text-primary/70 whitespace-nowrap">
-                            {formatTimeRange(s.starts_at, s.ends_at)}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center justify-between gap-1">
-                          <div className="text-[10px] text-text-primary/70">
-                            Κρατήσεις:{' '}
-                            <span className="font-semibold">{s.bookings?.length ?? 0}</span>
-                          </div>
-
-                          {/* Button: open details modal */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDetailsSessionId(s.id);
-                            }}
-                            className="text-[10px] text-accent hover:accent/80 cursor-pointer"
-                          >
-                            Προβολή μελών
-                          </button>
-                        </div>
-
-                        <div className="text-[10px] text-text-primary/40">
-                          Ρίξε μέλος εδώ για κράτηση (desktop)
-                        </div>
-
-                        {creatingBookingForSession === s.id && (
-                          <div className="text-[10px] text-primary mt-1">
-                            Δημιουργία κράτησης…
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </main>
       </div>
 
-      {/* ✅ NEW: Bulk bookings modal */}
+      {/* ── Bulk modal ── */}
       {tenantId && (
         <BulkBookingsModal
-          open={bulkModalOpen}
-          tenantId={tenantId}
-          members={members}
-          classes={classes}
-          onClose={() => setBulkModalOpen(false)}
-          onDone={loadSessions}
+          open={bulkModalOpen} tenantId={tenantId} members={members} classes={classes}
+          onClose={() => setBulkModalOpen(false)} onDone={loadSessions}
         />
       )}
 
-      {/* MODAL: ask for drop-in fallback */}
-      {dropInPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3">
-          <div className="w-full max-w-sm rounded-xl border border-border/15 bg-secondary-background p-4 shadow-xl">
-            {(() => {
-              const member = members.find((m) => m.id === dropInPrompt.memberId);
-              const session = sessions.find((s) => s.id === dropInPrompt.sessionId);
-              const cls = session ? getSessionClass(session) : null;
-              const when =
-                session != null
-                  ? `${formatDateDMY(new Date(session.starts_at))} · ${formatTimeRange(
-                    session.starts_at,
-                    session.ends_at,
-                  )}`
-                  : '';
+      {/* ── Drop-in prompt modal ── */}
+      {dropInPrompt && (() => {
+        const member  = members.find((m) => m.id === dropInPrompt.memberId);
+        const session = sessions.find((s) => s.id === dropInPrompt.sessionId);
+        const cls     = session ? getSessionClass(session) : null;
+        const when    = session ? `${formatDateDMY(new Date(session.starts_at))} · ${formatTimeRange(session.starts_at, session.ends_at)}` : '';
+        return (
+          <ModalShell
+            title="Κράτηση ως drop-in;"
+            icon={<Zap className="h-4 w-4 text-warning" />}
+            onClose={() => setDropInPrompt(null)}
+            footer={<>
+              <SecondaryBtn label="Ακύρωση" onClick={() => setDropInPrompt(null)} disabled={dropInLoading} />
+              <PrimaryBtn busy={dropInLoading} busyLabel="Γίνεται κράτηση…" label="Ναι, ως drop-in" onClick={confirmDropIn} />
+            </>}
+          >
+            <div className="text-sm text-text-secondary leading-relaxed">
+              Το μέλος <span className="font-bold text-text-primary">{member?.full_name || member?.email || '—'}</span> δεν έχει κατάλληλη ενεργή συνδρομή για το μάθημα <span className="font-bold text-text-primary">{cls?.title ?? '—'}</span>.
+            </div>
+            <div className="px-4 py-3 rounded-xl border border-border/10 bg-secondary/5 space-y-1 text-xs text-text-secondary">
+              {when && <div className="flex items-center gap-1.5"><CalendarDays className="h-3 w-3" />{when}</div>}
+              {cls?.drop_in_price != null && <div className="flex items-center gap-1.5"><span className="font-bold text-text-primary">{cls.drop_in_price}€</span> τιμή drop-in</div>}
+            </div>
+          </ModalShell>
+        );
+      })()}
 
-              return (
-                <>
-                  <h3 className="text-sm font-semibold text-text-primary mb-2">
-                    Κράτηση ως drop-in;
-                  </h3>
-                  <p className="text-[12px] text-text-primary/80 mb-2">
-                    Το μέλος{' '}
-                    <span className="font-semibold">
-                      {member?.full_name || member?.email || '—'}
-                    </span>{' '}
-                    δεν έχει κατάλληλη ενεργή συνδρομή για το μάθημα{' '}
-                    <span className="font-semibold">{cls?.title ?? '—'}</span>.
-                  </p>
-                  <p className="text-[11px] text-text-primary/60 mb-3">
-                    {when && <span>{when}</span>}
-                    {cls?.drop_in_price != null && (
-                      <>
-                        <br />
-                        Τιμή drop-in: {cls.drop_in_price}€
-                      </>
-                    )}
-                  </p>
+      {/* ── Session details modal ── */}
+      {detailsSession && (() => {
+        const cls   = getSessionClass(detailsSession);
+        const when  = `${formatDateDMY(new Date(detailsSession.starts_at))} · ${formatTimeRange(detailsSession.starts_at, detailsSession.ends_at)}`;
+        const sorted = [...(detailsSession.bookings ?? [])].sort((a,b) => {
+          const an = a.profiles?.full_name || a.profiles?.email || a.user_id || '';
+          const bn = b.profiles?.full_name || b.profiles?.email || b.user_id || '';
+          return an.localeCompare(bn, 'el');
+        });
 
-                  <div className="flex justify-end gap-2 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => setDropInPrompt(null)}
-                      className="rounded-md border border-border/25 px-3 py-1.5 text-[12px] text-text-primary/80 hover:bg-white/10"
-                      disabled={dropInLoading}
-                    >
-                      Ακύρωση
-                    </button>
-                    <button
-                      type="button"
-                      onClick={confirmDropIn}
-                      disabled={dropInLoading}
-                      className="rounded-md bg-primary px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-primary/90 disabled:opacity-60"
-                    >
-                      {dropInLoading ? 'Γίνεται κράτηση…' : 'Ναι, ως drop-in'}
-                    </button>
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
+        return (
+          <ModalShell
+            title={cls?.title ?? 'Μάθημα'}
+            icon={<CalendarDays className="h-4 w-4 text-primary" />}
+            subtitle={when}
+            onClose={() => setDetailsSessionId(null)}
+          >
+            <div className="text-xs text-text-secondary">
+              Σύνολο κρατήσεων: <span className="font-bold text-text-primary">{sorted.length}</span>
+            </div>
 
-      {/* MODAL: session details with all booked members */}
-      {detailsSessionId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3">
-          <div className="w-full max-w-md rounded-xl border border-border/15 bg-secondary-background p-4 shadow-xl">
-            {(() => {
-              const session = sessions.find((s) => s.id === detailsSessionId);
-              if (!session) {
-                return <div className="text-sm text-text-primary">Το μάθημα δεν βρέθηκε.</div>;
-              }
-
-              const cls = getSessionClass(session);
-              const when = `${formatDateDMY(new Date(session.starts_at))} · ${formatTimeRange(
-                session.starts_at,
-                session.ends_at,
-              )}`;
-
-              const sortedBookings = [...(session.bookings ?? [])].sort((a, b) => {
-                const aName =
-                  a.profiles?.full_name || a.profiles?.email || a.user_id || '';
-                const bName =
-                  b.profiles?.full_name || b.profiles?.email || b.user_id || '';
-                return aName.localeCompare(bName, 'el');
-              });
-
-              return (
-                <>
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <h3 className="text-sm font-semibold text-text-primary">
-                        {cls?.title ?? 'Μάθημα'}
-                      </h3>
-                      <p className="text-[11px] text-text-primary/60">{when}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setDetailsSessionId(null)}
-                      className="text-xs text-text-primary/60 hover:text-text-primary"
-                    >
-                      ✕
-                    </button>
-                  </div>
-
-                  <p className="text-[11px] text-text-primary/60 mb-2">
-                    Σύνολο κρατήσεων:{' '}
-                    <span className="font-semibold text-text-primary">{sortedBookings.length}</span>
-                  </p>
-
-                  <div className="max-h-72 overflow-y-auto space-y-1 mt-1">
-                    {sortedBookings.length === 0 && (
-                      <div className="text-[12px] text-text-primary/50 italic">
-                        Δεν υπάρχουν κρατήσεις για αυτό το μάθημα.
-                      </div>
-                    )}
-
-                    {sortedBookings.map((b) => {
-                      const memberName =
-                        b.profiles?.full_name || b.profiles?.email || b.user_id;
-                      const isDropIn = b.booking_type === 'drop_in';
-
-                      return (
-                        <div
-                          key={b.id}
-                          className="rounded-md border border-border/15 bg-bulk-bg/20 px-3 py-2 text-[11px] text-text-primary/90"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <span className="font-semibold truncate">{memberName}</span>
-                            </div>
-
-                            <div className="flex items-center gap-1">
-                              <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] ${isDropIn
-                                  ? 'bg-amber-500/20 text-warning border border-amber-500/40'
-                                  : 'bg-emerald-500/20 text-success border border-emerald-500/40'
-                                  }`}
-                              >
-                                {isDropIn ? 'Drop-in' : 'Συνδρομή'}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteBooking(b.id)}
-                                disabled={deletingBookingId === b.id}
-                                className="ml-1 inline-flex h-6 w-6 items-center justify-center rounded-full border border-red-400/70 text-red-300 hover:bg-red-500/15 disabled:opacity-50"
-                                title="Διαγραφή κράτησης"
-                              >
-                                {deletingBookingId === b.id ? (
-                                  <span className="text-[9px]">…</span>
-                                ) : (
-                                  <Trash2 className="h-3 w-3" />
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                          {b.profiles?.email && (
-                            <div className="text-[10px] text-text-primary/60">{b.profiles.email}</div>
-                          )}
-
-                          {isDropIn && (
-                            <div className="mt-1 text-[10px] text-text-primary/70">
-                              Τιμή: {b.drop_in_price ?? 0}€ ·{' '}
-                              {b.drop_in_paid ? 'Πληρωμένο' : 'Οφειλή'}
-                            </div>
-                          )}
+            <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+              {sorted.length === 0 && (
+                <div className="flex flex-col items-center gap-2 py-8 text-text-secondary">
+                  <Users className="h-6 w-6 opacity-25" />
+                  <span className="text-xs">Δεν υπάρχουν κρατήσεις για αυτό το μάθημα.</span>
+                </div>
+              )}
+              {sorted.map((b) => {
+                const name    = b.profiles?.full_name || b.profiles?.email || b.user_id;
+                const isDropIn = b.booking_type === 'drop_in';
+                const isDeleting = deletingBookingId === b.id;
+                return (
+                  <div key={b.id} className="flex items-start justify-between gap-3 rounded-xl border border-border/10 bg-secondary/5 px-3.5 py-2.5">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-text-primary truncate">{name}</div>
+                      {b.profiles?.email && <div className="text-[11px] text-text-secondary">{b.profiles.email}</div>}
+                      {isDropIn && (
+                        <div className="text-[11px] text-text-secondary mt-0.5">
+                          {b.drop_in_price ?? 0}€ · {b.drop_in_paid ? <span className="text-success">Πληρωμένο</span> : <span className="text-warning">Οφειλή</span>}
                         </div>
-                      );
-                    })}
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${isDropIn ? 'border-warning/40 bg-warning/10 text-warning' : 'border-success/40 bg-success/10 text-success'}`}>
+                        {isDropIn ? 'Drop-in' : 'Συνδρομή'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBooking(b.id)}
+                        disabled={isDeleting}
+                        className="h-7 w-7 inline-flex items-center justify-center rounded-xl border border-danger/20 text-danger hover:bg-danger/10 disabled:opacity-40 transition-all cursor-pointer"
+                      >
+                        {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                      </button>
+                    </div>
                   </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
+                );
+              })}
+            </div>
+          </ModalShell>
+        );
+      })()}
 
-
-      <SubscriptionRequiredModal
-        open={showSubModal}
-        onClose={() => setShowSubModal(false)}
-      />
+      <SubscriptionRequiredModal open={showSubModal} onClose={() => setShowSubModal(false)} />
     </>
   );
 }

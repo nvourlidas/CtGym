@@ -1,184 +1,170 @@
 import { useEffect, useState } from 'react';
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer,
 } from 'recharts';
-
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../auth';
+import { Users, Loader2, AlertTriangle, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
-type ChartPoint = {
-  monthKey: string; // e.g. "2025-01"
-  label: string;    // e.g. "Ιαν 25"
-  count: number;    // number of memberships started that month
-};
+type ChartPoint = { monthKey: string; label: string; count: number };
+
+const MONTH_NAMES = ['Ιαν','Φεβ','Μαρ','Απρ','Μάι','Ιουν','Ιουλ','Αυγ','Σεπ','Οκτ','Νοε','Δεκ'];
+
+function buildMonthBuckets(rows: any[], dateField: string): ChartPoint[] {
+  const now   = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+  start.setHours(0,0,0,0);
+
+  const buckets = new Map<string,number>();
+  for (const row of rows ?? []) {
+    const iso = (row as any)[dateField] as string | null;
+    if (!iso) continue;
+    const d   = new Date(iso);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  }
+
+  return Array.from({ length: 12 }, (_, i) => {
+    const d   = new Date(start.getFullYear(), start.getMonth() + i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    return { monthKey: key, label: `${MONTH_NAMES[d.getMonth()]} ${String(d.getFullYear()).slice(-2)}`, count: buckets.get(key) ?? 0 };
+  });
+}
+
+function CustomDot({ cx, cy, value }: any) {
+  if (value === 0) return null;
+  return <circle cx={cx} cy={cy} r={4} fill="var(--color-primary)" stroke="rgba(0,0,0,0.3)" strokeWidth={1.5} />;
+}
+
+function CustomTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-xl border border-border/15 bg-secondary-background/95 backdrop-blur shadow-xl px-3.5 py-2.5 text-sm">
+      <div className="font-bold text-text-primary mb-0.5">{label}</div>
+      <div className="text-primary font-semibold">{payload[0].value} συνδρομές</div>
+    </div>
+  );
+}
+
+function TrendBadge({ data }: { data: ChartPoint[] }) {
+  const last = data[data.length - 1]?.count ?? 0;
+  const prev = data[data.length - 2]?.count ?? 0;
+  if (prev === 0 && last === 0) return null;
+  const diff = last - prev;
+  const pct  = prev > 0 ? Math.round((diff / prev) * 100) : null;
+  if (diff > 0) return <span className="inline-flex items-center gap-1 text-[11px] font-bold text-success bg-success/10 border border-success/25 px-2 py-0.5 rounded-full"><TrendingUp className="h-3 w-3" />{pct !== null ? `+${pct}%` : `+${diff}`}</span>;
+  if (diff < 0) return <span className="inline-flex items-center gap-1 text-[11px] font-bold text-danger bg-danger/10 border border-danger/25 px-2 py-0.5 rounded-full"><TrendingDown className="h-3 w-3" />{pct !== null ? `${pct}%` : `${diff}`}</span>;
+  return <span className="inline-flex items-center gap-1 text-[11px] font-bold text-text-secondary bg-secondary/20 border border-border/20 px-2 py-0.5 rounded-full"><Minus className="h-3 w-3" />0%</span>;
+}
 
 export function MembershipsLineChart() {
   const { profile } = useAuth();
   const tenantId = (profile as any)?.tenant_id ?? null;
 
-  const [data, setData] = useState<ChartPoint[]>([]);
+  const [data, setData]       = useState<ChartPoint[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
+  const [error, setError]     = useState<string | null>(null);
 
   useEffect(() => {
     if (!tenantId) return;
-
     const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-
+      setLoading(true); setError(null);
       try {
-        const now = new Date();
-        // Start from 11 months ago, at the 1st of that month
-        const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-        start.setHours(0, 0, 0, 0);
+        const start = new Date();
+        start.setMonth(start.getMonth() - 11);
+        start.setDate(1); start.setHours(0,0,0,0);
 
         const { data: rows, error } = await supabase
-          .from('memberships')
-          .select('id, starts_at')
-          .eq('tenant_id', tenantId)
-          .not('starts_at', 'is', null)
-          .gte('starts_at', start.toISOString());
-
+          .from('memberships').select('id, starts_at')
+          .eq('tenant_id', tenantId).not('starts_at','is',null).gte('starts_at', start.toISOString());
         if (error) throw error;
 
-        // Bucket memberships per monthKey = "YYYY-MM"
-        const buckets = new Map<string, number>();
-
-        for (const row of rows ?? []) {
-          const starts_at = (row as any).starts_at as string | null;
-          if (!starts_at) continue;
-
-          const d = new Date(starts_at);
-          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-            2,
-            '0',
-          )}`;
-
-          buckets.set(key, (buckets.get(key) ?? 0) + 1);
-        }
-
-        const monthNames = [
-          'Ιαν',
-          'Φεβ',
-          'Μαρ',
-          'Απρ',
-          'Μάι',
-          'Ιουν',
-          'Ιουλ',
-          'Αυγ',
-          'Σεπ',
-          'Οκτ',
-          'Νοε',
-          'Δεκ',
-        ];
-
-        const chartData: ChartPoint[] = [];
-        for (let i = 0; i < 12; i++) {
-          const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
-          const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-            2,
-            '0',
-          )}`;
-          const label = `${monthNames[d.getMonth()]} ${String(
-            d.getFullYear(),
-          ).slice(-2)}`;
-
-          chartData.push({
-            monthKey: key,
-            label,
-            count: buckets.get(key) ?? 0,
-          });
-        }
-
-        setData(chartData);
+        setData(buildMonthBuckets(rows ?? [], 'starts_at'));
       } catch (err: any) {
-        console.error('Error loading memberships by month:', err);
         setError(err?.message ?? 'Κάτι πήγε στραβά.');
       } finally {
         setLoading(false);
       }
     };
-
     fetchData();
   }, [tenantId]);
 
+  const isEmpty = !loading && !error && data.every((d) => d.count === 0);
+  const total   = data.reduce((s, d) => s + d.count, 0);
+  const maxVal  = Math.max(...data.map((d) => d.count), 1);
+
   return (
-    <div className="rounded-xl border border-border/10 bg-secondary-background/60 p-4 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-text-primary">
-          Συνδρομές ανά μήνα (τελευταίοι 12 μήνες)
-        </h2>
+    <div className="rounded-2xl border border-border/10 bg-secondary-background shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-border/10 flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
+            <Users className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-sm font-black text-text-primary tracking-tight">Συνδρομές ανά μήνα</h2>
+            <p className="text-[11px] text-text-secondary mt-0.5">Τελευταίοι 12 μήνες</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {!loading && !error && !isEmpty && <TrendBadge data={data} />}
+          {loading && <Loader2 className="h-4 w-4 animate-spin text-text-secondary" />}
+          {error && <div className="flex items-center gap-1 text-xs text-danger"><AlertTriangle className="h-3.5 w-3.5" />{error}</div>}
+        </div>
       </div>
 
-      {loading ? (
-        <div className="py-8 text-center text-sm text-text-muted">
-          Φόρτωση δεδομένων...
-        </div>
-      ) : error ? (
-        <div className="py-8 text-center text-sm text-red-400">{error}</div>
-      ) : data.every((d) => d.count === 0) ? (
-        <div className="py-8 text-center text-sm text-text-muted">
-          Δεν βρέθηκαν εγγραφές συνδρομών για τους τελευταίους 12 μήνες.
-        </div>
-      ) : (
-        <div className="h-64 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={data}
-              margin={{ top: 10, right: 12, left: 0, bottom: 0 }}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                stroke="var(--color-text-primary)"
-                opacity={0.25}
-              />
-              <XAxis
-                dataKey="label"
-                tick={{ fontSize: 11, fill: 'var(--color-text-primary)' }}
-                axisLine={{ stroke: 'var(--color-text-muted)' }}
-                tickLine={false}
-              />
-              <YAxis
-                allowDecimals={false}
-                tick={{ fontSize: 11, fill: 'var(--color-text-primary)' }}
-                axisLine={{ stroke: 'rgba(148,163,184,0.3)' }}
-                tickLine={false}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'var(--color-primary)',
-                  border: '1px solid rgba(148,163,184,0.3)',
-                  color: '#FFF',
-                  borderRadius: 8,
-                  fontSize: 12,
-                }}
-                formatter={(value: any) => [`${value} συνδρομές`, 'Σύνολο']}
-              />
-              <Line
-                type="monotone"
-                dataKey="count"
-                stroke="var(--color-accent)"
-                strokeWidth={2}
-                dot={{
-                  r: 4,
-                  strokeWidth: 1.5,
-                  stroke: 'var(--color-accent)',
-                  fill: 'var(--color-accent)',
-                }}
-                activeDot={{ r: 5 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+      {/* Summary strip */}
+      {!loading && !error && !isEmpty && (
+        <div className="px-5 py-3 border-b border-border/5 flex items-center gap-6">
+          <div>
+            <div className="text-xl font-black text-text-primary">{total.toLocaleString()}</div>
+            <div className="text-[11px] text-text-secondary">Σύνολο νέων συνδρομών</div>
+          </div>
+          <div>
+            <div className="text-xl font-black text-text-primary">{maxVal}</div>
+            <div className="text-[11px] text-text-secondary">Κορυφή μήνα</div>
+          </div>
+          <div>
+            <div className="text-xl font-black text-text-primary">{Math.round(total / 12)}</div>
+            <div className="text-[11px] text-text-secondary">Μέσος όρος/μήνα</div>
+          </div>
         </div>
       )}
+
+      {/* Chart body */}
+      <div className="px-4 pb-4 pt-3">
+        {loading && (
+          <div className="h-56 flex items-center justify-center gap-2 text-text-secondary text-sm">
+            <Loader2 className="h-4 w-4 animate-spin" />Φόρτωση δεδομένων…
+          </div>
+        )}
+        {isEmpty && (
+          <div className="h-56 flex flex-col items-center justify-center gap-2 text-text-secondary">
+            <Users className="h-7 w-7 opacity-20" />
+            <span className="text-sm">Δεν βρέθηκαν εγγραφές για τους τελευταίους 12 μήνες.</span>
+          </div>
+        )}
+        {!loading && !error && !isEmpty && (
+          <div className="h-56 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="membershipsGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--color-primary)" stopOpacity={0.25} />
+                    <stop offset="100%" stopColor="var(--color-primary)" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-text-primary)" opacity={0.08} vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }} axisLine={false} tickLine={false} dy={6} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: 'var(--color-text-secondary)' }} axisLine={false} tickLine={false} />
+                <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'var(--color-primary)', strokeWidth: 1, strokeDasharray: '4 2', strokeOpacity: 0.5 }} />
+                <Area type="monotone" dataKey="count" stroke="var(--color-primary)" strokeWidth={2.5} fill="url(#membershipsGrad)" dot={<CustomDot />} activeDot={{ r: 6, fill: 'var(--color-primary)', stroke: 'rgba(0,0,0,0.3)', strokeWidth: 2 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
