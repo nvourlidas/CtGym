@@ -44,43 +44,52 @@ export default function MemberDetailsPage() {
     return true;
   };
 
-  useEffect(() => {
-    const run = async () => {
-      if (!id) return;
-      if (member && tenantId) return;
+useEffect(() => {
+  const run = async () => {
+    if (!id) return;
+    if (member && tenantId) return;
 
-      try {
-        setPageError(null);
+    try {
+      setPageError(null);
 
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id,tenant_id,full_name,phone,created_at,email,birth_date,address,afm,max_dropin_debt,notes')
-          .eq('id', id)
-          .maybeSingle();
+      const { data, error } = await supabase
+        .from('members')
+        .select('id,tenant_id,full_name,phone,created_at,email,birth_date,address,afm,max_dropin_debt,notes')
+        .eq('id', id)
+        .maybeSingle();
 
-        if (error) { setPageError(error.message); return; }
-        if (!data)  { setPageError('Δεν βρέθηκε το μέλος.'); return; }
-
-        setTenantId((data as any).tenant_id ?? '');
-        setMember({
-          id:             data.id,
-          full_name:      (data as any).full_name      ?? null,
-          phone:          (data as any).phone          ?? null,
-          created_at:     (data as any).created_at,
-          email:          (data as any).email          ?? null,
-          birth_date:     (data as any).birth_date     ?? null,
-          address:        (data as any).address        ?? null,
-          afm:            (data as any).afm            ?? null,
-          notes:          (data as any).notes          ?? null,
-          max_dropin_debt:(data as any).max_dropin_debt ?? null,
-        });
-      } catch (e: any) {
-        setPageError(e?.message ?? 'Σφάλμα φόρτωσης μέλους');
+      if (error) {
+        setPageError(error.message);
+        return;
       }
-    };
 
-    run();
-  }, [id, member, tenantId]);
+      if (!data) {
+        setPageError('Δεν βρέθηκε το μέλος.');
+        return;
+      }
+
+      setTenantId(data.tenant_id ?? '');
+
+      setMember({
+        id: data.id,
+        full_name: data.full_name ?? null,
+        phone: data.phone ?? null,
+        created_at: data.created_at,
+        email: data.email ?? null,
+        birth_date: data.birth_date ?? null,
+        address: data.address ?? null,
+        afm: data.afm ?? null,
+        notes: data.notes ?? null,
+        max_dropin_debt: data.max_dropin_debt ?? null,
+      });
+
+    } catch (e: any) {
+      setPageError(e?.message ?? 'Σφάλμα φόρτωσης μέλους');
+    }
+  };
+
+  run();
+}, [id, member, tenantId]);
 
   // ── Error state
   if (pageError) {

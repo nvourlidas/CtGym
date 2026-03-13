@@ -13,15 +13,17 @@ function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";
   const allowOrigin = ALLOWED.has(origin) ? origin : "";
   const reqHdrs = req.headers.get("access-control-request-headers") ?? "";
+
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
+
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
   return new Response(body, {
     ...init,
@@ -35,22 +37,19 @@ const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 async function getAuthContext(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
+
   const supa = createClient(URL, ANON, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
   });
-  const { data: { user } } = await supa.auth.getUser();
+
+  const {
+    data: { user },
+  } = await supa.auth.getUser();
+
   if (!user) return { error: "unauthorized" };
 
-  const { data: prof, error: pErr } = await supa
-    .from("profiles")
-    .select("tenant_id, role")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (pErr || !prof) return { error: "profile_not_found" };
-
-  const isAdmin = user.app_metadata?.role === "admin" || prof.role === "admin";
-  return { tenantId: prof.tenant_id as string, isAdmin };
+  return { supa, user };
 }
 
 async function assertTenantActive(admin: any, tenantId: string) {
@@ -75,24 +74,21 @@ async function assertTenantActive(admin: any, tenantId: string) {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
+
   if (req.method !== "POST") {
     return withCors("Method not allowed", { status: 405 }, req);
   }
 
   const auth = await getAuthContext(req);
-  if ((auth as any).error) {
-    return withCors(JSON.stringify({ error: (auth as any).error }), {
-      status: 401,
-    }, req);
-  }
-  const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
-  if (!isAdmin) {
+  if ("error" in auth) {
     return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
+      JSON.stringify({ error: auth.error }),
+      { status: 401 },
       req,
     );
   }
+
+  const { supa, user } = auth;
 
   let body: any;
   try {
@@ -105,7 +101,8 @@ serve(async (req) => {
     );
   }
 
-  const id = (body?.id ?? "").trim();
+  const id = String(body?.id ?? "").trim();
+
   if (!id) {
     return withCors(
       JSON.stringify({ error: "id_required" }),
@@ -114,13 +111,17 @@ serve(async (req) => {
     );
   }
 
-  // ✅ Use SERVICE for verification, then enforce tenant check
-  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+  const admin = createClient(URL, SERVICE, {
+    auth: { persistSession: false },
+  });
+
+  // 1️⃣ Get class tenant
   const { data: existing, error: fErr } = await admin
     .from("classes")
     .select("id, tenant_id")
     .eq("id", id)
     .maybeSingle();
+
   if (fErr) {
     return withCors(
       JSON.stringify({ error: fErr.message }),
@@ -128,6 +129,7 @@ serve(async (req) => {
       req,
     );
   }
+
   if (!existing) {
     return withCors(
       JSON.stringify({ error: "not_found" }),
@@ -135,13 +137,49 @@ serve(async (req) => {
       req,
     );
   }
-  if (existing.tenant_id !== tenantId) {
-    return withCors(JSON.stringify({ error: "tenant_mismatch" }), {
-      status: 403,
-    }, req);
+
+  const tenantId = existing.tenant_id;
+
+  // 2️⃣ Check caller belongs to tenant
+  const { data: callerTenantUser, error: tuErr } = await supa
+    .from("tenant_users")
+    .select("tenant_id, role")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (tuErr) {
+    return withCors(
+      JSON.stringify({ error: tuErr.message }),
+      { status: 400 },
+      req,
+    );
   }
 
-  // ✅ subscription gate (service role bypasses RLS)
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_access_denied" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const role = String(callerTenantUser.role ?? "").toLowerCase();
+
+  const isAdmin =
+    role === "admin" ||
+    role === "owner" ||
+    user.app_metadata?.role === "admin";
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  // 3️⃣ Subscription gate
   try {
     await assertTenantActive(admin, tenantId);
   } catch (e: any) {
@@ -155,8 +193,12 @@ serve(async (req) => {
     );
   }
 
-  // If desired, ensure FK ON DELETE CASCADE on class_sessions
-  const { error } = await admin.from("classes").delete().eq("id", id);
+  // 4️⃣ Delete class
+  const { error } = await admin
+    .from("classes")
+    .delete()
+    .eq("id", id);
+
   if (error) {
     return withCors(
       JSON.stringify({ error: error.message }),
@@ -165,5 +207,9 @@ serve(async (req) => {
     );
   }
 
-  return withCors(JSON.stringify({ ok: true }), { status: 200 }, req);
+  return withCors(
+    JSON.stringify({ ok: true }),
+    { status: 200 },
+    req,
+  );
 });

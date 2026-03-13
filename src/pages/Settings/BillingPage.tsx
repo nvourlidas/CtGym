@@ -48,18 +48,7 @@ function normalizePlan(p: TenantSubscriptionRow['subscription_plans']): PlanRow 
 }
 function isAllowedNow(sub: TenantSubscriptionRow | null) {
   if (!sub) return false;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const end   = sub.current_period_end ? new Date(sub.current_period_end) : null;
-  const grace = sub.grace_until        ? new Date(sub.grace_until)        : null;
-  if (end) {
-    end.setHours(0, 0, 0, 0);
-    if (end >= today && ['active', 'trial', 'canceled'].includes(sub.status)) return true;
-  }
-  if (sub.status === 'past_due' && grace) {
-    grace.setHours(0, 0, 0, 0);
-    if (grace >= today) return true;
-  }
-  return false;
+  return ['active', 'trial'].includes(sub.status);
 }
 
 const METHOD_LABELS: Record<string, string> = {
@@ -233,7 +222,23 @@ export default function BillingPage() {
 
               {/* Status tile */}
               <div className="rounded-xl border border-border/10 bg-secondary/5 p-4 space-y-3">
-                <div className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Κατάσταση</div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Κατάσταση</div>
+                  {!allowed && sub?.plan_id && (
+                    <button
+                      type="button"
+                      onClick={() => startCheckout(sub.plan_id)}
+                      disabled={checkoutBusy}
+                      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11px] font-bold text-black bg-accent hover:bg-accent/90 shadow-sm transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {checkoutBusy
+                        ? <Loader2    className="h-3 w-3 animate-spin" />
+                        : <RefreshCcw className="h-3 w-3" />
+                      }
+                      {checkoutBusy ? 'Περίμενε…' : 'Ανανέωση'}
+                    </button>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   {allowed
                     ? <CheckCircle2 className="h-5 w-5 text-success shrink-0" />
@@ -246,20 +251,6 @@ export default function BillingPage() {
                 <span className={`inline-flex text-[10.5px] font-bold px-2.5 py-1 rounded-lg border ${statusMeta.cls}`}>
                   {statusMeta.label}
                 </span>
-                {!allowed && sub?.plan_id && (
-                  <button
-                    type="button"
-                    onClick={() => startCheckout(sub.plan_id)}
-                    disabled={checkoutBusy}
-                    className="inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-bold text-black bg-accent hover:bg-accent/90 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    {checkoutBusy
-                      ? <Loader2    className="h-3 w-3 animate-spin" />
-                      : <RefreshCcw className="h-3 w-3" />
-                    }
-                    {checkoutBusy ? 'Παρακαλώ περίμενε…' : 'Ανανέωση'}
-                  </button>
-                )}
                 {checkoutErr && (
                   <div className="flex items-center gap-1.5 text-xs text-danger">
                     <AlertTriangle className="h-3 w-3 shrink-0" />{checkoutErr}
@@ -319,7 +310,7 @@ export default function BillingPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border/10 bg-secondary-background/80">
-                      {['Ημ/νία', 'Περίοδος', 'Πλάνο', 'Ποσό', 'Μέθοδος', 'Ref'].map((h, i) => (
+                      {['Ημ/νία', 'Περίοδος', 'Πλάνο', 'Ποσό', 'Μέθοδος'].map((h, i) => (
                         <th
                           key={i}
                           className={`px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-text-secondary ${i === 3 ? 'text-right' : 'text-left'}`}
@@ -352,9 +343,6 @@ export default function BillingPage() {
                           <span className="text-[10.5px] font-bold px-2.5 py-1 rounded-lg border border-border/15 bg-secondary/10 text-text-secondary">
                             {METHOD_LABELS[p.method] ?? p.method}
                           </span>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-text-secondary font-mono">
-                          {p.reference ?? '—'}
                         </td>
                       </tr>
                     ))}

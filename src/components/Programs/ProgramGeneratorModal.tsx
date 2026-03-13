@@ -109,8 +109,8 @@ export default function ProgramGeneratorModal({
   const tenantId = profile?.tenant_id;
 
   function getTier(sub: any): 'free' | 'starter' | 'pro' {
-    const name = String(sub?.plan_name ?? sub?.plan?.name ?? '').toLowerCase();
-    const code = String(sub?.plan_code ?? sub?.plan?.code ?? '').toLowerCase();
+    const name = String(sub?.plan_id ?? sub?.plan?.name ?? '').toLowerCase();
+    const code = String(sub?.plan_id ?? sub?.plan?.code ?? '').toLowerCase();
 
     // make it resilient to your naming
     if (name.includes('pro') || code.includes('pro')) return 'pro';

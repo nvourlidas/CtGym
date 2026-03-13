@@ -14,12 +14,13 @@ function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";
   const allowOrigin = ALLOWED.has(origin) ? origin : "";
   const reqHdrs = req.headers.get("access-control-request-headers") ?? "";
+
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -60,6 +61,7 @@ type IncomingSet = {
   reps?: string | number | null;
   weight?: string | number | null;
 };
+
 type IncomingItem = {
   wger_id: number;
   name?: string;
@@ -86,60 +88,43 @@ function toNumOrNull(v: unknown): number | null {
 
 async function getAuthContext(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
+
   const supa = createClient(URL, ANON, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
   });
 
-  const { data: { user } } = await supa.auth.getUser();
-  if (!user) return { error: "unauthorized" as const };
+  const {
+    data: { user },
+    error: userErr,
+  } = await supa.auth.getUser();
 
-  const { data: prof, error: pErr } = await supa
-    .from("profiles")
-    .select("role, tenant_id")
-    .eq("id", user.id)
-    .maybeSingle();
+  if (userErr || !user) return { error: "unauthorized" as const };
 
-  if (pErr || !prof) return { error: "profile_not_found" as const };
-
-  const isAdmin = user.app_metadata?.role === "admin" || prof.role === "admin";
-  return { user, isAdmin, tenant_id: prof.tenant_id as string | null };
+  return { supa, user };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
+
   if (req.method !== "POST") {
-    return withCors(JSON.stringify({ error: "method_not_allowed" }), {
-      status: 405,
-    }, req);
-  }
-
-  const auth = await getAuthContext(req);
-  if ((auth as any).error) {
-    return withCors(JSON.stringify({ error: (auth as any).error }), {
-      status: 401,
-    }, req);
-  }
-
-  const { user, isAdmin, tenant_id } = auth as {
-    user: any;
-    isAdmin: boolean;
-    tenant_id: string | null;
-  };
-
-  if (!tenant_id) {
-    return withCors(JSON.stringify({ error: "tenant_required" }), {
-      status: 400,
-    }, req);
-  }
-
-  if (!isAdmin) {
     return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
+      JSON.stringify({ error: "method_not_allowed" }),
+      { status: 405 },
       req,
     );
   }
+
+  const auth = await getAuthContext(req);
+  if ("error" in auth) {
+    return withCors(
+      JSON.stringify({ error: auth.error }),
+      { status: 401 },
+      req,
+    );
+  }
+
+  const { supa, user } = auth;
 
   let body: any;
   try {
@@ -152,10 +137,57 @@ serve(async (req) => {
     );
   }
 
+  const tenant_id = String(body?.tenant_id ?? "").trim();
   const name = String(body?.name ?? "").trim();
   const notes = String(body?.notes ?? "").trim() || null;
   const items = (body?.items ?? []) as IncomingItem[];
   const coach_id = String(body?.coach_id ?? "").trim() || null;
+
+  if (!tenant_id) {
+    return withCors(
+      JSON.stringify({ error: "tenant_required" }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  // caller must belong to tenant and be admin/owner there
+  const { data: callerTenantUser, error: callerTenantUserErr } = await supa
+    .from("tenant_users")
+    .select("tenant_id, user_id, role")
+    .eq("tenant_id", tenant_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (callerTenantUserErr) {
+    return withCors(
+      JSON.stringify({ error: callerTenantUserErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_access_denied" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const callerRole = String(callerTenantUser.role ?? "").toLowerCase();
+  const isAdmin =
+    callerRole === "admin" ||
+    callerRole === "owner" ||
+    user.app_metadata?.role === "admin";
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
 
   if (!name) {
     return withCors(
@@ -164,16 +196,20 @@ serve(async (req) => {
       req,
     );
   }
+
   if (!Array.isArray(items) || items.length === 0) {
-    return withCors(JSON.stringify({ error: "items_required" }), {
-      status: 400,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: "items_required" }),
+      { status: 400 },
+      req,
+    );
   }
 
   // Validate items
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
     const wgerId = Number(it?.wger_id);
+
     if (!Number.isFinite(wgerId) || wgerId <= 0) {
       return withCors(
         JSON.stringify({ error: "invalid_item_wger_id", index: i }),
@@ -181,6 +217,7 @@ serve(async (req) => {
         req,
       );
     }
+
     if (it?.sets && !Array.isArray(it.sets)) {
       return withCors(
         JSON.stringify({ error: "invalid_item_sets", index: i }),
@@ -190,11 +227,13 @@ serve(async (req) => {
     }
   }
 
-  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+  const admin = createClient(URL, SERVICE, {
+    auth: { persistSession: false },
+  });
 
-  // ✅ subscription gate (service role bypasses RLS)
+  // subscription gate
   try {
-    await assertTenantActive(admin, tenant_id); // or tenant_id (same here)
+    await assertTenantActive(admin, tenant_id);
   } catch (e: any) {
     return withCors(
       JSON.stringify({
@@ -206,10 +245,11 @@ serve(async (req) => {
     );
   }
 
+  // validate coach belongs to same tenant
   if (coach_id) {
     const { data: c, error: cErr } = await admin
       .from("coaches")
-      .select("id")
+      .select("id, tenant_id")
       .eq("id", coach_id)
       .maybeSingle();
 
@@ -220,10 +260,21 @@ serve(async (req) => {
         req,
       );
     }
+
     if (!c) {
-      return withCors(JSON.stringify({ error: "coach_not_found" }), {
-        status: 404,
-      }, req);
+      return withCors(
+        JSON.stringify({ error: "coach_not_found" }),
+        { status: 404 },
+        req,
+      );
+    }
+
+    if (String(c.tenant_id) !== tenant_id) {
+      return withCors(
+        JSON.stringify({ error: "coach_tenant_mismatch" }),
+        { status: 403 },
+        req,
+      );
     }
   }
 
@@ -248,7 +299,7 @@ serve(async (req) => {
     );
   }
 
-  // 2) Insert template exercises (bulk)
+  // 2) Insert template exercises
   const exercisesPayload = items.map((it, idx) => ({
     template_id: template.id,
     exercise_wger_id: Number(it.wger_id),
@@ -261,8 +312,8 @@ serve(async (req) => {
     .select("id, exercise_wger_id, sort_order");
 
   if (exErr || !insertedExercises) {
-    // rollback (best-effort) so you don't leave orphan template
     await admin.from("workout_templates").delete().eq("id", template.id);
+
     return withCors(
       JSON.stringify({
         error: exErr?.message ?? "template_exercises_insert_failed",
@@ -272,21 +323,21 @@ serve(async (req) => {
     );
   }
 
-  // Build map wger_id -> inserted template_exercise_id
-  // (assumes you don't add duplicates; your UI prevents duplicates)
+  // map wger_id -> inserted template_exercise_id
   const exIdByWger = new Map<number, string>();
   for (const row of insertedExercises as any[]) {
     exIdByWger.set(Number(row.exercise_wger_id), String(row.id));
   }
 
-  // 3) Insert sets (bulk)
+  // 3) Insert sets
   const setsPayload: any[] = [];
+
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
     const teId = exIdByWger.get(Number(it.wger_id));
     if (!teId) continue;
 
-    const sets = Array.isArray(it.sets) && it.sets.length
+    const sets = Array.isArray(it.sets) && it.sets.length > 0
       ? it.sets
       : [{ reps: null, weight: null }];
 
@@ -310,8 +361,8 @@ serve(async (req) => {
       .insert(setsPayload);
 
     if (sErr) {
-      // rollback (best-effort)
       await admin.from("workout_templates").delete().eq("id", template.id);
+
       return withCors(
         JSON.stringify({ error: sErr.message }),
         { status: 400 },

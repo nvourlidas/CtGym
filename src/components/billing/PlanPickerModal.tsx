@@ -144,9 +144,10 @@ export default function PlanPickerModal({
   const { profile } = useAuth();
   const tenantId = profile?.tenant_id ?? null;
 
-  const [hasEverActivated, setHasEverActivated] = useState<boolean>(true);
-  const [checkingEver, setCheckingEver]         = useState<boolean>(false);
-  const [trialBusyId, setTrialBusyId]           = useState<string | null>(null);
+  const [hasEverActivated, setHasEverActivated]   = useState<boolean>(true);
+  const [checkingEver, setCheckingEver]           = useState<boolean>(false);
+  const [trialBusyId, setTrialBusyId]             = useState<string | null>(null);
+  const [pendingTrialPlanId, setPendingTrialPlanId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,7 +170,7 @@ export default function PlanPickerModal({
     return sorted[Math.floor(sorted.length / 2)]?.id;
   }, [visiblePlans]);
 
-  async function handleChoosePlan(planId: string) {
+  function handleChoosePlan(planId: string) {
     const plan = visiblePlans.find((p) => p.id === planId);
     if (!plan) return;
     const key = getPlanKey(plan);
@@ -177,20 +178,25 @@ export default function PlanPickerModal({
     if (currentPlanId === planId) return;
 
     if (isTrialEligible) {
-      try {
-        setTrialBusyId(planId);
-        if (!tenantId) throw new Error("Missing tenant id");
-        const { error } = await supabase.rpc("start_trial", { p_tenant_id: tenantId, p_plan_id: planId, p_trial_days: 14 });
-        if (error) throw error;
-        onClose();
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setTrialBusyId(null);
-      }
+      setPendingTrialPlanId(planId);
       return;
     }
     onSubscribe(planId);
+  }
+
+  async function confirmTrial() {
+    if (!pendingTrialPlanId || !tenantId) return;
+    try {
+      setTrialBusyId(pendingTrialPlanId);
+      const { error } = await supabase.rpc("start_trial", { p_tenant_id: tenantId, p_plan_id: pendingTrialPlanId, p_trial_days: 14 });
+      if (error) throw error;
+      window.location.reload();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setTrialBusyId(null);
+      setPendingTrialPlanId(null);
+    }
   }
 
   if (!open) return null;
@@ -203,7 +209,7 @@ export default function PlanPickerModal({
       {/* Modal */}
       <div className="absolute inset-0 flex items-start justify-center p-4 md:p-8 overflow-auto">
         <div
-          className="w-full max-w-6xl rounded-2xl border border-border/10 bg-secondary-background/95 backdrop-blur-xl shadow-2xl overflow-hidden"
+          className="relative w-full max-w-6xl rounded-2xl border border-border/10 bg-secondary-background/95 backdrop-blur-xl shadow-2xl overflow-hidden"
           style={{ animation: "planModalIn 0.28s cubic-bezier(0.16,1,0.3,1)" }}
         >
           {/* Top accent bar */}
@@ -515,6 +521,51 @@ export default function PlanPickerModal({
           </div>
         </div>
       </div>
+
+      {/* Trial confirmation modal */}
+      {pendingTrialPlanId && (() => {
+        const plan = visiblePlans.find((p) => p.id === pendingTrialPlanId);
+        return (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="w-full max-w-sm mx-4 rounded-2xl border border-border/10 bg-secondary-background shadow-2xl p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
+                  <Zap className="h-4 w-4 text-primary" />
+                </div>
+                <div>
+                  <p className="font-black text-text-primary text-sm">Έναρξη Δωρεάν Δοκιμής</p>
+                  <p className="text-[11px] text-text-secondary mt-0.5">14 ημέρες χωρίς χρέωση — χωρίς κάρτα.</p>
+                </div>
+              </div>
+              <div className="rounded-xl border border-border/10 bg-secondary/10 px-4 py-3 space-y-1">
+                <p className="text-sm font-bold text-text-primary">{plan?.name ?? pendingTrialPlanId}</p>
+                <p className="text-xs text-text-secondary">Η δοκιμή ξεκινάει αμέσως και λήγει σε 14 ημέρες.</p>
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPendingTrialPlanId(null)}
+                  disabled={!!trialBusyId}
+                  className="h-9 px-4 rounded-xl border border-border/15 text-sm font-semibold text-text-secondary hover:text-text-primary hover:bg-secondary/30 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  Ακύρωση
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmTrial}
+                  disabled={!!trialBusyId}
+                  className="h-9 px-4 rounded-xl text-sm font-bold text-white bg-primary hover:bg-primary/90 shadow-sm transition-all cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+                >
+                  {trialBusyId
+                    ? <><span className="w-3.5 h-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />Παρακαλώ περίμενε…</>
+                    : <><Zap className="h-3.5 w-3.5" />Ξεκίνα τη δοκιμή</>
+                  }
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <style>{`
         @keyframes planModalIn {

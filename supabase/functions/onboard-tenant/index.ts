@@ -108,7 +108,7 @@ serve(async (req) => {
       const admin_full_name = ad?.full_name
         ? String(ad.full_name).trim()
         : null;
-      const role = String(ad?.role ?? "owner").trim();
+      const role = String(ad?.role ?? "admin").trim();
 
       // ----------------------------
       // Basic validations
@@ -234,17 +234,48 @@ serve(async (req) => {
         }
 
         // 4) Upsert profile (service role)
+        // 4) Upsert profile
         const { error: pErr } = await sb.from("profiles").upsert(
           {
             id: adminUserId,
-            tenant_id: tenantId,
-            full_name: admin_full_name,
-            role,
-            email: admin_email_raw,
           },
           { onConflict: "id" },
         );
+
         if (pErr) throw new Error(pErr.message);
+
+        // 5) Add admin to tenant_users
+        const { error: tuErr } = await sb.from("tenant_users").insert({
+          tenant_id: tenantId,
+          user_id: adminUserId,
+          role: role || "admin",
+        });
+
+        if (tuErr) throw new Error(tuErr.message);
+
+        // 6) Create admin as member record
+        const { error: mErr } = await sb.from("members").insert({
+          tenant_id: tenantId,
+          user_id: adminUserId,
+          role: "admin",
+          email: admin_email_raw,
+          full_name: admin_full_name,
+        });
+
+        if (mErr) throw new Error(mErr.message);
+
+        // 7) Assign free plan subscription
+        const today = new Date().toISOString().slice(0, 10);
+
+        const { error: subErr } = await sb.from("tenant_subscriptions").insert({
+          tenant_id: tenantId,
+          plan_id: "free",
+          status: "active",
+          current_period_start: today,
+          provider: "manual",
+        });
+
+        if (subErr) throw new Error(subErr.message);
 
         return json(200, {
           ok: true,

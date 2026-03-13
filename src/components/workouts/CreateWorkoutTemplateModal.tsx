@@ -7,12 +7,12 @@ import {
 } from 'lucide-react';
 
 type Props = { open: boolean; onClose: () => void; onSaved?: () => void };
-type WgerCategory  = { id: number; name: string };
+type WgerCategory = { id: number; name: string };
 type WgerEquipment = { id: number; name: string };
 type ExerciseCatalogRow = { wger_id: number; name: string; category_name?: string | null; images?: Array<{ url?: string | null; is_main?: boolean | null }> | null };
-type LocalSet      = { key: string; reps: string; weight: string };
+type LocalSet = { key: string; reps: string; weight: string };
 type LocalExercise = { wger_id: number; name: string; imageUrl?: string | null; sets: LocalSet[] };
-type Coach         = { id: string; full_name: string | null; email?: string | null };
+type Coach = { id: string; full_name: string | null; email?: string | null };
 
 function key() { return `${Date.now()}_${Math.random().toString(16).slice(2)}`; }
 function pickMainImageUrl(ex: ExerciseCatalogRow): string | null {
@@ -25,21 +25,21 @@ const STEP_LABELS = { category: 'Κατηγορία', equipment: 'Εξοπλισ
 
 export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: Props) {
   const { profile } = useAuth();
-  const [step, setStep]   = useState<'category'|'equipment'|'exercise'>('category');
-  const [name, setName]   = useState('');
+  const [step, setStep] = useState<'category' | 'equipment' | 'exercise'>('category');
+  const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  const [categories, setCategories]   = useState<WgerCategory[]>([]);
-  const [equipment, setEquipment]     = useState<WgerEquipment[]>([]);
-  const [selectedCategory, setSelectedCategory]   = useState<WgerCategory|null>(null);
-  const [selectedEquipment, setSelectedEquipment] = useState<WgerEquipment|null>(null);
-  const [coaches, setCoaches]           = useState<Coach[]>([]);
+  const [categories, setCategories] = useState<WgerCategory[]>([]);
+  const [equipment, setEquipment] = useState<WgerEquipment[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<WgerCategory | null>(null);
+  const [selectedEquipment, setSelectedEquipment] = useState<WgerEquipment | null>(null);
+  const [coaches, setCoaches] = useState<Coach[]>([]);
   const [selectedCoachId, setSelectedCoachId] = useState('');
-  const [q, setQ]             = useState('');
+  const [q, setQ] = useState('');
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<ExerciseCatalogRow[]>([]);
-  const [items, setItems]     = useState<LocalExercise[]>([]);
-  const [busy, setBusy]       = useState(false);
-  const [error, setError]     = useState<string|null>(null);
+  const [items, setItems] = useState<LocalExercise[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -49,9 +49,9 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
     (async () => {
       try {
         const [catsRes, eqRes, coachesRes] = await Promise.all([
-          supabase.from('wger_exercise_categories').select('id,name').order('name',{ascending:true}),
-          supabase.from('wger_equipment').select('id,name').order('name',{ascending:true}),
-          supabase.from('coaches').select('id,full_name,email').eq('tenant_id', profile?.tenant_id ?? '').order('full_name',{ascending:true}),
+          supabase.from('wger_exercise_categories').select('id,name').order('name', { ascending: true }),
+          supabase.from('wger_equipment').select('id,name').order('name', { ascending: true }),
+          supabase.from('coaches').select('id,full_name,email').eq('tenant_id', profile?.tenant_id ?? '').order('full_name', { ascending: true }),
         ]);
         if (catsRes.error) throw catsRes.error;
         if (eqRes.error) throw eqRes.error;
@@ -68,7 +68,7 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
     const t = setTimeout(async () => {
       try {
         setSearching(true);
-        const { data, error } = await supabase.from('exercise_catalog').select('wger_id,name,category_name,images').ilike('name',`%${q.trim()}%`).eq('category_id', selectedCategory.id).order('name',{ascending:true}).limit(60);
+        const { data, error } = await supabase.from('exercise_catalog').select('wger_id,name,category_name,images').ilike('name', `%${q.trim()}%`).eq('category_id', selectedCategory.id).order('name', { ascending: true }).limit(60);
         if (error) throw error;
         setResults((data ?? []) as ExerciseCatalogRow[]);
       } catch (e) { console.error(e); setResults([]); } finally { setSearching(false); }
@@ -77,38 +77,80 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
   }, [open, step, selectedCategory, selectedEquipment, q]);
 
   const addExercise = (ex: ExerciseCatalogRow) => {
-    setItems((prev) => prev.some((p) => p.wger_id === ex.wger_id) ? prev : [...prev, { wger_id: ex.wger_id, name: ex.name, imageUrl: pickMainImageUrl(ex), sets: [{ key: key(), reps:'', weight:'' }] }]);
+    setItems((prev) => prev.some((p) => p.wger_id === ex.wger_id) ? prev : [...prev, { wger_id: ex.wger_id, name: ex.name, imageUrl: pickMainImageUrl(ex), sets: [{ key: key(), reps: '', weight: '' }] }]);
   };
   const removeExercise = (wgerId: number) => setItems((prev) => prev.filter((p) => p.wger_id !== wgerId));
-  const addSet    = (wgerId: number) => setItems((prev) => prev.map((ex) => ex.wger_id !== wgerId ? ex : { ...ex, sets: [...ex.sets, { key: key(), reps:'', weight:'' }] }));
-  const removeSet = (wgerId: number, setKey: string) => setItems((prev) => prev.map((ex) => { if (ex.wger_id !== wgerId) return ex; const next = ex.sets.filter((s) => s.key !== setKey); return { ...ex, sets: next.length ? next : [{ key: key(), reps:'', weight:'' }] }; }));
-  const updateSet = (wgerId: number, setKey: string, field: 'reps'|'weight', value: string) => {
-    const clean = value.replace(',','.');
+  const addSet = (wgerId: number) => setItems((prev) => prev.map((ex) => ex.wger_id !== wgerId ? ex : { ...ex, sets: [...ex.sets, { key: key(), reps: '', weight: '' }] }));
+  const removeSet = (wgerId: number, setKey: string) => setItems((prev) => prev.map((ex) => { if (ex.wger_id !== wgerId) return ex; const next = ex.sets.filter((s) => s.key !== setKey); return { ...ex, sets: next.length ? next : [{ key: key(), reps: '', weight: '' }] }; }));
+  const updateSet = (wgerId: number, setKey: string, field: 'reps' | 'weight', value: string) => {
+    const clean = value.replace(',', '.');
     setItems((prev) => prev.map((ex) => ex.wger_id !== wgerId ? ex : { ...ex, sets: ex.sets.map((s) => s.key === setKey ? { ...s, [field]: clean } : s) }));
   };
   const goBack = () => {
-    if (step==='exercise') { setStep('equipment'); setQ(''); setResults([]); return; }
-    if (step==='equipment') { setStep('category'); setSelectedEquipment(null); }
+    if (step === 'exercise') { setStep('equipment'); setQ(''); setResults([]); return; }
+    if (step === 'equipment') { setStep('category'); setSelectedEquipment(null); }
   };
 
   const saveTemplate = async () => {
-    if (!name.trim()) { setError('Βάλε όνομα template.'); return; }
-    if (items.length === 0) { setError('Πρόσθεσε τουλάχιστον 1 άσκηση.'); return; }
+    if (!name.trim()) {
+      setError('Βάλε όνομα template.');
+      return;
+    }
+
+    if (items.length === 0) {
+      setError('Πρόσθεσε τουλάχιστον 1 άσκηση.');
+      return;
+    }
+
+    if (!profile?.tenant_id) {
+      setError('Δεν βρέθηκε tenant.');
+      return;
+    }
+
     try {
-      setBusy(true); setError(null);
-      const res = await supabase.functions.invoke('workout-template-create', { body: { name: name.trim(), notes: notes.trim()||null, coach_id: selectedCoachId||null, items: items.map((ex) => ({ wger_id: ex.wger_id, sets: ex.sets.map((s) => ({ reps: s.reps, weight: s.weight })) })) } });
-      const payload = typeof res.data==='string' ? JSON.parse(res.data) : res.data;
+      setBusy(true);
+      setError(null);
+
+      const res = await supabase.functions.invoke('workout-template-create', {
+        body: {
+          tenant_id: profile.tenant_id,
+          name: name.trim(),
+          notes: notes.trim() || null,
+          coach_id: selectedCoachId || null,
+          items: items.map((ex) => ({
+            wger_id: ex.wger_id,
+            sets: ex.sets.map((s) => ({
+              reps: s.reps,
+              weight: s.weight,
+            })),
+          })),
+        },
+      });
+
+      const payload = typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
       const errMsg = payload?.error ?? res.error?.message ?? '';
-      if (res.error || payload?.error) throw new Error(errMsg || 'Απέτυχε η δημιουργία template.');
-      if (!payload?.data?.template?.id) throw new Error('Missing template id.');
-      onSaved?.(); onClose();
-    } catch (e: any) { console.error(e); setError(e?.message ?? 'Αποτυχία αποθήκευσης. Δοκίμασε ξανά.'); }
-    finally { setBusy(false); }
+
+      if (res.error || payload?.error) {
+        throw new Error(errMsg || 'Απέτυχε η δημιουργία template.');
+      }
+
+      if (!payload?.data?.template?.id) {
+        throw new Error('Missing template id.');
+      }
+
+      onSaved?.();
+      onClose();
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message ?? 'Αποτυχία αποθήκευσης. Δοκίμασε ξανά.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const titleRight = useMemo(() => {
-    if (step==='category') return 'Επιλογή κατηγορίας';
-    if (step==='equipment') return selectedCategory?.name ?? 'Εξοπλισμός';
+    if (step === 'category') return 'Επιλογή κατηγορίας';
+    if (step === 'equipment') return selectedCategory?.name ?? 'Εξοπλισμός';
     return `${selectedCategory?.name ?? ''}${selectedEquipment ? ` · ${selectedEquipment.name}` : ' · All'}`;
   }, [step, selectedCategory, selectedEquipment]);
 
@@ -190,9 +232,9 @@ export default function CreateWorkoutTemplateModal({ open, onClose, onSaved }: P
                 </div>
                 {/* Step breadcrumb */}
                 <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-                  {(['category','equipment','exercise'] as const).map((s, i) => (
-                    <span key={s} className={`flex items-center gap-1 ${step===s?'text-primary font-bold':''}`}>
-                      {i>0 && <ChevronRight className="h-3 w-3 opacity-40" />}
+                  {(['category', 'equipment', 'exercise'] as const).map((s, i) => (
+                    <span key={s} className={`flex items-center gap-1 ${step === s ? 'text-primary font-bold' : ''}`}>
+                      {i > 0 && <ChevronRight className="h-3 w-3 opacity-40" />}
                       {STEP_LABELS[s]}
                     </span>
                   ))}

@@ -51,7 +51,7 @@ export default function WorkoutTemplatesPage() {
   }
   async function loadMembers() {
     if (!profile?.tenant_id) return;
-    const { data, error } = await supabase.from('profiles').select('id,full_name,email')
+    const { data, error } = await supabase.from('members').select('id,full_name,email')
       .eq('tenant_id', profile.tenant_id).eq('role', 'member').order('full_name', { ascending: true });
     if (!error && data) setMembers(data as any[]);
   }
@@ -294,7 +294,7 @@ function AssignTemplateModal({ row, members, onClose }: { row: TemplateRow; memb
   const submit = async () => {
     if (!profile?.id || !memberId) return;
     setBusy(true);
-    const res = await supabase.functions.invoke('workout-template-assign', { body: { template_id: row.id, member_id: memberId, coach_id: row.coach_id ?? null, message: message.trim() || null } });
+    const res = await supabase.functions.invoke('workout-template-assign', { body: { tenant_id: profile.tenant_id, template_id: row.id, member_id: memberId, coach_id: row.coach_id ?? null, message: message.trim() || null } });
     if (res.error) { console.error(res.error); alert(res.error.message ?? 'Function error'); }
     else setSent(true);
     setBusy(false);

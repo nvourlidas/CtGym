@@ -11,8 +11,8 @@ import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModa
 import DatePicker from 'react-datepicker';
 import { el } from 'date-fns/locale/el';
 
-type Member    = { id: string; full_name: string | null; email?: string | null };
-type Plan      = { id: string; name: string; plan_kind: 'duration' | 'sessions' | 'hybrid'; duration_days: number | null; session_credits: number | null; price: number | null };
+type Member = { id: string; full_name: string | null; email?: string | null };
+type Plan = { id: string; name: string; plan_kind: 'duration' | 'sessions' | 'hybrid'; duration_days: number | null; session_credits: number | null; price: number | null };
 type PlanCategory = { id: string; name: string; color: string | null };
 type MembershipRow = {
   id: string; tenant_id: string; user_id: string; plan_id: string | null;
@@ -27,22 +27,22 @@ function formatDateDMY(iso?: string | null) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+  return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
 }
 function formatMoney(n: number) {
-  return new Intl.NumberFormat(undefined, { style:'currency', currency:'EUR', maximumFractionDigits:2 }).format(n);
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 }).format(n);
 }
 function dateToISODate(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 const STATUS_META: Record<string, { label: string; cls: string }> = {
-  active:    { label:'Ενεργή',      cls:'border-success/40 bg-success/10 text-success' },
-  paused:    { label:'Σε παύση',    cls:'border-warning/40 bg-warning/10 text-warning' },
-  cancelled: { label:'Ακυρωμένη',  cls:'border-danger/40 bg-danger/10 text-danger' },
-  expired:   { label:'Έληξε',       cls:'border-border/30 bg-secondary/20 text-text-secondary' },
+  active: { label: 'Ενεργή', cls: 'border-success/40 bg-success/10 text-success' },
+  paused: { label: 'Σε παύση', cls: 'border-warning/40 bg-warning/10 text-warning' },
+  cancelled: { label: 'Ακυρωμένη', cls: 'border-danger/40 bg-danger/10 text-danger' },
+  expired: { label: 'Έληξε', cls: 'border-border/30 bg-secondary/20 text-text-secondary' },
 };
-function getStatus(s?: string | null) { return STATUS_META[(s ?? 'active').toLowerCase()] ?? { label:'Άγνωστη', cls:'border-border/30 bg-secondary/20 text-text-secondary' }; }
+function getStatus(s?: string | null) { return STATUS_META[(s ?? 'active').toLowerCase()] ?? { label: 'Άγνωστη', cls: 'border-border/30 bg-secondary/20 text-text-secondary' }; }
 
 // ── Shared UI ─────────────────────────────────────────────────────────────
 
@@ -110,13 +110,23 @@ function IconButton({ icon: Icon, label, onClick, disabled }: { icon: LucideIcon
   );
 }
 
-function DeleteButton({ id, onDeleted, guard }: { id: string; onDeleted: () => void; guard: () => boolean }) {
+function DeleteButton({
+  id,
+  tenantId,
+  onDeleted,
+  guard
+}: {
+  id: string
+  tenantId: string
+  onDeleted: () => void
+  guard: () => boolean
+}) {
   const [busy, setBusy] = useState(false);
   const onClick = async () => {
     if (guard && !guard()) return;
     if (!confirm('Ειστε σίγουρος για τη διαγραφή συνδρομής;')) return;
     setBusy(true);
-    const res = await supabase.functions.invoke('membership-delete', { body: { id } });
+    const res = await supabase.functions.invoke('membership-delete', { body: { id, tenant_id: tenantId } });
     setBusy(false);
     if (res.error || (res.data as any)?.error) { alert(res.error?.message ?? (res.data as any)?.error ?? 'Delete failed'); }
     else { onDeleted(); }
@@ -158,7 +168,7 @@ function SearchableDropdown({ options, value, onChange, placeholder, disabled }:
         className="w-full h-9 flex items-center justify-between gap-2 pl-3.5 pr-3 rounded-xl border border-border/15 bg-secondary-background text-sm hover:border-primary/30 disabled:opacity-50 transition-all cursor-pointer"
       >
         <span className={selected ? 'text-text-primary truncate' : 'text-text-secondary truncate'}>{selected ? selected.label : placeholder}</span>
-        <ChevronDown className={['h-3.5 w-3.5 text-text-secondary transition-transform shrink-0', open?'rotate-180':''].join(' ')} />
+        <ChevronDown className={['h-3.5 w-3.5 text-text-secondary transition-transform shrink-0', open ? 'rotate-180' : ''].join(' ')} />
       </button>
       {open && (
         <div className="absolute z-50 mt-1.5 w-full rounded-xl border border-border/15 bg-secondary-background shadow-xl overflow-hidden">
@@ -172,11 +182,11 @@ function SearchableDropdown({ options, value, onChange, placeholder, disabled }:
             {filtered.length === 0 && <div className="px-3 py-3 text-xs text-text-secondary">Δεν βρέθηκαν αποτελέσματα</div>}
             {filtered.map((o) => (
               <button key={o.id} type="button" onClick={() => { onChange(o.id); setOpen(false); setSearch(''); }}
-                className={['w-full flex items-start gap-2 px-3.5 py-2.5 text-sm text-left hover:bg-secondary/20 transition-colors', o.id===value?'bg-primary/8':''].join(' ')}
+                className={['w-full flex items-start gap-2 px-3.5 py-2.5 text-sm text-left hover:bg-secondary/20 transition-colors', o.id === value ? 'bg-primary/8' : ''].join(' ')}
               >
-                {o.id===value && <Check className="h-3 w-3 text-primary mt-0.5 shrink-0" />}
-                <div className={o.id===value?'':'pl-5'}>
-                  <div className={o.id===value?'text-primary font-semibold':'text-text-primary'}>{o.label}</div>
+                {o.id === value && <Check className="h-3 w-3 text-primary mt-0.5 shrink-0" />}
+                <div className={o.id === value ? '' : 'pl-5'}>
+                  <div className={o.id === value ? 'text-primary font-semibold' : 'text-text-primary'}>{o.label}</div>
                   {o.sublabel && <div className="text-[11px] text-text-secondary">{o.sublabel}</div>}
                 </div>
               </button>
@@ -191,44 +201,44 @@ function SearchableDropdown({ options, value, onChange, placeholder, disabled }:
 // ── Create modal ──────────────────────────────────────────────────────────
 
 function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClose: () => void }) {
-  const [members, setMembers]         = useState<Member[]>([]);
-  const [plans, setPlans]             = useState<Plan[]>([]);
-  const [userId, setUserId]           = useState('');
-  const [planId, setPlanId]           = useState('');
-  const [startsAt, setStartsAt]       = useState<Date | null>(new Date());
-  const [debt, setDebt]               = useState<number>(0);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [userId, setUserId] = useState('');
+  const [planId, setPlanId] = useState('');
+  const [startsAt, setStartsAt] = useState<Date | null>(new Date());
+  const [debt, setDebt] = useState<number>(0);
   const [customPrice, setCustomPrice] = useState<number | null>(null);
   const [discountReason, setDiscountReason] = useState('');
-  const [busy, setBusy]               = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const { data: m } = await supabase.from('profiles').select('id,full_name,email').eq('tenant_id',tenantId).eq('role','member').order('full_name');
+      const { data: m } = await supabase.from('members').select('id,full_name,email').eq('tenant_id', tenantId).eq('role', 'member').order('full_name');
       setMembers((m as any[]) ?? []);
-      const { data: p } = await supabase.from('membership_plans').select('id,name,plan_kind,duration_days,session_credits,price').eq('tenant_id',tenantId).order('created_at',{ascending:false});
+      const { data: p } = await supabase.from('membership_plans').select('id,name,plan_kind,duration_days,session_credits,price').eq('tenant_id', tenantId).order('created_at', { ascending: false });
       setPlans((p as any[]) ?? []);
     })();
   }, [tenantId]);
 
   const selectedPlan = useMemo(() => plans.find((p) => p.id === planId) ?? null, [plans, planId]);
-  const basePrice    = selectedPlan?.price ?? null;
+  const basePrice = selectedPlan?.price ?? null;
   const effectivePrice = customPrice != null ? customPrice : basePrice;
-  const discount     = basePrice != null && effectivePrice != null ? basePrice - effectivePrice : null;
+  const discount = basePrice != null && effectivePrice != null ? basePrice - effectivePrice : null;
 
-  const memberOptions = useMemo(() => members.map((m) => ({ id:m.id, label:m.full_name||m.id, sublabel:m.email??undefined })), [members]);
+  const memberOptions = useMemo(() => members.map((m) => ({ id: m.id, label: m.full_name || m.id, sublabel: m.email ?? undefined })), [members]);
   const planLabel = (p: Plan) => {
     const parts: string[] = [];
     if (p.duration_days) parts.push(`${p.duration_days} μέρες`);
     if (p.session_credits) parts.push(`${p.session_credits} συνεδρίες`);
     if (p.price != null) parts.push(formatMoney(p.price));
-    return `${p.name}${parts.length?' · '+parts.join(' • '):''}`;
+    return `${p.name}${parts.length ? ' · ' + parts.join(' • ') : ''}`;
   };
-  const planOptions = useMemo(() => plans.map((p) => ({ id:p.id, label:planLabel(p) })), [plans]);
+  const planOptions = useMemo(() => plans.map((p) => ({ id: p.id, label: planLabel(p) })), [plans]);
 
   const submit = async () => {
     if (!userId || !planId) return;
     setBusy(true);
-    const res = await supabase.functions.invoke('membership-create', { body: { tenant_id:tenantId, user_id:userId, plan_id:planId, starts_at:startsAt?dateToISODate(startsAt):null, debt:Number.isFinite(debt)?debt:0, custom_price:customPrice, discount_reason:discountReason||null } });
+    const res = await supabase.functions.invoke('membership-create', { body: { tenant_id: tenantId, user_id: userId, plan_id: planId, starts_at: startsAt ? dateToISODate(startsAt) : null, debt: Number.isFinite(debt) ? debt : 0, custom_price: customPrice, discount_reason: discountReason || null } });
     setBusy(false);
     if (res.error || (res.data as any)?.error) { alert(res.error?.message ?? (res.data as any)?.error ?? 'Create failed'); return; }
     onClose();
@@ -253,8 +263,8 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
         <FormField label="Τελική τιμή για αυτό το μέλος (€)">
           <div className="relative">
             <Euro className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary pointer-events-none" />
-            <input type="number" min={0} step="0.50" value={customPrice??''} placeholder={basePrice.toString()}
-              onChange={(e) => setCustomPrice(e.target.value===''?null:Number(e.target.value))}
+            <input type="number" min={0} step="0.50" value={customPrice ?? ''} placeholder={basePrice.toString()}
+              onChange={(e) => setCustomPrice(e.target.value === '' ? null : Number(e.target.value))}
               className="w-full h-9 pl-9 pr-3.5 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
             />
           </div>
@@ -295,37 +305,38 @@ function CreateMembershipModal({ tenantId, onClose }: { tenantId: string; onClos
 // ── Edit modal ────────────────────────────────────────────────────────────
 
 function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: () => void }) {
-  const [status, setStatus]           = useState(row.status ?? 'active');
-  const [startsAt, setStartsAt]       = useState<Date | null>(row.starts_at ? new Date(row.starts_at) : null);
-  const [endsAt, setEndsAt]           = useState<Date | null>(row.ends_at ? new Date(row.ends_at) : null);
-  const [remaining, setRemaining]     = useState<number>(row.remaining_sessions ?? 0);
-  const [planId, setPlanId]           = useState<string>(row.plan_id ?? '');
-  const [debt, setDebt]               = useState<number>(row.debt ?? 0);
+  const { profile } = useAuth();
+  const [status, setStatus] = useState(row.status ?? 'active');
+  const [startsAt, setStartsAt] = useState<Date | null>(row.starts_at ? new Date(row.starts_at) : null);
+  const [endsAt, setEndsAt] = useState<Date | null>(row.ends_at ? new Date(row.ends_at) : null);
+  const [remaining, setRemaining] = useState<number>(row.remaining_sessions ?? 0);
+  const [planId, setPlanId] = useState<string>(row.plan_id ?? '');
+  const [debt, setDebt] = useState<number>(row.debt ?? 0);
   const [customPrice, setCustomPrice] = useState<number | null>(row.custom_price ?? null);
   const [discountReason, setDiscountReason] = useState(row.discount_reason ?? '');
-  const [plans, setPlans]             = useState<Plan[]>([]);
-  const [busy, setBusy]               = useState(false);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    supabase.from('membership_plans').select('id,name,plan_kind,duration_days,session_credits,price').eq('tenant_id',row.tenant_id).order('created_at',{ascending:false})
+    supabase.from('membership_plans').select('id,name,plan_kind,duration_days,session_credits,price').eq('tenant_id', row.tenant_id).order('created_at', { ascending: false })
       .then(({ data }) => setPlans((data as any[]) ?? []));
   }, [row.tenant_id]);
 
-  const selectedPlan   = useMemo(() => plans.find((p) => p.id === planId) ?? null, [plans, planId]);
-  const basePrice      = selectedPlan?.price != null ? selectedPlan.price : row.plan_price ?? null;
+  const selectedPlan = useMemo(() => plans.find((p) => p.id === planId) ?? null, [plans, planId]);
+  const basePrice = selectedPlan?.price != null ? selectedPlan.price : row.plan_price ?? null;
   const effectivePrice = customPrice != null ? customPrice : basePrice;
-  const discount       = basePrice != null && effectivePrice != null ? basePrice - effectivePrice : null;
+  const discount = basePrice != null && effectivePrice != null ? basePrice - effectivePrice : null;
 
   const planOptions = useMemo(() => plans.map((p) => {
     const parts: string[] = [];
     if (p.duration_days) parts.push(`${p.duration_days}μ`);
     if (p.session_credits) parts.push(`${p.session_credits} υπόλοιπο`);
-    return { id:p.id, label:`${p.name}${parts.length?' · '+parts.join(' • '):''}` };
+    return { id: p.id, label: `${p.name}${parts.length ? ' · ' + parts.join(' • ') : ''}` };
   }), [plans]);
 
   const submit = async () => {
     setBusy(true);
-    const res = await supabase.functions.invoke('membership-update', { body: { id:row.id, status, starts_at:startsAt?dateToISODate(startsAt):null, ends_at:endsAt?dateToISODate(endsAt):null, remaining_sessions:Number.isFinite(remaining)?remaining:null, plan_id:planId||null, debt:Number.isFinite(debt)?debt:null, custom_price:customPrice, discount_reason:discountReason||null } });
+    const res = await supabase.functions.invoke('membership-update', { body: { id: row.id, tenant_id: profile?.tenant_id, status, starts_at: startsAt ? dateToISODate(startsAt) : null, ends_at: endsAt ? dateToISODate(endsAt) : null, remaining_sessions: Number.isFinite(remaining) ? remaining : null, plan_id: planId || null, debt: Number.isFinite(debt) ? debt : null, custom_price: customPrice, discount_reason: discountReason || null } });
     setBusy(false);
     if (res.error || (res.data as any)?.error) { alert(res.error?.message ?? (res.data as any)?.error ?? 'Save failed'); return; }
     onClose();
@@ -339,15 +350,15 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
       </>}
     >
       <FormField label="Πλάνο">
-        <SearchableDropdown options={[{id:'',label:'(διατηρήστε την τρέχουσα)'}, ...planOptions]} value={planId} onChange={setPlanId} placeholder="— επιλογή πλάνου —" />
+        <SearchableDropdown options={[{ id: '', label: '(διατηρήστε την τρέχουσα)' }, ...planOptions]} value={planId} onChange={setPlanId} placeholder="— επιλογή πλάνου —" />
       </FormField>
 
       {basePrice != null && (
         <FormField label="Τελική τιμή για αυτό το μέλος (€)">
           <div className="relative">
             <Euro className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-secondary pointer-events-none" />
-            <input type="number" min={0} step="0.50" value={customPrice??''} placeholder={basePrice.toString()}
-              onChange={(e) => setCustomPrice(e.target.value===''?null:Number(e.target.value))}
+            <input type="number" min={0} step="0.50" value={customPrice ?? ''} placeholder={basePrice.toString()}
+              onChange={(e) => setCustomPrice(e.target.value === '' ? null : Number(e.target.value))}
               className="w-full h-9 pl-9 pr-3.5 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary outline-none focus:border-primary/40 focus:ring-2 focus:ring-primary/10 transition-all"
             />
           </div>
@@ -379,13 +390,13 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
         <FormField label="Έναρξη">
           <DatePicker selected={startsAt} onChange={(d) => setStartsAt(d)} dateFormat="dd/MM/yyyy" locale={el} placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
             className="w-full h-9 px-3.5 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary outline-none focus:border-primary/40 transition-all"
-            wrapperClassName="w-full" showMonthDropdown showYearDropdown dropdownMode="select" scrollableYearDropdown yearDropdownItemNumber={80} maxDate={endsAt??undefined}
+            wrapperClassName="w-full" showMonthDropdown showYearDropdown dropdownMode="select" scrollableYearDropdown yearDropdownItemNumber={80} maxDate={endsAt ?? undefined}
           />
         </FormField>
         <FormField label="Λήξη">
           <DatePicker selected={endsAt} onChange={(d) => setEndsAt(d)} dateFormat="dd/MM/yyyy" locale={el} placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
             className="w-full h-9 px-3.5 rounded-xl border border-border/15 bg-secondary-background text-sm text-text-primary outline-none focus:border-primary/40 transition-all"
-            wrapperClassName="w-full" showMonthDropdown showYearDropdown dropdownMode="select" scrollableYearDropdown yearDropdownItemNumber={80} minDate={startsAt??undefined}
+            wrapperClassName="w-full" showMonthDropdown showYearDropdown dropdownMode="select" scrollableYearDropdown yearDropdownItemNumber={80} minDate={startsAt ?? undefined}
           />
         </FormField>
       </div>
@@ -417,18 +428,18 @@ function EditMembershipModal({ row, onClose }: { row: MembershipRow; onClose: ()
 export default function MembershipsPage() {
   const { profile, subscription } = useAuth();
   const [showSubModal, setShowSubModal] = useState(false);
-  const [rows, setRows]             = useState<MembershipRow[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [q, setQ]                   = useState('');
-  const [error, setError]           = useState<string | null>(null);
+  const [rows, setRows] = useState<MembershipRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [editRow, setEditRow]       = useState<MembershipRow | null>(null);
-  const [page, setPage]             = useState(1);
-  const [pageSize, setPageSize]     = useState(10);
+  const [editRow, setEditRow] = useState<MembershipRow | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [filterCategory, setFilterCategory] = useState('');
-  const [filterPlan, setFilterPlan]         = useState('');
-  const [filterStatus, setFilterStatus]     = useState('');
-  const [filterDebt, setFilterDebt]         = useState<'all'|'with'|'without'>('all');
+  const [filterPlan, setFilterPlan] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterDebt, setFilterDebt] = useState<'all' | 'with' | 'without'>('all');
 
   const subscriptionInactive = !subscription?.is_active;
   function requireActiveSubscription(action: () => void) {
@@ -444,14 +455,17 @@ export default function MembershipsPage() {
       .eq('tenant_id', profile.tenant_id).order('created_at', { ascending: false });
     if (error) { setError(error.message); setRows([]); setLoading(false); return; }
 
-    const { data: members } = await supabase.from('profiles').select('id,full_name').eq('tenant_id', profile.tenant_id).eq('role','member');
-    const memberMap = new Map<string, Member>();
-    (members as any[] | null)?.forEach((m) => memberMap.set(m.id, { id:m.id, full_name:m.full_name }));
+    const { data: members } = await supabase
+      .from('members')
+      .select('id,full_name')
+      .eq('tenant_id', profile.tenant_id)
+      .order('full_name'); const memberMap = new Map<string, Member>();
+    (members as any[] | null)?.forEach((m) => memberMap.set(m.id, { id: m.id, full_name: m.full_name }));
 
     setRows((data as any[]).map((r) => {
       const plan = r.membership_plans;
       const cats: PlanCategory[] = plan && Array.isArray(plan.membership_plan_categories)
-        ? (plan.membership_plan_categories as any[]).map((l: any) => l.class_categories).filter(Boolean).map((c: any) => ({ id:c.id, name:c.name, color:c.color??null }))
+        ? (plan.membership_plan_categories as any[]).map((l: any) => l.class_categories).filter(Boolean).map((c: any) => ({ id: c.id, name: c.name, color: c.color ?? null }))
         : [];
       return { ...r, profile: memberMap.get(r.user_id) ?? null, plan_categories: cats } as MembershipRow;
     }));
@@ -461,34 +475,34 @@ export default function MembershipsPage() {
   useEffect(() => { load(); }, [profile?.tenant_id]);
 
   const categoryOptions = useMemo(() => {
-    const map = new Map<string,string>();
-    rows.forEach((r) => (r.plan_categories??[]).forEach((cat) => { if (cat.id) map.set(cat.id, cat.name); }));
-    return Array.from(map.entries()).map(([id,name]) => ({id,name}));
+    const map = new Map<string, string>();
+    rows.forEach((r) => (r.plan_categories ?? []).forEach((cat) => { if (cat.id) map.set(cat.id, cat.name); }));
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [rows]);
 
   const planOptions = useMemo(() => {
-    const map = new Map<string,string>();
+    const map = new Map<string, string>();
     rows.forEach((r) => { if (r.plan_id && r.plan_name) map.set(r.plan_id, r.plan_name); });
-    return Array.from(map.entries()).map(([id,name]) => ({id,name}));
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [rows]);
 
   const filtered = useMemo(() => {
     let list = [...rows];
-    if (q) { const n=q.toLowerCase(); list=list.filter((r) => (r.profile?.full_name??'').toLowerCase().includes(n)||(r.plan_name??'').toLowerCase().includes(n)||(r.plan_categories??[]).some((c)=>(c.name??'').toLowerCase().includes(n))||(r.status??'').toLowerCase().includes(n)); }
-    if (filterCategory) list=list.filter((r)=>(r.plan_categories??[]).some((c)=>c.id===filterCategory));
-    if (filterPlan) list=list.filter((r)=>r.plan_id===filterPlan);
-    if (filterStatus) list=list.filter((r)=>(r.status??'active')===filterStatus);
-    if (filterDebt==='with') list=list.filter((r)=>(r.debt??0)>0);
-    else if (filterDebt==='without') list=list.filter((r)=>!r.debt||r.debt===0);
+    if (q) { const n = q.toLowerCase(); list = list.filter((r) => (r.profile?.full_name ?? '').toLowerCase().includes(n) || (r.plan_name ?? '').toLowerCase().includes(n) || (r.plan_categories ?? []).some((c) => (c.name ?? '').toLowerCase().includes(n)) || (r.status ?? '').toLowerCase().includes(n)); }
+    if (filterCategory) list = list.filter((r) => (r.plan_categories ?? []).some((c) => c.id === filterCategory));
+    if (filterPlan) list = list.filter((r) => r.plan_id === filterPlan);
+    if (filterStatus) list = list.filter((r) => (r.status ?? 'active') === filterStatus);
+    if (filterDebt === 'with') list = list.filter((r) => (r.debt ?? 0) > 0);
+    else if (filterDebt === 'without') list = list.filter((r) => !r.debt || r.debt === 0);
     return list;
   }, [rows, q, filterCategory, filterPlan, filterStatus, filterDebt]);
 
   useEffect(() => { setPage(1); }, [q, pageSize, filterCategory, filterPlan, filterStatus, filterDebt]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const paginated = useMemo(() => filtered.slice((page-1)*pageSize, page*pageSize), [filtered, page, pageSize]);
-  const startIdx  = filtered.length===0?0:(page-1)*pageSize+1;
-  const endIdx    = Math.min(filtered.length, page*pageSize);
+  const paginated = useMemo(() => filtered.slice((page - 1) * pageSize, page * pageSize), [filtered, page, pageSize]);
+  const startIdx = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endIdx = Math.min(filtered.length, page * pageSize);
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -500,7 +514,7 @@ export default function MembershipsPage() {
           </div>
           <div>
             <h1 className="text-lg font-black text-text-primary tracking-tight">Συνδρομές</h1>
-            <p className="text-xs text-text-secondary mt-px">{loading?'…':`${rows.length} συνδρομές`}</p>
+            <p className="text-xs text-text-secondary mt-px">{loading ? '…' : `${rows.length} συνδρομές`}</p>
           </div>
         </div>
         <button onClick={() => requireActiveSubscription(() => setShowCreate(true))}
@@ -521,7 +535,7 @@ export default function MembershipsPage() {
 
         {[
           { value: filterCategory, onChange: setFilterCategory, opts: categoryOptions, all: 'Όλες οι κατηγορίες' },
-          { value: filterPlan,     onChange: setFilterPlan,     opts: planOptions,     all: 'Όλα τα πλάνα' },
+          { value: filterPlan, onChange: setFilterPlan, opts: planOptions, all: 'Όλα τα πλάνα' },
         ].map(({ value, onChange, opts, all }, i) => (
           <div key={i} className="relative">
             <select value={value} onChange={(e) => onChange(e.target.value)}
@@ -549,9 +563,9 @@ export default function MembershipsPage() {
 
         {/* Debt segmented */}
         <div className="flex items-center gap-1 p-1 rounded-xl border border-border/15 bg-secondary-background">
-          {([['all','Όλες'],['with','Με οφειλή'],['without','Εξοφλημένες']] as const).map(([v,l]) => (
+          {([['all', 'Όλες'], ['with', 'Με οφειλή'], ['without', 'Εξοφλημένες']] as const).map(([v, l]) => (
             <button key={v} onClick={() => setFilterDebt(v)}
-              className={['h-7 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer', filterDebt===v?'bg-primary text-white shadow-sm shadow-primary/30':'text-text-secondary hover:text-text-primary hover:bg-secondary/30'].join(' ')}
+              className={['h-7 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer', filterDebt === v ? 'bg-primary text-white shadow-sm shadow-primary/30' : 'text-text-secondary hover:text-text-primary hover:bg-secondary/30'].join(' ')}
             >{l}</button>
           ))}
         </div>
@@ -578,7 +592,7 @@ export default function MembershipsPage() {
             {/* Mobile cards */}
             <div className="md:hidden divide-y divide-border/5">
               {paginated.map((m) => {
-                const basePrice      = m.plan_price;
+                const basePrice = m.plan_price;
                 const effectivePrice = m.custom_price != null ? m.custom_price : basePrice;
                 const { label: sLabel, cls: sCls } = getStatus(m.status);
                 const hasDebt = m.debt != null && m.debt !== 0;
@@ -592,7 +606,7 @@ export default function MembershipsPage() {
                       <div className="flex items-center gap-1 shrink-0">
                         <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-lg border ${sCls}`}>{sLabel}</span>
                         <IconButton icon={Pencil} label="Επεξεργασία" onClick={() => requireActiveSubscription(() => setEditRow(m))} />
-                        <DeleteButton id={m.id} onDeleted={load} guard={() => { if (subscriptionInactive) { setShowSubModal(true); return false; } return true; }} />
+                       {profile?.tenant_id && ( <DeleteButton id={m.id}  tenantId={profile.tenant_id} onDeleted={load} guard={() => { if (subscriptionInactive) { setShowSubModal(true); return false; } return true; }} />)}
                       </div>
                     </div>
 
@@ -606,7 +620,7 @@ export default function MembershipsPage() {
                     )}
 
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {(m.plan_categories??[]).length > 0 ? (m.plan_categories??[]).map((cat) => <CategoryChip key={cat.id} cat={cat} />) : <span className="text-[11px] text-text-secondary opacity-50">Χωρίς κατηγορία</span>}
+                      {(m.plan_categories ?? []).length > 0 ? (m.plan_categories ?? []).map((cat) => <CategoryChip key={cat.id} cat={cat} />) : <span className="text-[11px] text-text-secondary opacity-50">Χωρίς κατηγορία</span>}
                     </div>
 
                     <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-text-secondary">
@@ -629,15 +643,15 @@ export default function MembershipsPage() {
                 <thead>
                   <tr className="border-b border-border/10 bg-secondary/5">
                     {['Μέλος', 'Πλάνο / Τιμή', 'Κατηγορία', 'Έναρξη', 'Λήξη', 'Μέρες', 'Συνεδρίες', 'Οφειλή', 'Κατάσταση', ''].map((h, i) => (
-                      <th key={i} className={['px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-text-secondary', i===9?'text-right':'text-left'].join(' ')}>{h}</th>
+                      <th key={i} className={['px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-text-secondary', i === 9 ? 'text-right' : 'text-left'].join(' ')}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {paginated.map((m) => {
-                    const basePrice      = m.plan_price;
+                    const basePrice = m.plan_price;
                     const effectivePrice = m.custom_price != null ? m.custom_price : basePrice;
-                    const hasDebt        = m.debt != null && m.debt !== 0;
+                    const hasDebt = m.debt != null && m.debt !== 0;
                     const { label: sLabel, cls: sCls } = getStatus(m.status);
                     return (
                       <tr key={m.id} className="border-t border-border/5 hover:bg-secondary/5 transition-colors">
@@ -654,8 +668,8 @@ export default function MembershipsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          {(m.plan_categories??[]).length > 0 ? (
-                            <div className="flex flex-wrap gap-1">{(m.plan_categories??[]).map((cat) => <CategoryChip key={cat.id} cat={cat} />)}</div>
+                          {(m.plan_categories ?? []).length > 0 ? (
+                            <div className="flex flex-wrap gap-1">{(m.plan_categories ?? []).map((cat) => <CategoryChip key={cat.id} cat={cat} />)}</div>
                           ) : <span className="text-xs text-text-secondary opacity-40">—</span>}
                         </td>
                         <td className="px-4 py-3 text-xs text-text-secondary">{formatDateDMY(m.starts_at)}</td>
@@ -671,7 +685,7 @@ export default function MembershipsPage() {
                         <td className="px-4 py-3 text-right">
                           <div className="inline-flex items-center gap-1">
                             <IconButton icon={Pencil} label="Επεξεργασία" onClick={() => requireActiveSubscription(() => setEditRow(m))} />
-                            <DeleteButton id={m.id} onDeleted={load} guard={() => { if (subscriptionInactive) { setShowSubModal(true); return false; } return true; }} />
+                            {profile?.tenant_id && ( <DeleteButton id={m.id}  tenantId={profile.tenant_id} onDeleted={load} guard={() => { if (subscriptionInactive) { setShowSubModal(true); return false; } return true; }} />)}
                           </div>
                         </td>
                       </tr>
@@ -689,15 +703,15 @@ export default function MembershipsPage() {
                   <span className="hidden sm:inline">Ανά σελίδα:</span>
                   <div className="relative">
                     <select className="h-7 pl-2 pr-7 rounded-lg border border-border/15 bg-secondary-background text-xs appearance-none outline-none cursor-pointer" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
-                      {[10,25,50].map((n) => <option key={n} value={n}>{n}</option>)}
+                      {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
                     <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none" />
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => setPage((p) => Math.max(1,p-1))} disabled={page===1} className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 cursor-pointer transition-all"><ChevronLeft className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 cursor-pointer transition-all"><ChevronLeft className="h-3.5 w-3.5" /></button>
                   <span className="px-2"><span className="font-bold text-text-primary">{page}</span> / {pageCount}</span>
-                  <button onClick={() => setPage((p) => Math.min(pageCount,p+1))} disabled={page===pageCount} className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 cursor-pointer transition-all"><ChevronRight className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page === pageCount} className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 cursor-pointer transition-all"><ChevronRight className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
             </div>
@@ -706,7 +720,7 @@ export default function MembershipsPage() {
       </div>
 
       {showCreate && <CreateMembershipModal tenantId={profile?.tenant_id!} onClose={() => { setShowCreate(false); load(); }} />}
-      {editRow    && <EditMembershipModal   row={editRow} onClose={() => { setEditRow(null); load(); }} />}
+      {editRow && <EditMembershipModal row={editRow} onClose={() => { setEditRow(null); load(); }} />}
       <SubscriptionRequiredModal open={showSubModal} onClose={() => setShowSubModal(false)} />
     </div>
   );

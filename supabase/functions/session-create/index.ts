@@ -17,8 +17,8 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -56,52 +56,41 @@ const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 async function getAuth(req: Request) {
   const auth = req.headers.get("Authorization") ?? "";
+
   const supa = createClient(URL, ANON, {
     global: { headers: { Authorization: auth } },
     auth: { persistSession: false },
   });
+
   const {
     data: { user },
+    error: userErr,
   } = await supa.auth.getUser();
-  if (!user) return { error: "unauthorized" };
-  const { data: prof } = await supa
-    .from("profiles")
-    .select("tenant_id, role")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!prof) return { error: "profile_not_found" };
-  const isAdmin = user.app_metadata?.role === "admin" ||
-    (prof as any).role === "admin";
-  return { tenantId: (prof as any).tenant_id as string, isAdmin };
+
+  if (userErr || !user) return { error: "unauthorized" as const };
+
+  return { supa, user };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return withCors(null, { status: 204 }, req);
   }
+
   if (req.method !== "POST") {
     return withCors("Method not allowed", { status: 405 }, req);
   }
 
   const auth = await getAuth(req);
-  if ((auth as any).error) {
+  if ("error" in auth) {
     return withCors(
-      JSON.stringify({ error: (auth as any).error }),
+      JSON.stringify({ error: auth.error }),
       { status: 401 },
       req,
     );
   }
-  const { tenantId, isAdmin } = auth as {
-    tenantId: string;
-    isAdmin: boolean;
-  };
-  if (!isAdmin) {
-    return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
-      req,
-    );
-  }
+
+  const { supa, user } = auth;
 
   let body: any;
   try {
@@ -114,13 +103,13 @@ serve(async (req) => {
     );
   }
 
-  const tenant_id = (body?.tenant_id ?? "").trim();
-  const class_id = (body?.class_id ?? "").trim();
+  const tenant_id = String(body?.tenant_id ?? "").trim();
+  const class_id = String(body?.class_id ?? "").trim();
   const starts_at = body?.starts_at ? new Date(body.starts_at) : null;
   const ends_at = body?.ends_at ? new Date(body.ends_at) : null;
-  const capacity = typeof body?.capacity === "number" ? body.capacity : null;
+  const capacity =
+    typeof body?.capacity === "number" ? body.capacity : null;
 
-  // NEW: cancel_before_hours
   let cancel_before_hours: number | null = null;
   if (typeof body?.cancel_before_hours !== "undefined") {
     const val = Number(body.cancel_before_hours);
@@ -141,13 +130,7 @@ serve(async (req) => {
       req,
     );
   }
-  if (tenant_id !== tenantId) {
-    return withCors(
-      JSON.stringify({ error: "tenant_mismatch" }),
-      { status: 403 },
-      req,
-    );
-  }
+
   if (!(ends_at > starts_at)) {
     return withCors(
       JSON.stringify({ error: "invalid_time_range" }),
@@ -155,6 +138,7 @@ serve(async (req) => {
       req,
     );
   }
+
   if (capacity !== null && capacity < 0) {
     return withCors(
       JSON.stringify({ error: "invalid_capacity" }),
@@ -163,13 +147,51 @@ serve(async (req) => {
     );
   }
 
+  // caller must belong to tenant and be admin there
+  const { data: callerTenantUser, error: tuErr } = await supa
+    .from("tenant_users")
+    .select("tenant_id, user_id, role")
+    .eq("tenant_id", tenant_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (tuErr) {
+    return withCors(
+      JSON.stringify({ error: tuErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_access_denied" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const role = String(callerTenantUser.role ?? "").toLowerCase();
+  const isAdmin =
+    role === "admin" ||
+    role === "owner" ||
+    user.app_metadata?.role === "admin";
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+
   const admin = createClient(URL, SERVICE, {
     auth: { persistSession: false },
   });
 
-  // ✅ subscription gate (service role bypasses RLS)
+  // subscription gate
   try {
-    await assertTenantActive(admin, tenantId); // or tenant_id (same here)
+    await assertTenantActive(admin, tenant_id);
   } catch (e: any) {
     return withCors(
       JSON.stringify({
@@ -182,11 +204,20 @@ serve(async (req) => {
   }
 
   // ensure class belongs to tenant
-  const { data: cls } = await admin
+  const { data: cls, error: clsErr } = await admin
     .from("classes")
     .select("id, tenant_id")
     .eq("id", class_id)
     .maybeSingle();
+
+  if (clsErr) {
+    return withCors(
+      JSON.stringify({ error: clsErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
   if (!cls) {
     return withCors(
       JSON.stringify({ error: "class_not_found" }),
@@ -194,7 +225,8 @@ serve(async (req) => {
       req,
     );
   }
-  if (cls.tenant_id !== tenantId) {
+
+  if (String(cls.tenant_id) !== tenant_id) {
     return withCors(
       JSON.stringify({ error: "tenant_mismatch" }),
       { status: 403 },
@@ -202,14 +234,22 @@ serve(async (req) => {
     );
   }
 
-  // conflict check (overlap)
-  const { data: overlaps } = await admin
+  // overlap check for same class
+  const { data: overlaps, error: overlapErr } = await admin
     .from("class_sessions")
     .select("id, starts_at, ends_at")
     .eq("class_id", class_id)
     .eq("tenant_id", tenant_id)
     .lt("starts_at", ends_at.toISOString())
     .gt("ends_at", starts_at.toISOString());
+
+  if (overlapErr) {
+    return withCors(
+      JSON.stringify({ error: overlapErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
 
   if (overlaps && overlaps.length > 0) {
     return withCors(
@@ -227,7 +267,7 @@ serve(async (req) => {
       starts_at: starts_at.toISOString(),
       ends_at: ends_at.toISOString(),
       capacity,
-      cancel_before_hours, // 👈 NEW
+      cancel_before_hours,
     })
     .select(
       "id, tenant_id, class_id, starts_at, ends_at, capacity, cancel_before_hours, created_at",
@@ -241,6 +281,7 @@ serve(async (req) => {
       req,
     );
   }
+
   return withCors(
     JSON.stringify({ ok: true, data }),
     { status: 200 },

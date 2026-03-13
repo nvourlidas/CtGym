@@ -78,7 +78,7 @@ export default function Dashboard() {
               title="Συνολικά Μέλη"
               tenantId={tenantId}
               variant="members"
-              query={JSON.stringify({ source: "public.profiles", date_field: "created_at", range: "this_year" })}
+              query={JSON.stringify({ source: "public.members", date_field: "created_at", range: "this_year" })}
             />
             <MetricWidget
               title="Ενεργές Συνδρομές"

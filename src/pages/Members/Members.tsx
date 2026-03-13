@@ -24,17 +24,18 @@ import notoSansBoldUrl from '../../assets/fonts/NotoSans-Bold.ttf?url';
 
 type Member = {
   id: string;
+  user_id: string;
   full_name: string | null;
   phone: string | null;
-  tenant_id: string | null;
-  role: 'member';
+  tenant_id: string;
+  role: string;
   created_at: string;
+  birth_date: string | null;
+  address: string | null;
+  afm: string | null;
+  max_dropin_debt: number | null;
   email: string | null;
-  birth_date?: string | null;
-  address?: string | null;
-  afm?: string | null;
-  max_dropin_debt?: number | null;
-  notes?: string | null;
+  notes: string | null;
 };
 
 type TenantRow = { name: string };
@@ -44,14 +45,14 @@ type ColumnKey =
   | 'total_debt' | 'max_dropin_debt' | 'created_at' | 'notes';
 
 const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
-  { key: 'email',          label: 'Email'               },
-  { key: 'birth_date',     label: 'Ημ. Γέννησης'        },
-  { key: 'address',        label: 'Διεύθυνση'           },
-  { key: 'afm',            label: 'ΑΦΜ'                 },
-  { key: 'total_debt',     label: 'Συνολική Οφειλή'     },
-  { key: 'max_dropin_debt',label: 'Max Drop-in Οφειλή'  },
-  { key: 'notes',          label: 'Σημειώσεις'          },
-  { key: 'created_at',     label: 'Ημ. Δημιουργίας'     },
+  { key: 'email', label: 'Email' },
+  { key: 'birth_date', label: 'Ημ. Γέννησης' },
+  { key: 'address', label: 'Διεύθυνση' },
+  { key: 'afm', label: 'ΑΦΜ' },
+  { key: 'total_debt', label: 'Συνολική Οφειλή' },
+  { key: 'max_dropin_debt', label: 'Max Drop-in Οφειλή' },
+  { key: 'notes', label: 'Σημειώσεις' },
+  { key: 'created_at', label: 'Ημ. Δημιουργίας' },
 ];
 
 const DEFAULT_VISIBLE: ColumnKey[] = ['total_debt', 'max_dropin_debt', 'created_at'];
@@ -60,16 +61,16 @@ function formatDateDMY(value: string | null | undefined): string {
   if (!value) return '—';
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return '—';
-  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
 function dateToISODate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function parseISODateToLocal(dateStr: string | null | undefined): Date | null {
   if (!dateStr) return null;
-  const [y, m, d] = dateStr.slice(0,10).split('-');
+  const [y, m, d] = dateStr.slice(0, 10).split('-');
   const year = Number(y), month = Number(m), day = Number(d);
   if (!year || !month || !day) return null;
   return new Date(year, month - 1, day);
@@ -86,16 +87,16 @@ function ToastHost({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: string)
     <div className="fixed right-4 top-4 z-100 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2">
       {toasts.map((t) => (
         <div key={t.id} className="rounded-xl border border-border/15 bg-secondary-background/95 backdrop-blur-xl shadow-2xl shadow-black/20 overflow-hidden"
-             style={{ animation: 'toastIn 0.2s ease' }}>
+          style={{ animation: 'toastIn 0.2s ease' }}>
           <div className={['h-0.75 w-full',
-            t.variant === 'error'   ? 'bg-danger'  :
-            t.variant === 'success' ? 'bg-success'  : 'bg-primary',
+            t.variant === 'error' ? 'bg-danger' :
+              t.variant === 'success' ? 'bg-success' : 'bg-primary',
           ].join(' ')} />
           <div className="px-4 py-3 flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className={['text-sm font-bold',
-                t.variant === 'error'   ? 'text-danger'  :
-                t.variant === 'success' ? 'text-success'  : 'text-text-primary',
+                t.variant === 'error' ? 'text-danger' :
+                  t.variant === 'success' ? 'text-success' : 'text-text-primary',
               ].join(' ')}>{t.title}</div>
               {t.message && <div className="mt-0.5 text-xs text-text-secondary leading-relaxed">{t.message}</div>}
               {t.actionLabel && t.onAction && (
@@ -118,18 +119,20 @@ function ToastHost({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: string)
 
 export default function MembersPage() {
   const { profile, subscription } = useAuth();
-  const [showSubModal, setShowSubModal]   = useState(false);
-  const [tenant, setTenant]               = useState<TenantRow | null>(null);
-  const [rows, setRows]                   = useState<Member[]>([]);
-  const [loading, setLoading]             = useState(true);
-  const [q, setQ]                         = useState('');
-  const [showCreate, setShowCreate]       = useState(false);
-  const [editRow, setEditRow]             = useState<Member | null>(null);
-  const colsBtnRef                        = useRef<HTMLButtonElement | null>(null);
-  const colsPanelRef                      = useRef<HTMLDivElement | null>(null);
-  const [dropdownPos, setDropdownPos]     = useState<{ left: number; top: number }>({ left: 0, top: 0 });
-  const navigate                          = useNavigate();
-  const tenantId                          = profile?.tenant_id;
+  const [showSubModal, setShowSubModal] = useState(false);
+  const [tenant, setTenant] = useState<TenantRow | null>(null);
+  const [rows, setRows] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [showExistingMemberInfo, setShowExistingMemberInfo] = useState(false);
+
+  const [editRow, setEditRow] = useState<Member | null>(null);
+  const colsBtnRef = useRef<HTMLButtonElement | null>(null);
+  const colsPanelRef = useRef<HTMLDivElement | null>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  const navigate = useNavigate();
+  const tenantId = profile?.tenant_id;
 
   const COLS_GLOBAL_KEY = 'members_table_visible_cols_v1';
   const COLS_TENANT_KEY = tenantId ? `members_table_visible_cols_v1_${tenantId}` : null;
@@ -140,7 +143,7 @@ export default function MembersPage() {
     return valid.length ? valid : DEFAULT_VISIBLE;
   }
 
-  const [showCols, setShowCols]       = useState(false);
+  const [showCols, setShowCols] = useState(false);
   const [visibleCols, setVisibleCols] = useState<ColumnKey[]>(() => {
     try {
       const raw = localStorage.getItem(COLS_GLOBAL_KEY);
@@ -149,21 +152,21 @@ export default function MembersPage() {
     } catch { return DEFAULT_VISIBLE; }
   });
 
-  const [page, setPage]       = useState(1);
+  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [membershipDebts, setMembershipDebts] = useState<Record<string,number>>({});
-  const [dropinDebts, setDropinDebts]         = useState<Record<string,number>>({});
-  const [selectedIds, setSelectedIds]         = useState<string[]>([]);
-  const [showEmailModal, setShowEmailModal]   = useState(false);
-  const [showPushModal, setShowPushModal]     = useState(false);
-  const [toasts, setToasts]                   = useState<Toast[]>([]);
+  const [membershipDebts, setMembershipDebts] = useState<Record<string, number>>({});
+  const [dropinDebts, setDropinDebts] = useState<Record<string, number>>({});
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showPushModal, setShowPushModal] = useState(false);
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
   const selectedMembers = useMemo(() => rows.filter((m) => selectedIds.includes(m.id)), [rows, selectedIds]);
-  const formatMoney     = (value: number) => `${value.toFixed(2)} €`;
-  const toggleSelect    = (id: string) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  const clearSelection  = () => setSelectedIds([]);
+  const formatMoney = (value: number) => `${value.toFixed(2)} €`;
+  const toggleSelect = (id: string) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  const clearSelection = () => setSelectedIds([]);
 
-  const pushToast = (t: Omit<Toast,'id'>, ms = 4500) => {
+  const pushToast = (t: Omit<Toast, 'id'>, ms = 4500) => {
     const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { id, ...t }]);
     window.setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), ms);
@@ -172,44 +175,79 @@ export default function MembersPage() {
 
   async function load() {
     if (!profile?.tenant_id) return;
+
     setLoading(true);
+
     const { data, error } = await supabase
-      .from('profiles')
-      .select('id,full_name,phone,tenant_id,role,created_at,birth_date,address,afm,max_dropin_debt,email,notes')
-      .eq('tenant_id', profile.tenant_id).eq('role', 'member')
+      .from('members')
+      .select(
+        'id,user_id,full_name,phone,tenant_id,role,created_at,birth_date,address,afm,max_dropin_debt,email,notes'
+      )
+      .eq('tenant_id', profile.tenant_id)
+      .eq('role', 'member')
       .order('created_at', { ascending: false });
 
-    if (error) { setRows([]); setMembershipDebts({}); setDropinDebts({}); setSelectedIds([]); setLoading(false); return; }
+    if (error) {
+      setRows([]);
+      setMembershipDebts({});
+      setDropinDebts({});
+      setSelectedIds([]);
+      setLoading(false);
+      return;
+    }
 
     const members = (data as Member[]) ?? [];
-    setRows(members); setSelectedIds([]);
+    setRows(members);
+    setSelectedIds([]);
+
     const memberIds = members.map((m) => m.id);
-    if (!memberIds.length) { setMembershipDebts({}); setDropinDebts({}); setLoading(false); return; }
+
+    if (!memberIds.length) {
+      setMembershipDebts({});
+      setDropinDebts({});
+      setLoading(false);
+      return;
+    }
 
     const { data: membershipsData, error: membErr } = await supabase
-      .from('memberships').select('user_id,debt').eq('tenant_id', profile.tenant_id).in('user_id', memberIds);
+      .from('memberships')
+      .select('user_id,debt')
+      .eq('tenant_id', profile.tenant_id)
+      .in('user_id', memberIds);
 
-    const membershipMap: Record<string,number> = {};
+    const membershipMap: Record<string, number> = {};
     if (!membErr && membershipsData) {
       (membershipsData as any[]).forEach((m) => {
-        const uid = m.user_id as string; const v = Number(m.debt ?? 0);
-        if (Number.isFinite(v)) membershipMap[uid] = (membershipMap[uid] ?? 0) + v;
+        const uid = m.user_id as string;
+        const v = Number(m.debt ?? 0);
+        if (Number.isFinite(v)) {
+          membershipMap[uid] = (membershipMap[uid] ?? 0) + v;
+        }
       });
     }
 
     const { data: bookingsData, error: bookErr } = await supabase
-      .from('bookings').select('user_id,drop_in_price,booking_type,drop_in_paid')
-      .eq('tenant_id', profile.tenant_id).eq('booking_type','drop_in').eq('drop_in_paid', false).in('user_id', memberIds);
+      .from('bookings')
+      .select('user_id,drop_in_price,booking_type,drop_in_paid')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('booking_type', 'drop_in')
+      .eq('drop_in_paid', false)
+      .in('user_id', memberIds);
 
-    const dropinMap: Record<string,number> = {};
+    const dropinMap: Record<string, number> = {};
     if (!bookErr && bookingsData) {
       (bookingsData as any[]).forEach((b) => {
-        const uid = b.user_id as string; const v = Number(b.drop_in_price ?? 0);
-        if (Number.isFinite(v)) dropinMap[uid] = (dropinMap[uid] ?? 0) + v;
+        const uid = b.user_id as string;
+        const v = Number(b.drop_in_price ?? 0);
+        if (Number.isFinite(v)) {
+          dropinMap[uid] = (dropinMap[uid] ?? 0) + v;
+        }
       });
     }
 
-    setMembershipDebts(membershipMap); setDropinDebts(dropinMap); setLoading(false);
+    setMembershipDebts(membershipMap);
+    setDropinDebts(dropinMap);
+    setLoading(false);
   }
 
   useEffect(() => { load(); }, [profile?.tenant_id]);
@@ -226,16 +264,16 @@ export default function MembersPage() {
   useEffect(() => { setPage(1); }, [q, pageSize]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const paginated = useMemo(() => filtered.slice((page-1)*pageSize, page*pageSize), [filtered, page, pageSize]);
-  const startIdx = filtered.length === 0 ? 0 : (page-1)*pageSize+1;
-  const endIdx   = Math.min(filtered.length, page*pageSize);
-  const pageIds  = paginated.map((m) => m.id);
+  const paginated = useMemo(() => filtered.slice((page - 1) * pageSize, page * pageSize), [filtered, page, pageSize]);
+  const startIdx = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endIdx = Math.min(filtered.length, page * pageSize);
+  const pageIds = paginated.map((m) => m.id);
   const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
 
   const toggleSelectPage = () => {
     setSelectedIds((prev) =>
       allPageSelected ? prev.filter((id) => !pageIds.includes(id))
-                      : [...prev, ...pageIds.filter((id) => !prev.includes(id))]);
+        : [...prev, ...pageIds.filter((id) => !prev.includes(id))]);
   };
 
   useEffect(() => {
@@ -247,9 +285,9 @@ export default function MembersPage() {
   }, [profile?.tenant_id]);
 
   const isColVisible = (key: ColumnKey) => visibleCols.includes(key);
-  const toggleCol    = (key: ColumnKey) => setVisibleCols((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
-  const setAllCols   = () => setVisibleCols(ALL_COLUMNS.map((c) => c.key));
-  const resetCols    = () => setVisibleCols(DEFAULT_VISIBLE);
+  const toggleCol = (key: ColumnKey) => setVisibleCols((prev) => prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]);
+  const setAllCols = () => setVisibleCols(ALL_COLUMNS.map((c) => c.key));
+  const resetCols = () => setVisibleCols(DEFAULT_VISIBLE);
   const desktopColCount = 3 + visibleCols.length + 1;
 
   useEffect(() => {
@@ -288,34 +326,36 @@ export default function MembersPage() {
 
   useEffect(() => {
     if (!COLS_TENANT_KEY) return;
-    try { const raw = localStorage.getItem(COLS_TENANT_KEY); if (raw) setVisibleCols(sanitizeCols(JSON.parse(raw))); } catch {}
+    try { const raw = localStorage.getItem(COLS_TENANT_KEY); if (raw) setVisibleCols(sanitizeCols(JSON.parse(raw))); } catch { }
   }, [COLS_TENANT_KEY]);
 
   useEffect(() => {
     try {
       localStorage.setItem(COLS_GLOBAL_KEY, JSON.stringify(visibleCols));
       if (COLS_TENANT_KEY) localStorage.setItem(COLS_TENANT_KEY, JSON.stringify(visibleCols));
-    } catch {}
+    } catch { }
   }, [visibleCols, COLS_TENANT_KEY]);
 
   const subscriptionInactive = !subscription?.is_active;
   function requireActiveSubscription(action: () => void) {
+    console.log('Checking subscription status before action:', subscription?.is_active);
     if (subscriptionInactive) { setShowSubModal(true); return; }
     action();
   }
 
+
   const tier = String((subscription as any)?.plan_id ?? (subscription as any)?.tier ?? (subscription as any)?.plan_name ?? (subscription as any)?.name ?? '').toLowerCase();
   const isPro = tier.includes('pro'); const isStarter = tier.includes('starter'); const isFriend = tier.includes('friend_app'); const isFree = !(isPro || isStarter);
   const canSendComms = !isFree || isFriend;
-  const canExport    = isPro || isFriend;
+  const canExport = isPro || isFriend;
 
-  function gateExport(actionName: 'Excel'|'PDF', action: () => void) {
-    if (!canExport) { pushToast({ variant:'info', title:`🔒 Export ${actionName} διαθέσιμο μόνο στο Pro`, message:'Αναβάθμισε για εξαγωγή αρχείων (Excel/PDF).', actionLabel:'Αναβάθμιση', onAction: () => navigate('/settings/billing') }); return; }
+  function gateExport(actionName: 'Excel' | 'PDF', action: () => void) {
+    if (!canExport) { pushToast({ variant: 'info', title: `🔒 Export ${actionName} διαθέσιμο μόνο στο Pro`, message: 'Αναβάθμισε για εξαγωγή αρχείων (Excel/PDF).', actionLabel: 'Αναβάθμιση', onAction: () => navigate('/settings/billing') }); return; }
     action();
   }
 
-  function gateComms(actionName: 'Email'|'Push', action: () => void) {
-    if (!canSendComms) { pushToast({ variant:'info', title:`🔒 ${actionName} διαθέσιμο από Starter`, message:'Αναβάθμισε για αποστολή μηνυμάτων σε μέλη.', actionLabel:'Αναβάθμιση', onAction: () => navigate('/settings/billing') }); return; }
+  function gateComms(actionName: 'Email' | 'Push', action: () => void) {
+    if (!canSendComms) { pushToast({ variant: 'info', title: `🔒 ${actionName} διαθέσιμο από Starter`, message: 'Αναβάθμισε για αποστολή μηνυμάτων σε μέλη.', actionLabel: 'Αναβάθμιση', onAction: () => navigate('/settings/billing') }); return; }
     action();
   }
 
@@ -326,12 +366,12 @@ export default function MembersPage() {
     [rows, filtered, selectedIds]);
 
   function buildExportColumns() {
-    const base = [{ key:'full_name', label:'Όνομα' }, { key:'phone', label:'Τηλέφωνο' }] as const;
-    const map: Record<ColumnKey,{key:string;label:string}> = {
-      email:{ key:'email', label:'Email' }, birth_date:{ key:'birth_date', label:'Ημ. Γέννησης' },
-      address:{ key:'address', label:'Διεύθυνση' }, afm:{ key:'afm', label:'ΑΦΜ' },
-      total_debt:{ key:'total_debt', label:'Συνολική Οφειλή' }, max_dropin_debt:{ key:'max_dropin_debt', label:'Max Drop-in Οφειλή' },
-      notes:{ key:'notes', label:'Σημειώσεις' }, created_at:{ key:'created_at', label:'Ημ. Δημιουργίας' },
+    const base = [{ key: 'full_name', label: 'Όνομα' }, { key: 'phone', label: 'Τηλέφωνο' }] as const;
+    const map: Record<ColumnKey, { key: string; label: string }> = {
+      email: { key: 'email', label: 'Email' }, birth_date: { key: 'birth_date', label: 'Ημ. Γέννησης' },
+      address: { key: 'address', label: 'Διεύθυνση' }, afm: { key: 'afm', label: 'ΑΦΜ' },
+      total_debt: { key: 'total_debt', label: 'Συνολική Οφειλή' }, max_dropin_debt: { key: 'max_dropin_debt', label: 'Max Drop-in Οφειλή' },
+      notes: { key: 'notes', label: 'Σημειώσεις' }, created_at: { key: 'created_at', label: 'Ημ. Δημιουργίας' },
     };
     return [...base, ...visibleCols.map((k) => map[k]).filter(Boolean)];
   }
@@ -349,19 +389,19 @@ export default function MembersPage() {
 
   function exportExcel() {
     const cols = buildExportColumns();
-    const data = exportRows.map((m) => { const obj = toExportObject(m); const out: Record<string,any> = {}; cols.forEach((c) => (out[c.label] = (obj as any)[c.key])); return out; });
+    const data = exportRows.map((m) => { const obj = toExportObject(m); const out: Record<string, any> = {}; cols.forEach((c) => (out[c.label] = (obj as any)[c.key])); return out; });
     const ws = XLSX.utils.json_to_sheet(data); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Members');
-    const buf = XLSX.write(wb, { bookType:'xlsx', type:'array' });
-    saveAs(new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `members_${new Date().toISOString().slice(0,10)}.xlsx`);
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    saveAs(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `members_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
   async function exportPdf() {
-    const cols = buildExportColumns(); const doc = new jsPDF({ orientation:'landscape' });
-    const regular64 = await loadTtfAsBase64(notoSansUrl); doc.addFileToVFS('NotoSans-Regular.ttf', regular64); doc.addFont('NotoSans-Regular.ttf','NotoSans','normal');
-    const bold64 = await loadTtfAsBase64(notoSansBoldUrl); doc.addFileToVFS('NotoSans-Bold.ttf', bold64); doc.addFont('NotoSans-Bold.ttf','NotoSans','bold');
-    doc.setFont('NotoSans','normal'); doc.setFontSize(14); doc.text(`Μέλη (${exportRows.length})`, 14, 14);
-    autoTable(doc, { head:[cols.map((c) => c.label)], body:exportRows.map((m) => { const obj = toExportObject(m); return cols.map((c) => String((obj as any)[c.key] ?? '')); }), startY:20, styles:{ font:'NotoSans', fontStyle:'normal', fontSize:9, cellPadding:2 }, headStyles:{ font:'NotoSans', fontStyle:'bold' }, theme:'grid' });
-    doc.save(`members_${new Date().toISOString().slice(0,10)}.pdf`);
+    const cols = buildExportColumns(); const doc = new jsPDF({ orientation: 'landscape' });
+    const regular64 = await loadTtfAsBase64(notoSansUrl); doc.addFileToVFS('NotoSans-Regular.ttf', regular64); doc.addFont('NotoSans-Regular.ttf', 'NotoSans', 'normal');
+    const bold64 = await loadTtfAsBase64(notoSansBoldUrl); doc.addFileToVFS('NotoSans-Bold.ttf', bold64); doc.addFont('NotoSans-Bold.ttf', 'NotoSans', 'bold');
+    doc.setFont('NotoSans', 'normal'); doc.setFontSize(14); doc.text(`Μέλη (${exportRows.length})`, 14, 14);
+    autoTable(doc, { head: [cols.map((c) => c.label)], body: exportRows.map((m) => { const obj = toExportObject(m); return cols.map((c) => String((obj as any)[c.key] ?? '')); }), startY: 20, styles: { font: 'NotoSans', fontStyle: 'normal', fontSize: 9, cellPadding: 2 }, headStyles: { font: 'NotoSans', fontStyle: 'bold' }, theme: 'grid' });
+    doc.save(`members_${new Date().toISOString().slice(0, 10)}.pdf`);
   }
 
   async function loadTtfAsBase64(url: string): Promise<string> {
@@ -440,8 +480,8 @@ export default function MembersPage() {
         </div>
 
         {/* Comms */}
-        <ActionBtn icon={Inbox}  label="Αποστολή Email"        onClick={() => gateComms('Email', () => setShowEmailModal(true))} locked={!canSendComms} disabled={rows.length === 0} />
-        <ActionBtn icon={BellDot} label="Αποστολή Ειδοποίησης" onClick={() => gateComms('Push',  () => setShowPushModal(true))}  locked={!canSendComms} disabled={rows.length === 0} />
+        <ActionBtn icon={Inbox} label="Αποστολή Email" onClick={() => gateComms('Email', () => setShowEmailModal(true))} locked={!canSendComms} disabled={rows.length === 0} />
+        <ActionBtn icon={BellDot} label="Αποστολή Ειδοποίησης" onClick={() => gateComms('Push', () => setShowPushModal(true))} locked={!canSendComms} disabled={rows.length === 0} />
 
         {/* Columns toggle */}
         <div className="relative">
@@ -465,8 +505,8 @@ export default function MembersPage() {
               <div className="px-4 py-3 border-b border-border/10 flex items-center justify-between">
                 <span className="text-sm font-bold text-text-primary">Στήλες πίνακα</span>
                 <div className="flex items-center gap-1.5">
-                  <button type="button" onClick={setAllCols}  className="text-[11px] px-2 py-1 rounded-lg border border-border/15 hover:bg-secondary/30 text-text-secondary transition-all">όλα</button>
-                  <button type="button" onClick={resetCols}   className="text-[11px] px-2 py-1 rounded-lg border border-border/15 hover:bg-secondary/30 text-text-secondary transition-all">reset</button>
+                  <button type="button" onClick={setAllCols} className="text-[11px] px-2 py-1 rounded-lg border border-border/15 hover:bg-secondary/30 text-text-secondary transition-all">όλα</button>
+                  <button type="button" onClick={resetCols} className="text-[11px] px-2 py-1 rounded-lg border border-border/15 hover:bg-secondary/30 text-text-secondary transition-all">reset</button>
                   <button type="button" onClick={() => setShowCols(false)} className="p-1 rounded-lg hover:bg-border/10 text-text-secondary transition-all"><X className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
@@ -524,15 +564,15 @@ export default function MembersPage() {
                     {allPageSelected && <Check className="h-2.5 w-2.5 text-white" />}
                   </div>
                 </th>
-                {['Όνομα','Τηλέφωνο'].map((h) => <Th key={h}>{h}</Th>)}
-                {isColVisible('email')           && <Th>Email</Th>}
-                {isColVisible('birth_date')       && <Th>Ημ. Γέννησης</Th>}
-                {isColVisible('address')          && <Th>Διεύθυνση</Th>}
-                {isColVisible('afm')              && <Th>ΑΦΜ</Th>}
-                {isColVisible('total_debt')       && <Th>Συνολική Οφειλή</Th>}
-                {isColVisible('max_dropin_debt')  && <Th>Max Drop-in</Th>}
-                {isColVisible('notes')            && <Th>Σημειώσεις</Th>}
-                {isColVisible('created_at')       && <Th>Εγγραφή</Th>}
+                {['Όνομα', 'Τηλέφωνο'].map((h) => <Th key={h}>{h}</Th>)}
+                {isColVisible('email') && <Th>Email</Th>}
+                {isColVisible('birth_date') && <Th>Ημ. Γέννησης</Th>}
+                {isColVisible('address') && <Th>Διεύθυνση</Th>}
+                {isColVisible('afm') && <Th>ΑΦΜ</Th>}
+                {isColVisible('total_debt') && <Th>Συνολική Οφειλή</Th>}
+                {isColVisible('max_dropin_debt') && <Th>Max Drop-in</Th>}
+                {isColVisible('notes') && <Th>Σημειώσεις</Th>}
+                {isColVisible('created_at') && <Th>Εγγραφή</Th>}
                 <Th className="text-right pr-4">Ενέργειες</Th>
               </tr>
             </thead>
@@ -565,10 +605,10 @@ export default function MembersPage() {
                     <Td><span className="font-medium text-text-primary">{m.full_name ?? '—'}</span></Td>
                     <Td><span className="text-text-secondary">{m.phone ?? '—'}</span></Td>
 
-                    {isColVisible('email')          && <Td><span className="text-text-secondary text-xs">{m.email ?? '—'}</span></Td>}
-                    {isColVisible('birth_date')      && <Td>{formatDateDMY(m.birth_date)}</Td>}
-                    {isColVisible('address')         && <Td>{m.address ?? '—'}</Td>}
-                    {isColVisible('afm')             && <Td>{m.afm ?? '—'}</Td>}
+                    {isColVisible('email') && <Td><span className="text-text-secondary text-xs">{m.email ?? '—'}</span></Td>}
+                    {isColVisible('birth_date') && <Td>{formatDateDMY(m.birth_date)}</Td>}
+                    {isColVisible('address') && <Td>{m.address ?? '—'}</Td>}
+                    {isColVisible('afm') && <Td>{m.afm ?? '—'}</Td>}
                     {isColVisible('total_debt') && (
                       <Td>
                         {totalDebt !== 0
@@ -577,13 +617,13 @@ export default function MembersPage() {
                       </Td>
                     )}
                     {isColVisible('max_dropin_debt') && <Td>{m.max_dropin_debt != null ? formatMoney(Number(m.max_dropin_debt)) : '—'}</Td>}
-                    {isColVisible('notes')           && <Td><span className="max-w-50 truncate block text-text-secondary text-xs">{m.notes ?? '—'}</span></Td>}
-                    {isColVisible('created_at')      && <Td><span className="text-text-secondary text-xs">{formatDateDMY(m.created_at)}</span></Td>}
+                    {isColVisible('notes') && <Td><span className="max-w-50 truncate block text-text-secondary text-xs">{m.notes ?? '—'}</span></Td>}
+                    {isColVisible('created_at') && <Td><span className="text-text-secondary text-xs">{formatDateDMY(m.created_at)}</span></Td>}
 
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
-                        <IconButton icon={Eye}    label="Λεπτομέρειες" onClick={() => navigate(`/members/${m.id}`, { state: { member: m, tenantId, subscriptionInactive } })} />
-                        <IconButton icon={Pencil} label="Επεξεργασία"  onClick={() => requireActiveSubscription(() => setEditRow(m))} />
+                        <IconButton icon={Eye} label="Λεπτομέρειες" onClick={() => navigate(`/members/${m.id}`, { state: { member: m, tenantId, subscriptionInactive } })} />
+                        <IconButton icon={Pencil} label="Επεξεργασία" onClick={() => requireActiveSubscription(() => setEditRow(m))} />
                         <DeleteButton id={m.id} onDeleted={load} guard={() => { if (subscriptionInactive) { setShowSubModal(true); return false; } return true; }} />
                       </div>
                     </td>
@@ -614,8 +654,8 @@ export default function MembersPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <IconButton icon={Eye}    label="Λεπτομέρειες" onClick={() => navigate(`/members/${m.id}`, { state: { member: m, tenantId, subscriptionInactive } })} />
-                    <IconButton icon={Pencil} label="Επεξεργασία"  onClick={() => requireActiveSubscription(() => setEditRow(m))} />
+                    <IconButton icon={Eye} label="Λεπτομέρειες" onClick={() => navigate(`/members/${m.id}`, { state: { member: m, tenantId, subscriptionInactive } })} />
+                    <IconButton icon={Pencil} label="Επεξεργασία" onClick={() => requireActiveSubscription(() => setEditRow(m))} />
                     <DeleteButton id={m.id} onDeleted={load} guard={() => { if (subscriptionInactive) { setShowSubModal(true); return false; } return true; }} />
                   </div>
                 </div>
@@ -650,12 +690,12 @@ export default function MembersPage() {
                 </select>
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={() => setPage((p) => Math.max(1, p-1))} disabled={page === 1}
+                <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
                   className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 transition-all cursor-pointer disabled:cursor-not-allowed">
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </button>
                 <span className="px-2">Σελ. <span className="font-semibold text-text-primary">{page}</span>/{pageCount}</span>
-                <button onClick={() => setPage((p) => Math.min(pageCount, p+1))} disabled={page === pageCount}
+                <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page === pageCount}
                   className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 transition-all cursor-pointer disabled:cursor-not-allowed">
                   <ChevronRight className="h-3.5 w-3.5" />
                 </button>
@@ -667,7 +707,21 @@ export default function MembersPage() {
 
       {/* Modals */}
       {showCreate && profile?.tenant_id && (
-        <CreateMemberModal tenantId={profile.tenant_id} onClose={() => { setShowCreate(false); load(); }} toast={pushToast} />
+        <CreateMemberModal
+          tenantId={profile.tenant_id}
+          toast={pushToast}
+          onClose={(result) => {
+            console.log('CreateMemberModal onClose result:', result);
+
+            setShowCreate(false);
+            void load();
+
+            if (result?.existingUser) {
+              console.log('OPEN EXISTING MEMBER INFO MODAL');
+              setShowExistingMemberInfo(true);
+            }
+          }}
+        />
       )}
       {editRow && (
         <EditMemberModal row={editRow} onClose={() => { setEditRow(null); load(); }} />
@@ -675,12 +729,42 @@ export default function MembersPage() {
       {showEmailModal && (
         <SendMemberEmailModal isOpen={showEmailModal} onClose={() => setShowEmailModal(false)}
           tenantName={tenantNameFromProfile} tenantId={profile?.tenant_id ?? null}
-          memberIds={selectedIds} selectedMembers={selectedMembers.map((m) => ({ id: m.id, full_name: m.full_name, email: m.email }))} />
+          memberIds={selectedIds} selectedMembers={selectedMembers.map((m) => ({
+            id: m.id,
+            full_name: m.full_name,
+            email: m.email,
+            user_id: m.user_id,
+          }))} />
       )}
       {showPushModal && (
         <SendMemberPushModal isOpen={showPushModal} onClose={() => setShowPushModal(false)}
           tenantName={tenantNameFromProfile} tenantId={profile?.tenant_id ?? null}
-          selectedMembers={selectedMembers.map((m) => ({ id: m.id, full_name: m.full_name, email: m.email, user_id: m.id }))} />
+          selectedMembers={selectedMembers.map((m) => ({
+            id: m.id,
+            full_name: m.full_name,
+            email: m.email,
+            user_id: m.user_id,
+          }))} />
+      )}
+
+      {showExistingMemberInfo && (
+        <Modal
+          onClose={() => setShowExistingMemberInfo(false)}
+          title="Ενημέρωση"
+        >
+          <div className="text-sm text-text-secondary leading-relaxed">
+            Υπάρχει ήδη εγγεγραμμένο μέλος σε άλλο γυμναστήριο με αυτό το email, οπότε ο κωδικός του παραμένει ο ίδιος και δεν είναι αυτός που μόλις καταχωρήσατε.
+          </div>
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              className="btn-primary"
+              onClick={() => setShowExistingMemberInfo(false)}
+            >
+              Εντάξει
+            </button>
+          </div>
+        </Modal>
       )}
       <SubscriptionRequiredModal open={showSubModal} onClose={() => setShowSubModal(false)} />
 
@@ -730,62 +814,161 @@ async function readEdgeErrorPayload(err: any): Promise<any | null> {
 }
 
 // ── Create modal
-function CreateMemberModal({ tenantId, onClose, toast }: { tenantId: string; onClose: () => void; toast: (t: Omit<Toast,'id'>, ms?: number) => void }) {
-  const [email, setEmail]               = useState('');
-  const [fullName, setFullName]         = useState('');
-  const [phone, setPhone]               = useState('');
-  const [birthDate, setBirthDate]       = useState<Date | null>(null);
-  const [address, setAddress]           = useState('');
-  const [afm, setAfm]                   = useState('');
+function CreateMemberModal({ tenantId, onClose, toast }: {
+  tenantId: string;
+  onClose: (result?: { existingUser?: boolean }) => void;
+  toast: (t: Omit<Toast, 'id'>, ms?: number) => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [birthDate, setBirthDate] = useState<Date | null>(null);
+  const [address, setAddress] = useState('');
+  const [afm, setAfm] = useState('');
   const [maxDropinDebt, setMaxDropinDebt] = useState('');
-  const [password, setPassword]         = useState('');
-  const [notes, setNotes]               = useState('');
-  const [busy, setBusy]                 = useState(false);
-  const navigate                        = useNavigate();
+  const [password, setPassword] = useState('');
+  const [notes, setNotes] = useState('');
+  const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+
+
 
   const submit = async () => {
     if (!email || !password) return;
+
     setBusy(true);
+
     const { data, error } = await supabase.functions.invoke('member-create', {
-      body: { email, password, full_name: fullName, phone, tenant_id: tenantId,
-        birth_date: birthDate ? dateToISODate(birthDate) : null, address: address || null,
-        afm: afm || null, max_dropin_debt: maxDropinDebt ? Number(maxDropinDebt) : null, notes: notes || null },
+      body: {
+        email,
+        password,
+        full_name: fullName,
+        phone,
+        tenant_id: tenantId,
+        birth_date: birthDate ? dateToISODate(birthDate) : null,
+        address: address || null,
+        afm: afm || null,
+        max_dropin_debt: maxDropinDebt ? Number(maxDropinDebt) : null,
+        notes: notes || null,
+      },
     });
+
     setBusy(false);
+
     if (error) {
-      const payload = await readEdgeErrorPayload(error); const code = payload?.error;
+      const payload = await readEdgeErrorPayload(error);
+      const code = payload?.error;
+
       if (code === 'PLAN_LIMIT:MAX_MEMBERS_REACHED') {
-        toast({ variant:'error', title:'Έφτασες το όριο του πλάνου σου',
+        toast({
+          variant: 'error',
+          title: 'Έφτασες το όριο του πλάνου σου',
           message: payload?.limit != null ? `Έχεις ήδη ${payload.current}/${payload.limit}.` : 'Έχεις φτάσει το όριο.',
-          actionLabel:'Αναβάθμιση', onAction: () => navigate('/settings/billing') });
+          actionLabel: 'Αναβάθμιση',
+          onAction: () => navigate('/settings/billing'),
+        });
         return;
       }
-      toast({ variant:'error', title:'Αποτυχία δημιουργίας μέλους', message: code ?? error.message ?? 'Unknown error' });
+
+      toast({
+        variant: 'error',
+        title: 'Αποτυχία δημιουργίας μέλους',
+        message: code ?? error.message ?? 'Unknown error',
+      });
       return;
     }
-    const code = (data as any)?.error;
-    if (code) { toast({ variant:'error', title:'Αποτυχία', message: String(code) }); return; }
-    toast({ variant:'success', title:'Το μέλος δημιουργήθηκε', message:'Προστέθηκε επιτυχώς στη λίστα μελών.' });
+
+    const parsedData =
+      typeof data === 'string'
+        ? JSON.parse(data)
+        : data;
+
+    const code = (parsedData as any)?.error;
+    if (code) {
+      toast({ variant: 'error', title: 'Αποτυχία', message: String(code) });
+      return;
+    }
+
+    const reusedExistingAuthUser =
+      (parsedData as any)?.reused_existing_auth_user === true;
+
+    if (reusedExistingAuthUser) {
+      onClose({ existingUser: true });
+      return;
+    }
+
+    toast({
+      variant: 'success',
+      title: 'Το μέλος δημιουργήθηκε',
+      message: 'Προστέθηκε επιτυχώς στη λίστα μελών.',
+    });
+
     onClose();
   };
 
+  
   return (
-    <Modal onClose={onClose} title="Νέο Μέλος">
-      <FormRow label="Όνομα *"><input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} /></FormRow>
-      <FormRow label="Email *"><input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></FormRow>
-      <FormRow label="Τηλέφωνο"><input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} /></FormRow>
-      <FormRow label="Ημ. γέννησης">
-        <DatePicker selected={birthDate} onChange={(date) => setBirthDate(date)} dateFormat="dd/MM/yyyy" locale={el} placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
-          className="input" wrapperClassName="w-full" showMonthDropdown showYearDropdown dropdownMode="select" scrollableYearDropdown yearDropdownItemNumber={80} />
+    <Modal onClose={() => onClose()} title="Νέο Μέλος">
+      <FormRow label="Όνομα *">
+        <input className="input" value={fullName} onChange={(e) => setFullName(e.target.value)} />
       </FormRow>
-      <FormRow label="Διεύθυνση"><input className="input" value={address} onChange={(e) => setAddress(e.target.value)} /></FormRow>
-      <FormRow label="ΑΦΜ"><input className="input" value={afm} onChange={(e) => setAfm(e.target.value)} /></FormRow>
-      <FormRow label="Μέγιστο χρέος drop-in"><input className="input" type="number" step="0.01" value={maxDropinDebt} onChange={(e) => setMaxDropinDebt(e.target.value)} /></FormRow>
-      <FormRow label="Σημειώσεις"><textarea className="input min-h-20 resize-y" value={notes} onChange={(e) => setNotes(e.target.value)} /></FormRow>
-      <FormRow label="Password *"><input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></FormRow>
+
+      <FormRow label="Email *">
+        <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+      </FormRow>
+
+      <FormRow label="Τηλέφωνο">
+        <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} />
+      </FormRow>
+
+      <FormRow label="Ημ. γέννησης">
+        <DatePicker
+          selected={birthDate}
+          onChange={(date) => setBirthDate(date)}
+          dateFormat="dd/MM/yyyy"
+          locale={el}
+          placeholderText="ΗΗ/ΜΜ/ΕΕΕΕ"
+          className="input"
+          wrapperClassName="w-full"
+          showMonthDropdown
+          showYearDropdown
+          dropdownMode="select"
+          scrollableYearDropdown
+          yearDropdownItemNumber={80}
+        />
+      </FormRow>
+
+      <FormRow label="Διεύθυνση">
+        <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} />
+      </FormRow>
+
+      <FormRow label="ΑΦΜ">
+        <input className="input" value={afm} onChange={(e) => setAfm(e.target.value)} />
+      </FormRow>
+
+      <FormRow label="Μέγιστο χρέος drop-in">
+        <input
+          className="input"
+          type="number"
+          step="0.01"
+          value={maxDropinDebt}
+          onChange={(e) => setMaxDropinDebt(e.target.value)}
+        />
+      </FormRow>
+
+      <FormRow label="Σημειώσεις">
+        <textarea className="input min-h-20 resize-y" value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </FormRow>
+
+      <FormRow label="Password *">
+        <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+      </FormRow>
+
       <div className="mt-4 flex justify-end gap-2">
-        <button className="btn-secondary" onClick={onClose}>Ακύρωση</button>
-        <button className="btn-primary" onClick={submit} disabled={busy}>{busy ? 'Δημιουργία...' : 'Δημιουργία'}</button>
+        <button className="btn-secondary" onClick={() => onClose()}>Ακύρωση</button>
+        <button className="btn-primary" onClick={submit} disabled={busy}>
+          {busy ? 'Δημιουργία...' : 'Δημιουργία'}
+        </button>
       </div>
     </Modal>
   );
@@ -793,24 +976,40 @@ function CreateMemberModal({ tenantId, onClose, toast }: { tenantId: string; onC
 
 // ── Edit modal
 function EditMemberModal({ row, onClose }: { row: Member; onClose: () => void }) {
-  const [fullName, setFullName]           = useState(row.full_name ?? '');
-  const [phone, setPhone]                 = useState(row.phone ?? '');
-  const [birthDate, setBirthDate]         = useState<Date | null>(parseISODateToLocal(row.birth_date));
-  const [address, setAddress]             = useState(row.address ?? '');
-  const [afm, setAfm]                     = useState(row.afm ?? '');
+  const [fullName, setFullName] = useState(row.full_name ?? '');
+  const [phone, setPhone] = useState(row.phone ?? '');
+  const [birthDate, setBirthDate] = useState<Date | null>(parseISODateToLocal(row.birth_date));
+  const [address, setAddress] = useState(row.address ?? '');
+  const [afm, setAfm] = useState(row.afm ?? '');
   const [maxDropinDebt, setMaxDropinDebt] = useState(row.max_dropin_debt != null ? String(row.max_dropin_debt) : '');
-  const [notes, setNotes]                 = useState(row.notes ?? '');
-  const [password, setPassword]           = useState('');
-  const [busy, setBusy]                   = useState(false);
+  const [notes, setNotes] = useState(row.notes ?? '');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     setBusy(true);
-    await supabase.functions.invoke('member-update', {
-      body: { id: row.id, full_name: fullName, phone, password: password || undefined,
-        birth_date: birthDate ? dateToISODate(birthDate) : null, address: address || null,
-        afm: afm || null, max_dropin_debt: maxDropinDebt ? Number(maxDropinDebt) : null, notes: notes || null },
+
+    const { error } = await supabase.functions.invoke('member-update', {
+      body: {
+        id: row.id,
+        user_id: row.user_id,
+        full_name: fullName,
+        phone,
+        password: password || undefined,
+        birth_date: birthDate ? dateToISODate(birthDate) : null,
+        address: address || null,
+        afm: afm || null,
+        max_dropin_debt: maxDropinDebt ? Number(maxDropinDebt) : null,
+        notes: notes || null,
+      },
     });
+
     setBusy(false);
+
+    if (error) {
+      return;
+    }
+
     onClose();
   };
 
@@ -840,7 +1039,7 @@ function Modal({ title, children, onClose }: any) {
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="w-full max-w-lg rounded-2xl border border-border/10 bg-secondary-background text-text-primary shadow-2xl overflow-hidden"
-           style={{ animation: 'toastIn 0.2s ease' }}>
+        style={{ animation: 'toastIn 0.2s ease' }}>
         <div className="h-0.75 w-full bg-linear-to-r from-primary/0 via-primary to-primary/0" />
         <div className="px-5 py-4 border-b border-border/10 flex items-center justify-between">
           <div className="font-black text-text-primary tracking-tight">{title}</div>

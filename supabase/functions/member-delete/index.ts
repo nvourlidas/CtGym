@@ -5,7 +5,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 const ALLOWED = new Set<string>([
   "http://localhost:5173",
   "http://127.0.0.1:5173",
-  "https://mycreatorapp.cloudtec.gr", // ← adjust
+  "https://mycreatorapp.cloudtec.gr",
   "https://ctgym.cloudtec.gr",
 ]);
 
@@ -22,6 +22,7 @@ function buildCors(req: Request) {
     "Access-Control-Max-Age": "86400",
   };
 }
+
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
   return new Response(body, {
     ...init,
@@ -57,11 +58,20 @@ serve(async (req) => {
     );
   }
 
+  const { id } = payload || {}; // members.id
+  if (!id) {
+    return withCors(
+      JSON.stringify({ error: "missing_id" }),
+      { status: 400 },
+      req,
+    );
+  }
+
   const url = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-  const authHeader = req.headers.get("Authorization") ?? "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+  const authHeader = req.headers.get("Authorization") ?? "";
+
   const anon = createClient(url, anonKey, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
@@ -76,20 +86,32 @@ serve(async (req) => {
     );
   }
 
-  const { data: callerProf } = await anon
-    .from("profiles")
+  const { data: callerTenantUser, error: callerErr } = await anon
+    .from("tenant_users")
     .select("tenant_id, role")
-    .eq("id", user.id)
+    .eq("user_id", user.id)
     .maybeSingle();
 
-  if (!callerProf) {
-    return withCors(JSON.stringify({ error: "profile_not_found" }), {
-      status: 401,
-    }, req);
+  if (callerErr) {
+    return withCors(
+      JSON.stringify({ error: callerErr.message }),
+      { status: 400 },
+      req,
+    );
   }
 
-  const isAdmin = user.app_metadata?.role === "admin" ||
-    (callerProf as any).role === "admin";
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_user_not_found" }),
+      { status: 401 },
+      req,
+    );
+  }
+
+  const callerRole = (callerTenantUser as any).role as string | null;
+  const callerTenantId = (callerTenantUser as any).tenant_id as string;
+
+  const isAdmin = callerRole === "owner" || callerRole === "admin";
   if (!isAdmin) {
     return withCors(
       JSON.stringify({ error: "forbidden" }),
@@ -98,59 +120,72 @@ serve(async (req) => {
     );
   }
 
-  const callerTenantId = (callerProf as any).tenant_id as string;
+  const admin = createClient(url, serviceKey, {
+    auth: { persistSession: false },
+  });
 
-  const { id } = payload || {};
-  if (!id) {
+  const { data: targetMember, error: targetErr } = await admin
+    .from("members")
+    .select("id, user_id, tenant_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (targetErr) {
     return withCors(
-      JSON.stringify({ error: "missing_id" }),
+      JSON.stringify({ error: targetErr.message }),
       { status: 400 },
       req,
     );
   }
 
-  const admin = createClient(url, serviceKey, {
-    auth: { persistSession: false },
-  });
-
-  // ensure target user is in the same tenant
-  const { data: targetProf } = await admin
-    .from("profiles")
-    .select("tenant_id")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (!targetProf) {
-    return withCors(JSON.stringify({ error: "target_profile_not_found" }), {
-      status: 404,
-    }, req);
+  if (!targetMember) {
+    return withCors(
+      JSON.stringify({ error: "target_member_not_found" }),
+      { status: 404 },
+      req,
+    );
   }
-  if ((targetProf as any).tenant_id !== callerTenantId) {
-    return withCors(JSON.stringify({ error: "tenant_mismatch" }), {
-      status: 403,
-    }, req);
+
+  if ((targetMember as any).tenant_id !== callerTenantId) {
+    return withCors(
+      JSON.stringify({ error: "tenant_mismatch" }),
+      { status: 403 },
+      req,
+    );
   }
 
   try {
     await assertTenantActive(admin, callerTenantId);
   } catch {
-    return withCors(JSON.stringify({ error: "SUBSCRIPTION_INACTIVE" }), {
-      status: 402,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: "SUBSCRIPTION_INACTIVE" }),
+      { status: 402 },
+      req,
+    );
   }
 
-  // delete auth user (if your FK doesn't cascade, also delete from profiles)
-  const { error } = await admin.auth.admin.deleteUser(id);
-  if (error) {
+  const targetUserId = (targetMember as any).user_id as string;
+
+  const { error: deleteMemberErr } = await admin
+    .from("members")
+    .delete()
+    .eq("id", id);
+
+  if (deleteMemberErr) {
     return withCors(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: deleteMemberErr.message }),
       { status: 400 },
       req,
     );
   }
 
-  // Optionally ensure profile removal if no ON DELETE CASCADE:
-  // await admin.from("profiles").delete().eq("id", id);
+  // optional cleanup: remove tenant_users row only for this tenant/member role
+  await admin
+    .from("tenant_users")
+    .delete()
+    .eq("tenant_id", callerTenantId)
+    .eq("user_id", targetUserId)
+    .eq("role", "member");
 
   return withCors(JSON.stringify({ ok: true }), { status: 200 }, req);
 });

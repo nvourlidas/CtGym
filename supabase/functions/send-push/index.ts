@@ -55,40 +55,13 @@ async function assertTenantActive(admin: any, tenantId: string) {
   }
 }
 
-async function getAuth(req: Request) {
-  const auth = req.headers.get("Authorization") ?? "";
-  const supa = createClient(URL, ANON, {
-    global: { headers: { Authorization: auth } },
-    auth: { persistSession: false },
-  });
-
-  const {
-    data: { user },
-  } = await supa.auth.getUser();
-
-  if (!user) return { error: "unauthorized" };
-
-  const { data: prof } = await supa
-    .from("profiles")
-    .select("tenant_id, role")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (!prof) return { error: "profile_not_found" };
-
-  const isAdmin = user.app_metadata?.role === "admin" ||
-    (prof as any).role === "admin";
-
-  return { tenantId: (prof as any).tenant_id as string, isAdmin };
-}
-
 type SendPushPayload = {
-  user_ids?: string[];
+  user_ids?: string[]; // now expected to be members.id[]
   send_to_all?: boolean;
   tenant_id?: string;
   title?: string;
   body?: string;
-  type?: string; // optional
+  type?: string;
   data?: Record<string, unknown>;
 };
 
@@ -96,58 +69,102 @@ function uniq(arr: string[]) {
   return Array.from(new Set(arr));
 }
 
-async function resolveRecipientUserIds(
+async function getAuth(req: Request, requestedTenantId: string) {
+  const authHeader = req.headers.get("Authorization") ?? "";
+
+  const supa = createClient(URL, ANON, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false },
+  });
+
+  const {
+    data: { user },
+    error: userErr,
+  } = await supa.auth.getUser();
+
+  if (userErr || !user) return { error: "unauthorized" as const };
+
+  const { data: tenantUser, error: tuErr } = await supa
+    .from("tenant_users")
+    .select("tenant_id, user_id, role")
+    .eq("tenant_id", requestedTenantId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (tuErr) return { error: tuErr.message };
+  if (!tenantUser) return { error: "tenant_access_denied" };
+
+  const role = String(tenantUser.role ?? "").toLowerCase();
+  const isAdmin = role === "admin" ||
+    role === "owner" ||
+    user.app_metadata?.role === "admin";
+
+  return {
+    user,
+    tenantId: tenantUser.tenant_id as string,
+    isAdmin,
+  };
+}
+
+async function resolveRecipientMemberIds(
   admin: any,
   tenant_id: string,
   sendToAll: boolean,
   explicitUserIds: string[],
 ) {
-  if (!sendToAll) return uniq(explicitUserIds);
+  if (!sendToAll) {
+    // explicit ids are now members.id values
+    return uniq(explicitUserIds);
+  }
 
-  // ✅ Send-to-all: all non-admin users of this tenant
-  // Assumption: profiles has tenant_id + role
+  // Send-to-all => all tenant members except tenant admins/owners if desired
   const { data, error } = await admin
-    .from("profiles")
+    .from("members")
     .select("id, role")
     .eq("tenant_id", tenant_id);
 
   if (error) throw error;
 
   const ids = (data ?? [])
-    .filter((r: any) => (r?.role ?? "") !== "admin") // exclude admins
+    .filter((r: any) => {
+      const role = String(r?.role ?? "").toLowerCase();
+      return role !== "admin" && role !== "owner";
+    })
     .map((r: any) => r.id as string)
-    .filter((id: any) => typeof id === "string" && id.length > 0) ?? [];
+    .filter((id: any) => typeof id === "string" && id.length > 0);
 
   return uniq(ids);
 }
 
+
+
 async function insertInboxNotifications(params: {
   admin: any;
   tenant_id: string;
-  userIds: string[];
+  userIds: string[]; // members.id[]
   title: string;
   body: string;
   type?: string;
   data?: Record<string, unknown>;
 }) {
   const { admin, tenant_id, userIds, title, body, type, data } = params;
+  
 
   if (!userIds.length) return { inserted: 0 };
 
   const rows = userIds.map((uid) => ({
     tenant_id,
-    user_id: uid,
+    user_id: uid, // now points to members.id
     title,
     body,
     type: type ?? "info",
     data: data ?? {},
-    // sent_at default exists, but we can set explicitly too:
     sent_at: new Date().toISOString(),
     read_at: null,
     archived_at: null,
   }));
 
-  // chunk insert for safety
+
   const CHUNK = 500;
   let inserted = 0;
 
@@ -170,25 +187,6 @@ serve(async (req) => {
     return withCors("Method not allowed", { status: 405 }, req);
   }
 
-  const auth = await getAuth(req);
-  if ((auth as any).error) {
-    return withCors(
-      JSON.stringify({ error: (auth as any).error }),
-      { status: 401 },
-      req,
-    );
-  }
-
-  const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
-
-  if (!isAdmin) {
-    return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
-      req,
-    );
-  }
-
   let body: SendPushPayload;
   try {
     body = (await req.json()) as SendPushPayload;
@@ -200,20 +198,51 @@ serve(async (req) => {
     );
   }
 
-  const tenant_id = (body.tenant_id ?? "").trim();
+  const tenant_id = String(body.tenant_id ?? "").trim();
   if (!tenant_id) {
-    return withCors(JSON.stringify({ error: "missing_tenant_id" }), {
-      status: 400,
-    }, req);
-  }
-  if (tenant_id !== tenantId) {
-    return withCors(JSON.stringify({ error: "tenant_mismatch" }), {
-      status: 403,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: "missing_tenant_id" }),
+      { status: 400 },
+      req,
+    );
   }
 
-  const title = (body.title ?? "").trim();
-  const msgBody = (body.body ?? "").trim();
+  const auth = await getAuth(req, tenant_id);
+  if ("error" in auth) {
+    const status = auth.error === "unauthorized"
+      ? 401
+      : auth.error === "tenant_access_denied"
+      ? 403
+      : 400;
+
+    return withCors(
+      JSON.stringify({ error: auth.error }),
+      { status },
+      req,
+    );
+  }
+
+  const { tenantId, isAdmin } = auth;
+
+  if (tenant_id !== tenantId) {
+    return withCors(
+      JSON.stringify({ error: "tenant_mismatch" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const title = String(body.title ?? "").trim();
+  const msgBody = String(body.body ?? "").trim();
+
   if (!title || !msgBody) {
     return withCors(
       JSON.stringify({ error: "missing_title_or_body" }),
@@ -229,6 +258,8 @@ serve(async (req) => {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
+    console.log("expilicit IDs received:", explicitUserIds);
+
   if (!sendToAll && explicitUserIds.length === 0) {
     return withCors(
       JSON.stringify({ error: "user_ids_required_when_send_to_all_false" }),
@@ -241,7 +272,6 @@ serve(async (req) => {
     auth: { persistSession: false },
   });
 
-  // ✅ subscription gate (service role bypasses RLS)
   try {
     await assertTenantActive(admin, tenant_id);
   } catch (e: any) {
@@ -255,10 +285,9 @@ serve(async (req) => {
     );
   }
 
-  // ✅ Resolve recipients first (for inbox)
   let recipientUserIds: string[] = [];
   try {
-    recipientUserIds = await resolveRecipientUserIds(
+    recipientUserIds = await resolveRecipientMemberIds(
       admin,
       tenant_id,
       sendToAll,
@@ -275,7 +304,6 @@ serve(async (req) => {
     );
   }
 
-  // ✅ Save inbox notifications (even if no push tokens)
   let inserted = 0;
   try {
     const res = await insertInboxNotifications({
@@ -299,7 +327,6 @@ serve(async (req) => {
     );
   }
 
-  // Load push tokens, restricted to this tenant
   let query = admin
     .from("push_tokens")
     .select("expo_push_token")
@@ -307,13 +334,14 @@ serve(async (req) => {
     .eq("is_active", true);
 
   if (!sendToAll) {
-    query = query.in("user_id", explicitUserIds);
+    query = query.in("user_id", explicitUserIds); // now members.id[]
+  } else {
+    query = query.in("user_id", recipientUserIds);
   }
-  // If sendToAll=true, we keep the existing behavior (all tokens for tenant)
 
   const { data: tokens, error: tokenErr } = await query;
+
   if (tokenErr) {
-    // still return ok for inbox insertion, but report push failure
     return withCors(
       JSON.stringify({
         ok: true,
@@ -327,11 +355,12 @@ serve(async (req) => {
     );
   }
 
-  const expoTokens = (tokens ?? [])
-    .map((t: any) => t.expo_push_token as string)
-    .filter((t) => typeof t === "string" && t.length > 0);
+  const expoTokens = uniq(
+    (tokens ?? [])
+      .map((t: any) => t.expo_push_token as string)
+      .filter((t) => typeof t === "string" && t.length > 0),
+  );
 
-  // If no tokens -> inbox already saved
   if (expoTokens.length === 0) {
     return withCors(
       JSON.stringify({
@@ -345,7 +374,6 @@ serve(async (req) => {
     );
   }
 
-  // Build Expo push messages
   const messages = expoTokens.map((token) => ({
     to: token,
     sound: "default",

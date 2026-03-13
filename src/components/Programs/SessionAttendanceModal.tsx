@@ -83,7 +83,7 @@ export default function SessionAttendanceModal({
       const userIds = Array.from(new Set(bookings.map((r) => r.user_id)));
       if (userIds.length) {
         const p = await supabase
-          .from("profiles")
+          .from("members")
           .select("id, full_name, phone")
           .in("id", userIds);
         if (!p.error && p.data) {

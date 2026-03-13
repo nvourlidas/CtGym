@@ -21,8 +21,8 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -64,7 +64,7 @@ async function getEffectiveMaxMembershipPlans(admin: any, tenantId: string) {
 
   if (subErr) throw new Error(subErr.message);
 
-  const planId = sub?.plan_id ?? "free"; // 🔁 change if your free plan id differs
+  const planId = sub?.plan_id ?? "free";
 
   const { data: plan, error: planErr } = await admin
     .from("subscription_plans")
@@ -74,7 +74,7 @@ async function getEffectiveMaxMembershipPlans(admin: any, tenantId: string) {
 
   if (planErr) throw new Error(planErr.message);
 
-  return plan?.max_membership_plans ?? null; // null = unlimited
+  return plan?.max_membership_plans ?? null;
 }
 
 async function countTenantMembershipPlans(admin: any, tenantId: string) {
@@ -89,47 +89,39 @@ async function countTenantMembershipPlans(admin: any, tenantId: string) {
 
 async function getAuth(req: Request) {
   const auth = req.headers.get("Authorization") ?? "";
+
   const supa = createClient(URL, ANON, {
     global: { headers: { Authorization: auth } },
     auth: { persistSession: false },
   });
+
   const {
     data: { user },
+    error: userErr,
   } = await supa.auth.getUser();
-  if (!user) return { error: "unauthorized" };
-  const { data: prof } = await supa
-    .from("profiles")
-    .select("tenant_id, role")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!prof) return { error: "profile_not_found" };
-  const isAdmin = user.app_metadata?.role === "admin" ||
-    (prof as any).role === "admin";
-  return { tenantId: (prof as any).tenant_id as string, isAdmin };
+
+  if (userErr || !user) return { error: "unauthorized" as const };
+
+  return { supa, user };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
+
   if (req.method !== "POST") {
     return withCors("Method not allowed", { status: 405 }, req);
   }
 
   const auth = await getAuth(req);
-  if ((auth as any).error) {
+  if ("error" in auth) {
     return withCors(
-      JSON.stringify({ error: (auth as any).error }),
+      JSON.stringify({ error: auth.error }),
       { status: 401 },
       req,
     );
   }
-  const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
-  if (!isAdmin) {
-    return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
-      req,
-    );
-  }
+
+  const { supa, user } = auth;
 
   let body: any;
   try {
@@ -142,12 +134,11 @@ serve(async (req) => {
     );
   }
 
-  const tenant_id = (body?.tenant_id ?? "").trim();
-  const name = (body?.name ?? "").trim();
+  const tenant_id = String(body?.tenant_id ?? "").trim();
+  const name = String(body?.name ?? "").trim();
   const price = typeof body?.price === "number" ? body.price : null;
-  const description = typeof body?.description === "string"
-    ? body.description
-    : null;
+  const description =
+    typeof body?.description === "string" ? body.description : null;
   const plan_kind = String(body?.plan_kind ?? "duration").toLowerCase();
   const duration_days = Number.isFinite(body?.duration_days)
     ? Math.max(0, body.duration_days)
@@ -156,7 +147,6 @@ serve(async (req) => {
     ? Math.max(0, body.session_credits)
     : null;
 
-  // NEW: category_ids (array of strings)
   const rawCategoryIds = body?.category_ids;
   let category_ids: string[] = [];
   if (Array.isArray(rawCategoryIds)) {
@@ -167,6 +157,51 @@ serve(async (req) => {
           .map((s: string) => s.trim())
           .filter((s: string) => s.length > 0),
       ),
+    );
+  }
+
+  if (!tenant_id || !name) {
+    return withCors(
+      JSON.stringify({ error: "missing_fields" }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  const { data: callerTenantUser, error: callerTenantUserErr } = await supa
+    .from("tenant_users")
+    .select("tenant_id, user_id, role")
+    .eq("tenant_id", tenant_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (callerTenantUserErr) {
+    return withCors(
+      JSON.stringify({ error: callerTenantUserErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_access_denied" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const callerRole = String(callerTenantUser.role ?? "").toLowerCase();
+  const isAdmin =
+    callerRole === "admin" ||
+    callerRole === "owner" ||
+    user.app_metadata?.role === "admin";
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
     );
   }
 
@@ -186,28 +221,12 @@ serve(async (req) => {
     );
   }
 
-  if (!tenant_id || !name) {
-    return withCors(
-      JSON.stringify({ error: "missing_fields" }),
-      { status: 400 },
-      req,
-    );
-  }
-  if (tenant_id !== tenantId) {
-    return withCors(
-      JSON.stringify({ error: "tenant_mismatch" }),
-      { status: 403 },
-      req,
-    );
-  }
-
   const admin = createClient(URL, SERVICE, {
     auth: { persistSession: false },
   });
 
-  // ✅ subscription gate (service role bypasses RLS)
   try {
-    await assertTenantActive(admin, tenantId);
+    await assertTenantActive(admin, tenant_id);
   } catch (e: any) {
     return withCors(
       JSON.stringify({
@@ -219,11 +238,10 @@ serve(async (req) => {
     );
   }
 
-  // ✅ PLAN LIMIT: membership plan types
   try {
-    const maxPlans = await getEffectiveMaxMembershipPlans(admin, tenantId);
+    const maxPlans = await getEffectiveMaxMembershipPlans(admin, tenant_id);
     if (maxPlans !== null) {
-      const current = await countTenantMembershipPlans(admin, tenantId);
+      const current = await countTenantMembershipPlans(admin, tenant_id);
       if (current >= maxPlans) {
         return withCors(
           JSON.stringify({
@@ -244,7 +262,6 @@ serve(async (req) => {
     );
   }
 
-  // If category_ids provided, validate they exist & belong to same tenant
   if (category_ids.length > 0) {
     const { data: cats, error: catErr } = await admin
       .from("class_categories")
@@ -271,8 +288,9 @@ serve(async (req) => {
     }
 
     const tenantMismatch = (cats as any[]).some(
-      (c) => c.tenant_id !== tenant_id,
+      (c) => String(c.tenant_id) !== tenant_id,
     );
+
     if (tenantMismatch) {
       return withCors(
         JSON.stringify({ error: "category_tenant_mismatch" }),
@@ -282,7 +300,6 @@ serve(async (req) => {
     }
   }
 
-  // Insert the plan (no category_id column anymore, or it will be null)
   const { data, error } = await admin
     .from("membership_plans")
     .insert({
@@ -305,7 +322,6 @@ serve(async (req) => {
     );
   }
 
-  // Insert membership_plan_categories links
   if (category_ids.length > 0) {
     const links = category_ids.map((cid) => ({
       tenant_id,
@@ -318,7 +334,6 @@ serve(async (req) => {
       .insert(links);
 
     if (linkErr) {
-      // best-effort rollback: delete the plan if category insert fails
       await admin.from("membership_plans").delete().eq("id", data.id);
 
       return withCors(

@@ -10,7 +10,7 @@ import {
 import SubscriptionRequiredModal from '../../components/SubscriptionRequiredModal';
 import SessionPickerModal from '../../components/bookings/SessionPickerModal';
 
-type Member    = { id: string; full_name: string | null };
+type Member = { id: string; full_name: string | null };
 type SessionRow = {
   id: string; starts_at: string; ends_at: string | null; capacity: number | null;
   classes?: { id: string; title: string; class_categories?: { name: string; color: string | null } | null } | null;
@@ -26,17 +26,17 @@ type StatusCode = 'booked' | 'checked_in' | 'canceled' | 'no_show';
 type DateFilterMode = 'all' | 'today' | 'custom';
 
 const STATUS_OPTIONS: { value: StatusCode; label: string }[] = [
-  { value: 'booked',     label: 'Κρατήθηκε' },
+  { value: 'booked', label: 'Κρατήθηκε' },
   { value: 'checked_in', label: 'Παρουσία' },
-  { value: 'canceled',   label: 'Ακυρώθηκε' },
-  { value: 'no_show',    label: 'Δεν προσήλθε' },
+  { value: 'canceled', label: 'Ακυρώθηκε' },
+  { value: 'no_show', label: 'Δεν προσήλθε' },
 ];
 
 const STATUS_STYLE: Record<StatusCode, string> = {
-  booked:     'border-sky-500/40 bg-sky-500/10 text-sky-500',
+  booked: 'border-sky-500/40 bg-sky-500/10 text-sky-500',
   checked_in: 'border-success/40 bg-success/10 text-success',
-  canceled:   'border-danger/40 bg-danger/10 text-danger',
-  no_show:    'border-warning/40 bg-warning/10 text-warning',
+  canceled: 'border-danger/40 bg-danger/10 text-danger',
+  no_show: 'border-warning/40 bg-warning/10 text-warning',
 };
 const STATUS_LABEL: Record<StatusCode, string> = {
   booked: 'Κρατήθηκε', checked_in: 'Παρουσία', canceled: 'Ακυρώθηκε', no_show: 'Δεν προσήλθε',
@@ -58,13 +58,13 @@ function formatDateDMY(iso?: string | null) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+  return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
 }
 function formatDateTime(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  const p = (n: number) => n.toString().padStart(2,'0');
-  return `${p(d.getDate())}-${p(d.getMonth()+1)}-${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  const p = (n: number) => n.toString().padStart(2, '0');
+  return `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 // ── Shared UI ─────────────────────────────────────────────────────────────
@@ -211,30 +211,41 @@ function MemberDropdown({ members, value, onChange }: { members: Member[]; value
 // ── Modals ────────────────────────────────────────────────────────────────
 
 function CreateBookingModal({ tenantId, onClose, onError }: { tenantId: string; onClose: () => void; onError: (title: string, message: string) => void }) {
-  const [members, setMembers]             = useState<Member[]>([]);
-  const [sessions, setSessions]           = useState<SessionRow[]>([]);
-  const [userId, setUserId]               = useState('');
-  const [sessionId, setSessionId]         = useState('');
-  const [bookingType, setBookingType]     = useState<'membership' | 'drop_in'>('membership');
-  const [busy, setBusy]                   = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [userId, setUserId] = useState('');
+  const [sessionId, setSessionId] = useState('');
+  const [bookingType, setBookingType] = useState<'membership' | 'drop_in'>('membership');
+  const [busy, setBusy] = useState(false);
   const [sessionSearch, setSessionSearch] = useState('');
-  const [sessionDate, setSessionDate]     = useState('');
+  const [sessionDate, setSessionDate] = useState('');
   const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const { data: m, error: mErr } = await supabase.from('profiles').select('id,full_name').eq('tenant_id', tenantId).eq('role','member').order('full_name');
+      const { data: m, error: mErr } = await supabase
+        .from('members')
+        .select('id,full_name')
+        .eq('tenant_id', tenantId)
+        .eq('role', 'member')
+        .order('full_name');
+
       if (mErr) onError('Σφάλμα φόρτωσης μελών', mErr.message);
       setMembers((m as any[]) ?? []);
 
-      const { data: s, error: sErr } = await supabase.from('class_sessions').select('id,starts_at,ends_at,capacity,classes(id,title,class_categories(name,color))').eq('tenant_id', tenantId).order('starts_at');
+      const { data: s, error: sErr } = await supabase
+        .from('class_sessions')
+        .select('id,starts_at,ends_at,capacity,classes(id,title,class_categories(name,color))')
+        .eq('tenant_id', tenantId)
+        .order('starts_at');
+
       if (sErr) onError('Σφάλμα φόρτωσης συνεδριών', sErr.message);
       setSessions((s as any[]) ?? []);
     })();
   }, [tenantId, onError]);
 
   const selectedSession = sessions.find((s) => s.id === sessionId);
-  const sessionLabel    = (s: SessionRow) => `${s.classes?.title ?? '—'} · ${formatDateTime(s.starts_at)}${s.capacity != null ? ` (cap ${s.capacity})` : ''}`;
+  const sessionLabel = (s: SessionRow) => `${s.classes?.title ?? '—'} · ${formatDateTime(s.starts_at)}${s.capacity != null ? ` (cap ${s.capacity})` : ''}`;
 
   const submit = async () => {
     if (!userId || !sessionId) { onError('Ελλιπή στοιχεία', 'Πρέπει να επιλέξετε μέλος και συνεδρία.'); return; }
@@ -309,7 +320,7 @@ function CreateBookingModal({ tenantId, onClose, onError }: { tenantId: string; 
 
 function EditBookingModal({ row, onClose, onError }: { row: Booking; onClose: () => void; onError: (title: string, message: string) => void }) {
   const [status, setStatus] = useState<StatusCode>((row.status as StatusCode) ?? 'booked');
-  const [busy, setBusy]     = useState(false);
+  const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     setBusy(true);
@@ -346,23 +357,23 @@ function EditBookingModal({ row, onClose, onError }: { row: Booking; onClose: ()
 
 export default function BookingsPage() {
   const { profile, subscription } = useAuth();
-  const [showSubModal, setShowSubModal]           = useState(false);
-  const [rows, setRows]                           = useState<Booking[]>([]);
-  const [totalCount, setTotalCount]               = useState(0);
-  const [loading, setLoading]                     = useState(true);
-  const [q, setQ]                                 = useState('');
-  const [error, setError]                         = useState<string | null>(null);
-  const [showCreate, setShowCreate]               = useState(false);
-  const [editRow, setEditRow]                     = useState<Booking | null>(null);
-  const [errorModal, setErrorModal]               = useState<{ title: string; message: string } | null>(null);
-  const [classFilter, setClassFilter]             = useState('');
-  const [statusFilter, setStatusFilter]           = useState('');
-  const [dateFilterMode, setDateFilterMode]       = useState<DateFilterMode>('today');
-  const [customDate, setCustomDate]               = useState('');
+  const [showSubModal, setShowSubModal] = useState(false);
+  const [rows, setRows] = useState<Booking[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [editRow, setEditRow] = useState<Booking | null>(null);
+  const [errorModal, setErrorModal] = useState<{ title: string; message: string } | null>(null);
+  const [classFilter, setClassFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('today');
+  const [customDate, setCustomDate] = useState('');
   const [bookingTypeFilter, setBookingTypeFilter] = useState('');
-  const [page, setPage]                           = useState(1);
-  const [pageSize, setPageSize]                   = useState(10);
-  const [classOptions, setClassOptions]           = useState<{ id: string; title: string }[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [classOptions, setClassOptions] = useState<{ id: string; title: string }[]>([]);
 
   const subscriptionInactive = !subscription?.is_active;
   const handleError = (title: string, message: string) => setErrorModal({ title, message: translateErrorMessage(message) });
@@ -385,7 +396,7 @@ export default function BookingsPage() {
     if (statusFilter) query = query.eq('status', statusFilter);
     if (bookingTypeFilter) query = query.eq('booking_type', bookingTypeFilter);
     if (dateFilterMode === 'today' || (dateFilterMode === 'custom' && customDate)) {
-      const base = dateFilterMode === 'today' ? new Date().toISOString().slice(0,10) : customDate;
+      const base = dateFilterMode === 'today' ? new Date().toISOString().slice(0, 10) : customDate;
       query = query.gte('starts_at', `${base}T00:00:00.000Z`).lte('starts_at', `${base}T23:59:59.999Z`);
     }
     const needle = q.trim();
@@ -422,8 +433,8 @@ export default function BookingsPage() {
   }, [profile?.tenant_id]);
 
   const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
-  const startIdx  = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
-  const endIdx    = Math.min(totalCount, page * pageSize);
+  const startIdx = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endIdx = Math.min(totalCount, page * pageSize);
 
   const DATE_MODES: { value: DateFilterMode; label: string }[] = [
     { value: 'all', label: 'Όλες' },
@@ -640,15 +651,15 @@ export default function BookingsPage() {
                   <span className="hidden sm:inline">Ανά σελίδα:</span>
                   <div className="relative">
                     <select className="h-7 pl-2 pr-7 rounded-lg border border-border/15 bg-secondary-background text-xs appearance-none outline-none cursor-pointer" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
-                      {[10,25,50].map((n) => <option key={n} value={n}>{n}</option>)}
+                      {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
                     <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none" />
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => setPage((p) => Math.max(1,p-1))} disabled={page===1} className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed transition-all"><ChevronLeft className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed transition-all"><ChevronLeft className="h-3.5 w-3.5" /></button>
                   <span className="px-2"><span className="font-bold text-text-primary">{page}</span> / {pageCount}</span>
-                  <button onClick={() => setPage((p) => Math.min(pageCount,p+1))} disabled={page===pageCount} className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed transition-all"><ChevronRight className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page === pageCount} className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed transition-all"><ChevronRight className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
             </div>
@@ -657,7 +668,7 @@ export default function BookingsPage() {
       </div>
 
       {showCreate && <CreateBookingModal tenantId={profile?.tenant_id!} onClose={() => { setShowCreate(false); load(); }} onError={handleError} />}
-      {editRow    && <EditBookingModal   row={editRow} onClose={() => { setEditRow(null); load(); }} onError={handleError} />}
+      {editRow && <EditBookingModal row={editRow} onClose={() => { setEditRow(null); load(); }} onError={handleError} />}
 
       {errorModal && (
         <ModalShell title={errorModal.title} icon={<AlertTriangle className="h-4 w-4 text-danger" />} onClose={() => setErrorModal(null)}

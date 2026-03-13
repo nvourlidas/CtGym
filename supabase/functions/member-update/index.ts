@@ -2,11 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-/** Allowed origins */
 const ALLOWED = new Set<string>([
   "http://localhost:5173",
   "http://127.0.0.1:5173",
-  "https://mycreatorapp.cloudtec.gr", // ← adjust
+  "https://mycreatorapp.cloudtec.gr",
   "https://ctgym.cloudtec.gr",
 ]);
 
@@ -62,7 +61,8 @@ serve(async (req) => {
   }
 
   const {
-    id,
+    id,        // members.id
+    user_id,   // auth/profiles user id
     full_name,
     phone,
     password,
@@ -90,20 +90,6 @@ serve(async (req) => {
     auth: { persistSession: false },
   });
 
-  // Optional password change
-  if (password && String(password).length >= 6) {
-    const { error: pwErr } = await admin.auth.admin.updateUserById(id, {
-      password,
-    });
-    if (pwErr) {
-      return withCors(
-        JSON.stringify({ error: pwErr.message }),
-        { status: 400 },
-        req,
-      );
-    }
-  }
-
   const anon = createClient(url, anonKey, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
@@ -118,20 +104,32 @@ serve(async (req) => {
     );
   }
 
-  const { data: callerProf } = await anon
-    .from("profiles")
+  const { data: callerTenantUser, error: callerErr } = await anon
+    .from("tenant_users")
     .select("tenant_id, role")
-    .eq("id", user.id)
+    .eq("user_id", user.id)
     .maybeSingle();
 
-  if (!callerProf) {
-    return withCors(JSON.stringify({ error: "profile_not_found" }), {
-      status: 401,
-    }, req);
+  if (callerErr) {
+    return withCors(
+      JSON.stringify({ error: callerErr.message }),
+      { status: 400 },
+      req,
+    );
   }
 
-  const isAdmin = user.app_metadata?.role === "admin" ||
-    (callerProf as any).role === "admin";
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_user_not_found" }),
+      { status: 401 },
+      req,
+    );
+  }
+
+  const callerRole = (callerTenantUser as any).role as string | null;
+  const callerTenantId = (callerTenantUser as any).tenant_id as string;
+
+  const isAdmin = callerRole === "owner" || callerRole === "admin";
   if (!isAdmin) {
     return withCors(
       JSON.stringify({ error: "forbidden" }),
@@ -140,65 +138,72 @@ serve(async (req) => {
     );
   }
 
-  const callerTenantId = (callerProf as any).tenant_id as string;
-
-  // ensure target user belongs to caller tenant
-  const { data: targetProf, error: tErr } = await admin
-    .from("profiles")
-    .select("tenant_id")
+  const { data: targetMember, error: targetErr } = await admin
+    .from("members")
+    .select("id, user_id, tenant_id")
     .eq("id", id)
     .maybeSingle();
 
-  if (tErr) {
+  if (targetErr) {
     return withCors(
-      JSON.stringify({ error: tErr.message }),
+      JSON.stringify({ error: targetErr.message }),
       { status: 400 },
       req,
     );
   }
-  if (!targetProf) {
-    return withCors(JSON.stringify({ error: "target_profile_not_found" }), {
-      status: 404,
-    }, req);
+
+  if (!targetMember) {
+    return withCors(
+      JSON.stringify({ error: "target_member_not_found" }),
+      { status: 404 },
+      req,
+    );
   }
 
-  if ((targetProf as any).tenant_id !== callerTenantId) {
-    return withCors(JSON.stringify({ error: "tenant_mismatch" }), {
-      status: 403,
-    }, req);
+  if ((targetMember as any).tenant_id !== callerTenantId) {
+    return withCors(
+      JSON.stringify({ error: "tenant_mismatch" }),
+      { status: 403 },
+      req,
+    );
   }
 
   try {
     await assertTenantActive(admin, callerTenantId);
   } catch {
-    return withCors(JSON.stringify({ error: "SUBSCRIPTION_INACTIVE" }), {
-      status: 402,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: "SUBSCRIPTION_INACTIVE" }),
+      { status: 402 },
+      req,
+    );
   }
 
-  // Prepare profile updates
+  const authUserId = user_id || (targetMember as any).user_id;
+
+  if (password && String(password).length >= 6) {
+    const { error: pwErr } = await admin.auth.admin.updateUserById(authUserId, {
+      password,
+    });
+    if (pwErr) {
+      return withCors(
+        JSON.stringify({ error: pwErr.message }),
+        { status: 400 },
+        req,
+      );
+    }
+  }
+
   const updates: Record<string, unknown> = {};
 
   if (typeof full_name !== "undefined") updates.full_name = full_name;
   if (typeof phone !== "undefined") updates.phone = phone;
-  if (typeof birth_date !== "undefined") {
-    // expects "YYYY-MM-DD" or empty string; empty → null
-    updates.birth_date = birth_date || null;
-  }
-  if (typeof address !== "undefined") {
-    updates.address = address || null;
-  }
-  if (typeof afm !== "undefined") {
-    updates.afm = afm || null;
-  }
-  if (typeof notes !== "undefined") {
-    updates.notes = notes || null;
-  }
+  if (typeof birth_date !== "undefined") updates.birth_date = birth_date || null;
+  if (typeof address !== "undefined") updates.address = address || null;
+  if (typeof afm !== "undefined") updates.afm = afm || null;
+  if (typeof notes !== "undefined") updates.notes = notes || null;
+
   if (typeof max_dropin_debt !== "undefined") {
-    if (
-      max_dropin_debt === null ||
-      max_dropin_debt === ""
-    ) {
+    if (max_dropin_debt === null || max_dropin_debt === "") {
       updates.max_dropin_debt = null;
     } else {
       const n = Number(max_dropin_debt);
@@ -208,9 +213,10 @@ serve(async (req) => {
 
   if (Object.keys(updates).length) {
     const { error: upErr } = await admin
-      .from("profiles")
+      .from("members")
       .update(updates)
       .eq("id", id);
+
     if (upErr) {
       return withCors(
         JSON.stringify({ error: upErr.message }),

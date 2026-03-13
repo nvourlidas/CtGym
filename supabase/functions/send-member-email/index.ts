@@ -1,4 +1,3 @@
-// supabase/functions/send-member-email/index.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -7,24 +6,23 @@ const resendApiKey = Deno.env.get("RESEND_API_KEY")!;
 
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
-// Basic CORS headers for browser calls (supabase-js uses fetch in browser)
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*", // or restrict to your app domain
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 type RequestBody = {
+  tenant_id?: string;
   tenant_name?: string;
-  memberIds?: string[];   // send to selected members
-  allActive?: boolean;    // or send to all active members
+  memberIds?: string[];
+  allActive?: boolean;
   subject: string;
   html: string;
   text?: string;
-  mode?: string;          // optional (custom/bookings/credentials)
+  mode?: string;
 };
 
-// Small helper to always send JSON + CORS
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -36,7 +34,6 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -52,21 +49,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonResponse({ error: "subject and html are required" }, 400);
     }
 
-    // --- 1) Find target members from DB ---
-    // ⚠️ If your emails are in "profiles", change this to profiles + field name
-    let query = supabase
-      .from("profiles")
-      .select("email")
-      .not("email", "is", null);
+    const tenantId = (body.tenant_id ?? "").trim();
+    if (!tenantId) {
+      return jsonResponse({ error: "tenant_id is required" }, 400);
+    }
 
-    // If you later add an "email_opt_in" boolean:
-    // query = query.eq("email_opt_in", true);
+    let query = supabase
+      .from("members")
+      .select("id, email")
+      .eq("tenant_id", tenantId)
+      .eq("role", "member")
+      .not("email", "is", null);
 
     if (body.memberIds && body.memberIds.length > 0) {
       query = query.in("id", body.memberIds);
     } else if (body.allActive) {
-      // Adjust depending on how you mark active members
-      query = query.eq("status", "active");
+      // no extra filter needed
     } else {
       return jsonResponse(
         { error: "Provide memberIds or allActive=true" },
@@ -81,19 +79,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonResponse({ error: membersError.message }, 500);
     }
 
-    const emails = (members ?? [])
-      .map((m: any) => m.email as string | null)
-      .filter((e): e is string => !!e);
+    const emails = Array.from(
+      new Set(
+        (members ?? [])
+          .map((m: any) => m.email as string | null)
+          .filter((e): e is string => !!e),
+      ),
+    );
 
     if (emails.length === 0) {
-      return jsonResponse({ message: "No recipients found" }, 200);
+      return jsonResponse({ message: "No recipients found", recipients: 0 }, 200);
     }
 
-    // --- 2) Build dynamic "from" using tenant_name ---
     const tenantName = body.tenant_name ?? "Cloudtec Gym";
-    const fromString = `${tenantName} <no-reply@cloudtec.gr>`; // must be a string for Resend HTTP API
+    const fromString = `${tenantName} <no-reply@cloudtec.gr>`;
 
-    // --- 3) Call Resend Email API ---
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {

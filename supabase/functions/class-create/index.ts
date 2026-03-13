@@ -15,15 +15,17 @@ function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";
   const allowOrigin = ALLOWED.has(origin) ? origin : "";
   const reqHdrs = req.headers.get("access-control-request-headers") ?? "";
+
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
+
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
   return new Response(body, {
     ...init,
@@ -37,24 +39,20 @@ const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 async function getAuthContext(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
+
   const supa = createClient(URL, ANON, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
   });
+
   const {
     data: { user },
+    error: userErr,
   } = await supa.auth.getUser();
-  if (!user) return { error: "unauthorized" };
 
-  const { data: prof, error: pErr } = await supa
-    .from("profiles")
-    .select("tenant_id, role")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (pErr || !prof) return { error: "profile_not_found" };
+  if (userErr || !user) return { error: "unauthorized" as const };
 
-  const isAdmin = user.app_metadata?.role === "admin" || prof.role === "admin";
-  return { user, tenantId: prof.tenant_id as string, isAdmin };
+  return { supa, user };
 }
 
 async function assertTenantActive(admin: any, tenantId: string) {
@@ -87,19 +85,22 @@ async function getEffectiveMaxClasses(admin: any, tenantId: string) {
 
   if (subErr) throw new Error(subErr.message);
 
-  const planId = sub?.plan_id ?? "free"; // 🔁 adjust if your free plan id differs
+  console.log("getEffectiveMaxClasses subscription", sub);
+
+  const planId = sub?.plan_id ?? "free";
 
   const { data: plan, error: planErr } = await admin
     .from("subscription_plans")
-    .select("max_classes")
+    .select("id, max_classes")
     .eq("id", planId)
     .maybeSingle();
 
   if (planErr) throw new Error(planErr.message);
 
-  return plan?.max_classes ?? null; // null = unlimited
-}
+  console.log("getEffectiveMaxClasses plan", plan);
 
+  return plan?.max_classes ?? null;
+}
 async function countTenantClasses(admin: any, tenantId: string) {
   const { count, error } = await admin
     .from("classes")
@@ -111,30 +112,24 @@ async function countTenantClasses(admin: any, tenantId: string) {
 }
 
 serve(async (req) => {
-  // Preflight
   if (req.method === "OPTIONS") {
     return withCors(null, { status: 204 }, req);
   }
+
   if (req.method !== "POST") {
     return withCors("Method not allowed", { status: 405 }, req);
   }
 
   const auth = await getAuthContext(req);
-  if ((auth as any).error) {
+  if ("error" in auth) {
     return withCors(
-      JSON.stringify({ error: (auth as any).error }),
+      JSON.stringify({ error: auth.error }),
       { status: 401 },
       req,
     );
   }
-  const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
-  if (!isAdmin) {
-    return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
-      req,
-    );
-  }
+
+  const { supa, user } = auth;
 
   let body: any;
   try {
@@ -147,26 +142,27 @@ serve(async (req) => {
     );
   }
 
-  const title = (body?.title ?? "").trim();
-  const description = (body?.description ?? null) || null;
-  const tenant_id = (body?.tenant_id ?? "").trim();
+  const title = String(body?.title ?? "").trim();
+  const description =
+    typeof body?.description === "string" && body.description.trim().length > 0
+      ? body.description.trim()
+      : null;
 
-  // optional category_id
+  const tenant_id = String(body?.tenant_id ?? "").trim();
+
   const category_id_raw = body?.category_id ?? null;
   const category_id =
     typeof category_id_raw === "string" && category_id_raw.trim().length > 0
       ? category_id_raw.trim()
       : null;
 
-  // optional coach_id
   const coach_id_raw = body?.coach_id ?? null;
   const coach_id =
     typeof coach_id_raw === "string" && coach_id_raw.trim().length > 0
       ? coach_id_raw.trim()
       : null;
 
-  // drop-in flags/prices
-  const drop_in_enabled: boolean = !!body?.drop_in_enabled;
+  const drop_in_enabled = !!body?.drop_in_enabled;
 
   let drop_in_price: number | null = null;
   if (drop_in_enabled) {
@@ -181,14 +177,9 @@ serve(async (req) => {
         );
       }
       drop_in_price = parsed;
-    } else {
-      drop_in_price = null;
     }
-  } else {
-    drop_in_price = null;
   }
 
-  // NEW: optional member_drop_in_price (only meaningful when drop_in_enabled)
   let member_drop_in_price: number | null = null;
   if (drop_in_enabled) {
     const rawMember = body?.member_drop_in_price;
@@ -202,11 +193,7 @@ serve(async (req) => {
         );
       }
       member_drop_in_price = parsedMember;
-    } else {
-      member_drop_in_price = null;
     }
-  } else {
-    member_drop_in_price = null;
   }
 
   if (!title) {
@@ -216,6 +203,7 @@ serve(async (req) => {
       req,
     );
   }
+
   if (!tenant_id) {
     return withCors(
       JSON.stringify({ error: "tenant_id_required" }),
@@ -223,19 +211,52 @@ serve(async (req) => {
       req,
     );
   }
-  if (tenant_id !== tenantId) {
+
+  // caller must belong to tenant and be admin/owner there
+  const { data: callerTenantUser, error: callerTenantUserErr } = await supa
+    .from("tenant_users")
+    .select("tenant_id, user_id, role")
+    .eq("tenant_id", tenant_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (callerTenantUserErr) {
     return withCors(
-      JSON.stringify({ error: "tenant_mismatch" }),
+      JSON.stringify({ error: callerTenantUserErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_access_denied" }),
       { status: 403 },
       req,
     );
   }
 
-  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+  const callerRole = String(callerTenantUser.role ?? "").toLowerCase();
+  const isAdmin =
+    callerRole === "admin" ||
+    callerRole === "owner" ||
+    user.app_metadata?.role === "admin";
 
-  // ✅ subscription gate (service role bypasses RLS)
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const admin = createClient(URL, SERVICE, {
+    auth: { persistSession: false },
+  });
+
+  // subscription gate
   try {
-    await assertTenantActive(admin, tenantId);
+    await assertTenantActive(admin, tenant_id);
   } catch (e: any) {
     return withCors(
       JSON.stringify({
@@ -247,11 +268,13 @@ serve(async (req) => {
     );
   }
 
-  // ✅ PLAN LIMIT: class types (rows in classes)
+  // plan limit
   try {
-    const maxClasses = await getEffectiveMaxClasses(admin, tenantId);
+    const maxClasses = await getEffectiveMaxClasses(admin, tenant_id);
+    console.log("PLAN LIMIT DEBUG", { tenant_id, maxClasses });
     if (maxClasses !== null) {
-      const current = await countTenantClasses(admin, tenantId);
+      const current = await countTenantClasses(admin, tenant_id);
+      console.log("PLAN LIMIT DEBUG COUNT", { current, maxClasses });
       if (current >= maxClasses) {
         return withCors(
           JSON.stringify({
@@ -287,7 +310,8 @@ serve(async (req) => {
         req,
       );
     }
-    if (cat.tenant_id !== tenant_id) {
+
+    if (String(cat.tenant_id) !== tenant_id) {
       return withCors(
         JSON.stringify({ error: "category_tenant_mismatch" }),
         { status: 403 },
@@ -311,7 +335,8 @@ serve(async (req) => {
         req,
       );
     }
-    if (coach.tenant_id !== tenant_id) {
+
+    if (String(coach.tenant_id) !== tenant_id) {
       return withCors(
         JSON.stringify({ error: "coach_tenant_mismatch" }),
         { status: 403 },
@@ -330,7 +355,7 @@ serve(async (req) => {
       coach_id,
       drop_in_enabled,
       drop_in_price,
-      member_drop_in_price, // 👈 NEW
+      member_drop_in_price,
     })
     .select(
       "id, tenant_id, title, description, created_at, category_id, coach_id, drop_in_enabled, drop_in_price, member_drop_in_price",
@@ -344,6 +369,7 @@ serve(async (req) => {
       req,
     );
   }
+
   return withCors(
     JSON.stringify({ ok: true, data }),
     { status: 200 },

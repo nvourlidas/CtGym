@@ -10,19 +10,22 @@ const ALLOWED = new Set<string>([
   "https://mycreatorapp.cloudtec.gr",
   "https://ctgym.cloudtec.gr",
 ]);
+
 function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";
   const allowOrigin = ALLOWED.has(origin) ? origin : "";
   const reqHdrs = req.headers.get("access-control-request-headers") ?? "";
+
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
+
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
   return new Response(body, {
     ...init,
@@ -56,50 +59,41 @@ const URL = Deno.env.get("SUPABASE_URL")!;
 const ANON = Deno.env.get("SUPABASE_ANON_KEY")!;
 const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-/** returns { tenantId, isAdmin } or { error } */
 async function getAuth(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
+
   const anon = createClient(URL, ANON, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
   });
+
   const {
     data: { user },
+    error,
   } = await anon.auth.getUser();
-  if (!user) return { error: "unauthorized" };
 
-  const { data: prof } = await anon
-    .from("profiles")
-    .select("tenant_id, role")
-    .eq("id", user.id)
-    .maybeSingle();
+  if (error || !user) return { error: "unauthorized" as const };
 
-  if (!prof) return { error: "profile_not_found" };
-  const isAdmin = user.app_metadata?.role === "admin" ||
-    (prof as any).role === "admin";
-  return { tenantId: (prof as any).tenant_id as string, isAdmin };
+  return { anon, user };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
+
   if (req.method !== "POST") {
     return withCors("Method not allowed", { status: 405 }, req);
   }
 
   const auth = await getAuth(req);
-  if ((auth as any).error) {
-    return withCors(JSON.stringify({ error: (auth as any).error }), {
-      status: 401,
-    }, req);
-  }
-  const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
-  if (!isAdmin) {
+  if ("error" in auth) {
     return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
+      JSON.stringify({ error: auth.error }),
+      { status: 401 },
       req,
     );
   }
+
+  const { anon, user } = auth;
 
   let body: any;
   try {
@@ -112,21 +106,21 @@ serve(async (req) => {
     );
   }
 
-  const tenant_id = String(body?.tenant_id ?? "");
-  const user_id = String(body?.user_id ?? "");
-  const plan_id = String(body?.plan_id ?? "");
+  const tenant_id = String(body?.tenant_id ?? "").trim();
+  const user_id = String(body?.user_id ?? "").trim(); // members.id
+  const plan_id = String(body?.plan_id ?? "").trim();
   const starts_at = body?.starts_at ? new Date(body.starts_at) : new Date();
 
-  // debt (όπως πριν)
-  const debt = typeof body?.debt === "number" && Number.isFinite(body.debt)
-    ? Math.max(0, body.debt)
-    : 0;
+  const debt =
+    typeof body?.debt === "number" && Number.isFinite(body.debt)
+      ? Math.max(0, body.debt)
+      : 0;
 
-  // NEW: custom_price (optional)
   let custom_price: number | null = null;
   if (
-    body?.custom_price !== undefined && body.custom_price !== null &&
-    body.custom_price !== ""
+    body?.custom_price !== undefined &&
+    body?.custom_price !== null &&
+    body?.custom_price !== ""
   ) {
     const parsed = Number(body.custom_price);
     if (!Number.isFinite(parsed) || parsed < 0) {
@@ -139,7 +133,6 @@ serve(async (req) => {
     custom_price = parsed;
   }
 
-  // NEW: discount_reason (optional)
   const discount_reason_raw = body?.discount_reason;
   const discount_reason =
     typeof discount_reason_raw === "string" &&
@@ -148,21 +141,56 @@ serve(async (req) => {
       : null;
 
   if (!tenant_id || !user_id || !plan_id) {
-    return withCors(JSON.stringify({ error: "missing_fields" }), {
-      status: 400,
-    }, req);
-  }
-  if (tenant_id !== tenantId) {
-    return withCors(JSON.stringify({ error: "tenant_mismatch" }), {
-      status: 403,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: "missing_fields" }),
+      { status: 400 },
+      req,
+    );
   }
 
-  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+  const { data: callerTenantUser, error: callerTenantUserErr } = await anon
+    .from("tenant_users")
+    .select("tenant_id, user_id, role")
+    .eq("tenant_id", tenant_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-  // ✅ subscription gate (service role bypasses RLS)
+  if (callerTenantUserErr) {
+    return withCors(
+      JSON.stringify({ error: callerTenantUserErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_access_denied" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const callerRole = String(callerTenantUser.role ?? "").toLowerCase();
+  const isAdmin =
+    callerRole === "admin" ||
+    callerRole === "owner" ||
+    user.app_metadata?.role === "admin";
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const admin = createClient(URL, SERVICE, {
+    auth: { persistSession: false },
+  });
+
   try {
-    await assertTenantActive(admin, tenantId);
+    await assertTenantActive(admin, tenant_id);
   } catch (e: any) {
     return withCors(
       JSON.stringify({
@@ -174,12 +202,41 @@ serve(async (req) => {
     );
   }
 
+  // Validate member exists and belongs to tenant
+  const { data: member, error: memberErr } = await admin
+    .from("members")
+    .select("id, tenant_id, role")
+    .eq("id", user_id)
+    .maybeSingle();
+
+  if (memberErr || !member) {
+    return withCors(
+      JSON.stringify({ error: memberErr?.message ?? "member_not_found" }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (String(member.tenant_id) !== tenant_id) {
+    return withCors(
+      JSON.stringify({ error: "member_wrong_tenant" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  if (String(member.role ?? "") !== "member") {
+    return withCors(
+      JSON.stringify({ error: "not_a_member" }),
+      { status: 400 },
+      req,
+    );
+  }
+
   // Load plan and validate tenant
   const { data: plan, error: planErr } = await admin
     .from("membership_plans")
-    .select(
-      "id, tenant_id, name, price, plan_kind, duration_days, session_credits",
-    )
+    .select("id, tenant_id, name, price, plan_kind, duration_days, session_credits")
     .eq("id", plan_id)
     .maybeSingle();
 
@@ -190,13 +247,15 @@ serve(async (req) => {
       req,
     );
   }
-  if (plan.tenant_id !== tenant_id) {
-    return withCors(JSON.stringify({ error: "plan_wrong_tenant" }), {
-      status: 403,
-    }, req);
+
+  if (String(plan.tenant_id) !== tenant_id) {
+    return withCors(
+      JSON.stringify({ error: "plan_wrong_tenant" }),
+      { status: 403 },
+      req,
+    );
   }
 
-  // Compute derived fields
   let ends_at: string | null = null;
   if (plan.duration_days && plan.duration_days > 0) {
     const end = new Date(starts_at);
@@ -204,11 +263,11 @@ serve(async (req) => {
     ends_at = end.toISOString();
   }
 
-  const remaining_sessions = plan.session_credits && plan.session_credits > 0
-    ? Number(plan.session_credits)
-    : null;
+  const remaining_sessions =
+    plan.session_credits && plan.session_credits > 0
+      ? Number(plan.session_credits)
+      : null;
 
-  // days_remaining based on ends_at and "today"
   let days_remaining: number | null = null;
   if (ends_at) {
     const endDate = new Date(ends_at);
@@ -228,12 +287,11 @@ serve(async (req) => {
     days_remaining = diffDays > 0 ? diffDays : 0;
   }
 
-  // Insert membership with snapshots + discount fields
   const { data: created, error: insErr } = await admin
     .from("memberships")
     .insert({
       tenant_id,
-      user_id,
+      user_id, // members.id
       plan_id,
       starts_at: starts_at.toISOString(),
       ends_at,
@@ -241,8 +299,8 @@ serve(async (req) => {
       remaining_sessions,
       plan_kind: plan.plan_kind,
       plan_name: plan.name,
-      plan_price: plan.price, // κανονική τιμή πλάνου
-      custom_price, // τελική τιμή για αυτό το μέλος (αν υπάρχει)
+      plan_price: plan.price,
+      custom_price,
       discount_reason,
       days_remaining,
       debt,
@@ -251,12 +309,16 @@ serve(async (req) => {
     .single();
 
   if (insErr) {
-    return withCors(JSON.stringify({ error: insErr.message }), {
-      status: 400,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: insErr.message }),
+      { status: 400 },
+      req,
+    );
   }
 
-  return withCors(JSON.stringify({ ok: true, data: created }), {
-    status: 200,
-  }, req);
+  return withCors(
+    JSON.stringify({ ok: true, data: created }),
+    { status: 200 },
+    req,
+  );
 });

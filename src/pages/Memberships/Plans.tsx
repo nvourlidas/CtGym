@@ -36,14 +36,14 @@ function formatDateDMY(iso?: string | null) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+  return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
 }
 
 const PLAN_KIND_LABEL: Record<PlanKind, string> = { duration: 'Διάρκεια', sessions: 'Συνεδρίες', hybrid: 'Υβριδικό' };
 const PLAN_KIND_COLOR: Record<PlanKind, string> = {
-  duration:  'border-sky-500/40 bg-sky-500/10 text-sky-400',
-  sessions:  'border-emerald-500/40 bg-emerald-500/10 text-emerald-400',
-  hybrid:    'border-purple-500/40 bg-purple-500/10 text-purple-400',
+  duration: 'border-sky-500/40 bg-sky-500/10 text-sky-400',
+  sessions: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400',
+  hybrid: 'border-purple-500/40 bg-purple-500/10 text-purple-400',
 };
 
 // ── Shared UI ─────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ function ToastHost({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: string)
     <div className="fixed right-4 top-4 z-100 flex w-88 max-w-[calc(100vw-2rem)] flex-col gap-2">
       {toasts.map((t) => {
         const isErr = t.variant === 'error';
-        const isOk  = t.variant === 'success';
+        const isOk = t.variant === 'success';
         return (
           <div key={t.id} className="rounded-2xl border border-border/15 bg-secondary-background/95 backdrop-blur shadow-2xl overflow-hidden" style={{ animation: 'toastIn 0.25s ease' }}>
             <div className={['h-0.75', isErr ? 'bg-danger' : isOk ? 'bg-success' : 'bg-primary'].join(' ')} />
@@ -145,23 +145,55 @@ function IconButton({ icon: Icon, label, onClick, disabled }: { icon: LucideIcon
   );
 }
 
-function DeleteButton({ id, onDeleted, guard }: { id: string; onDeleted: () => void; guard: () => boolean }) {
+function DeleteButton({
+  id,
+  tenantId,
+  onDeleted,
+  guard
+}: {
+  id: string
+  tenantId: string
+  onDeleted: () => void
+  guard: () => boolean
+}) {
+
   const [busy, setBusy] = useState(false);
+
   const onClick = async () => {
     if (guard && !guard()) return;
-    if (!confirm('Διαγραφή αυτού του πλάνου; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.')) return;
+
+    if (!confirm('Διαγραφή αυτού του πλάνου; Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.'))
+      return;
+
     setBusy(true);
-    const res = await supabase.functions.invoke('plan-delete', { body: { id } });
+
+    const res = await supabase.functions.invoke('plan-delete', {
+      body: {
+        id,
+        tenant_id: tenantId
+      }
+    });
+
     setBusy(false);
-    if (res.error || (res.data as any)?.error) { alert(res.error?.message ?? (res.data as any)?.error ?? 'Delete failed'); }
-    else { onDeleted(); }
+
+    if (res.error || (res.data as any)?.error) {
+      alert(res.error?.message ?? (res.data as any)?.error ?? 'Delete failed');
+    } else {
+      onDeleted();
+    }
   };
+
   return (
-    <button type="button" onClick={onClick} disabled={busy}
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
       className="h-8 w-8 inline-flex items-center justify-center rounded-xl border border-danger/20 text-danger hover:bg-danger/10 disabled:opacity-40 transition-all cursor-pointer"
       aria-label="Διαγραφή πλάνου"
     >
-      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+      {busy
+        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        : <Trash2 className="h-3.5 w-3.5" />}
     </button>
   );
 }
@@ -257,36 +289,36 @@ function PlanFormFields({ name, setName, price, setPrice, planKind, setPlanKind,
 
 // ── Create modal ──────────────────────────────────────────────────────────
 
-function CreatePlanModal({ tenantId, categories, onClose, toast }: { tenantId: string; categories: Category[]; toast: (t: Omit<Toast,'id'>, ms?: number) => void; onClose: () => void }) {
-  const [name, setName]                   = useState('');
-  const [price, setPrice]                 = useState<number>(0);
-  const [planKind, setPlanKind]           = useState<PlanKind>('duration');
-  const [durationDays, setDurationDays]   = useState<number>(0);
+function CreatePlanModal({ tenantId, categories, onClose, toast }: { tenantId: string; categories: Category[]; toast: (t: Omit<Toast, 'id'>, ms?: number) => void; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState<number>(0);
+  const [planKind, setPlanKind] = useState<PlanKind>('duration');
+  const [durationDays, setDurationDays] = useState<number>(0);
   const [sessionCredits, setSessionCredits] = useState<number>(0);
-  const [description, setDescription]     = useState('');
-  const [categoryIds, setCategoryIds]     = useState<string[]>([]);
-  const [busy, setBusy]                   = useState(false);
+  const [description, setDescription] = useState('');
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
 
   const submit = async () => {
     if (!name) return;
     if ((durationDays || 0) <= 0 && (sessionCredits || 0) <= 0) {
-      toast({ variant:'error', title:'Λείπουν οφέλη πλάνου', message:'Δώσε ημέρες διάρκειας ή/και αριθμό συνεδριών.' }); return;
+      toast({ variant: 'error', title: 'Λείπουν οφέλη πλάνου', message: 'Δώσε ημέρες διάρκειας ή/και αριθμό συνεδριών.' }); return;
     }
     setBusy(true);
-    const res = await supabase.functions.invoke('plan-create', { body: { tenant_id:tenantId, name, price, plan_kind:planKind, duration_days:durationDays||null, session_credits:sessionCredits||null, description, category_ids:categoryIds } });
+    const res = await supabase.functions.invoke('plan-create', { body: { tenant_id: tenantId, name, price, plan_kind: planKind, duration_days: durationDays || null, session_credits: sessionCredits || null, description, category_ids: categoryIds } });
     setBusy(false);
     if (res.error) {
       const payload = await readEdgeErrorPayload(res.error);
-      const code    = payload?.error;
+      const code = payload?.error;
       if (code === 'PLAN_LIMIT:MAX_MEMBERSHIP_PLANS_REACHED') {
-        toast({ variant:'error', title:'Έφτασες το όριο του πλάνου σου', message:payload?.limit!=null?`Έχεις ήδη ${payload.current}/${payload.limit}.`:'Έχεις φτάσει το όριο.', actionLabel:'Αναβάθμιση', onAction:()=>navigate('/settings/billing') }); return;
+        toast({ variant: 'error', title: 'Έφτασες το όριο του πλάνου σου', message: payload?.limit != null ? `Έχεις ήδη ${payload.current}/${payload.limit}.` : 'Έχεις φτάσει το όριο.', actionLabel: 'Αναβάθμιση', onAction: () => navigate('/settings/billing') }); return;
       }
-      toast({ variant:'error', title:'Αποτυχία δημιουργίας πλάνου', message:code??res.error.message??'Unknown error' }); return;
+      toast({ variant: 'error', title: 'Αποτυχία δημιουργίας πλάνου', message: code ?? res.error.message ?? 'Unknown error' }); return;
     }
     const code = (res.data as any)?.error;
-    if (code) { toast({ variant:'error', title:'Αποτυχία δημιουργίας πλάνου', message:String(code) }); return; }
-    toast({ variant:'success', title:'Το πλάνο δημιουργήθηκε', message:'Προστέθηκε επιτυχώς.' });
+    if (code) { toast({ variant: 'error', title: 'Αποτυχία δημιουργίας πλάνου', message: String(code) }); return; }
+    toast({ variant: 'success', title: 'Το πλάνο δημιουργήθηκε', message: 'Προστέθηκε επιτυχώς.' });
     onClose();
   };
 
@@ -304,29 +336,30 @@ function CreatePlanModal({ tenantId, categories, onClose, toast }: { tenantId: s
 
 // ── Edit modal ────────────────────────────────────────────────────────────
 
-function EditPlanModal({ row, categories, onClose, toast }: { row: Plan; categories: Category[]; toast: (t: Omit<Toast,'id'>, ms?: number) => void; onClose: () => void }) {
-  const [name, setName]                   = useState(row.name);
-  const [price, setPrice]                 = useState<number>(row.price ?? 0);
-  const [planKind, setPlanKind]           = useState<PlanKind>(row.plan_kind);
-  const [durationDays, setDurationDays]   = useState<number>(row.duration_days ?? 0);
+function EditPlanModal({ row, categories, onClose, toast }: { row: Plan; categories: Category[]; toast: (t: Omit<Toast, 'id'>, ms?: number) => void; onClose: () => void }) {
+  const { profile } = useAuth();
+  const [name, setName] = useState(row.name);
+  const [price, setPrice] = useState<number>(row.price ?? 0);
+  const [planKind, setPlanKind] = useState<PlanKind>(row.plan_kind);
+  const [durationDays, setDurationDays] = useState<number>(row.duration_days ?? 0);
   const [sessionCredits, setSessionCredits] = useState<number>(row.session_credits ?? 0);
-  const [description, setDescription]     = useState(row.description ?? '');
-  const [categoryIds, setCategoryIds]     = useState<string[]>((row.categories ?? []).map((c) => c.id));
-  const [busy, setBusy]                   = useState(false);
+  const [description, setDescription] = useState(row.description ?? '');
+  const [categoryIds, setCategoryIds] = useState<string[]>((row.categories ?? []).map((c) => c.id));
+  const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     if (!name) return;
     if ((durationDays || 0) <= 0 && (sessionCredits || 0) <= 0) { alert('Παρέχετε ημέρες διάρκειας ή/και αριθμό συνεδριών.'); return; }
     setBusy(true);
-    const res = await supabase.functions.invoke('plan-update', { body: { id:row.id, name, price, plan_kind:planKind, duration_days:durationDays||null, session_credits:sessionCredits||null, description, category_ids:categoryIds } });
+    const res = await supabase.functions.invoke('plan-update', { body: { id: row.id, tenant_id: profile?.tenant_id, name, price, plan_kind: planKind, duration_days: durationDays || null, session_credits: sessionCredits || null, description, category_ids: categoryIds } });
     setBusy(false);
     if (res.error) {
       const payload = await readEdgeErrorPayload(res.error);
-      toast({ variant:'error', title:'Αποτυχία αποθήκευσης', message:payload?.error??res.error.message??'Unknown error' }); return;
+      toast({ variant: 'error', title: 'Αποτυχία αποθήκευσης', message: payload?.error ?? res.error.message ?? 'Unknown error' }); return;
     }
     const code = (res.data as any)?.error;
-    if (code) { toast({ variant:'error', title:'Αποτυχία αποθήκευσης', message:String(code) }); return; }
-    toast({ variant:'success', title:'Αποθηκεύτηκε', message:'Οι αλλαγές αποθηκεύτηκαν.' });
+    if (code) { toast({ variant: 'error', title: 'Αποτυχία αποθήκευσης', message: String(code) }); return; }
+    toast({ variant: 'success', title: 'Αποθηκεύτηκε', message: 'Οι αλλαγές αποθηκεύτηκαν.' });
     onClose();
   };
 
@@ -351,16 +384,16 @@ function renderBenefits(p: Plan) {
 export default function Plans() {
   const { profile, subscription } = useAuth();
   const [showSubModal, setShowSubModal] = useState(false);
-  const [rows, setRows]             = useState<Plan[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [q, setQ]                   = useState('');
+  const [rows, setRows] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
   const [showCreate, setShowCreate] = useState(false);
-  const [editRow, setEditRow]       = useState<Plan | null>(null);
-  const [error, setError]           = useState<string | null>(null);
+  const [editRow, setEditRow] = useState<Plan | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [page, setPage]             = useState(1);
-  const [pageSize, setPageSize]     = useState(10);
-  const [toasts, setToasts]         = useState<Toast[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [toasts, setToasts] = useState<Toast[]>([]);
 
   const subscriptionInactive = !subscription?.is_active;
   function requireActiveSubscription(action: () => void) {
@@ -368,7 +401,7 @@ export default function Plans() {
     action();
   }
 
-  const pushToast = (t: Omit<Toast,'id'>, ms = 4500) => {
+  const pushToast = (t: Omit<Toast, 'id'>, ms = 4500) => {
     const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { id, ...t }]);
     window.setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== id)), ms);
@@ -408,9 +441,9 @@ export default function Plans() {
   useEffect(() => { setPage(1); }, [q, pageSize]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const paginated = useMemo(() => filtered.slice((page-1)*pageSize, page*pageSize), [filtered, page, pageSize]);
-  const startIdx  = filtered.length === 0 ? 0 : (page-1)*pageSize+1;
-  const endIdx    = Math.min(filtered.length, page*pageSize);
+  const paginated = useMemo(() => filtered.slice((page - 1) * pageSize, page * pageSize), [filtered, page, pageSize]);
+  const startIdx = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endIdx = Math.min(filtered.length, page * pageSize);
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -472,7 +505,20 @@ export default function Plans() {
                     <div className="flex items-center gap-1 shrink-0">
                       <span className={`text-[10.5px] font-bold px-2 py-0.5 rounded-lg border ${PLAN_KIND_COLOR[p.plan_kind]}`}>{PLAN_KIND_LABEL[p.plan_kind]}</span>
                       <IconButton icon={Pencil} label="Επεξεργασία" onClick={() => requireActiveSubscription(() => setEditRow(p))} />
-                      <DeleteButton id={p.id} onDeleted={load} guard={() => { if (subscriptionInactive) { setShowSubModal(true); return false; } return true; }} />
+                      {profile?.tenant_id && (
+                        <DeleteButton
+                          tenantId={profile.tenant_id}
+                          id={p.id}
+                          onDeleted={load}
+                          guard={() => {
+                            if (subscriptionInactive) {
+                              setShowSubModal(true)
+                              return false
+                            }
+                            return true
+                          }}
+                        />
+                      )}
                     </div>
                   </div>
                   {p.description && <p className="mt-2 text-xs text-text-secondary line-clamp-2">{p.description}</p>}
@@ -493,7 +539,7 @@ export default function Plans() {
                 <thead>
                   <tr className="border-b border-border/10 bg-secondary/5">
                     {['Ονομασία', 'Κατηγορίες', 'Τιμή', 'Τύπος', 'Οφέλη', 'Δημιουργήθηκε', ''].map((h, i) => (
-                      <th key={i} className={['px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-text-secondary', i===6?'text-right':'text-left'].join(' ')}>{h}</th>
+                      <th key={i} className={['px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-text-secondary', i === 6 ? 'text-right' : 'text-left'].join(' ')}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -520,7 +566,20 @@ export default function Plans() {
                       <td className="px-4 py-3 text-right">
                         <div className="inline-flex items-center gap-1">
                           <IconButton icon={Pencil} label="Επεξεργασία" onClick={() => requireActiveSubscription(() => setEditRow(p))} />
-                          <DeleteButton id={p.id} onDeleted={load} guard={() => { if (subscriptionInactive) { setShowSubModal(true); return false; } return true; }} />
+                          {profile?.tenant_id && (
+                            <DeleteButton
+                              tenantId={profile.tenant_id}
+                              id={p.id}
+                              onDeleted={load}
+                              guard={() => {
+                                if (subscriptionInactive) {
+                                  setShowSubModal(true)
+                                  return false
+                                }
+                                return true
+                              }}
+                            />
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -537,15 +596,15 @@ export default function Plans() {
                   <span className="hidden sm:inline">Ανά σελίδα:</span>
                   <div className="relative">
                     <select className="h-7 pl-2 pr-7 rounded-lg border border-border/15 bg-secondary-background text-xs appearance-none outline-none cursor-pointer" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
-                      {[10,25,50].map((n) => <option key={n} value={n}>{n}</option>)}
+                      {[10, 25, 50].map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
                     <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 pointer-events-none" />
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => setPage((p) => Math.max(1,p-1))} disabled={page===1} className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 cursor-pointer transition-all"><ChevronLeft className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 cursor-pointer transition-all"><ChevronLeft className="h-3.5 w-3.5" /></button>
                   <span className="px-2"><span className="font-bold text-text-primary">{page}</span> / {pageCount}</span>
-                  <button onClick={() => setPage((p) => Math.min(pageCount,p+1))} disabled={page===pageCount} className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 cursor-pointer transition-all"><ChevronRight className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page === pageCount} className="h-7 w-7 rounded-lg border border-border/15 flex items-center justify-center hover:bg-secondary/30 disabled:opacity-30 cursor-pointer transition-all"><ChevronRight className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
             </div>
@@ -554,7 +613,7 @@ export default function Plans() {
       </div>
 
       {showCreate && <CreatePlanModal tenantId={profile?.tenant_id!} categories={categories} toast={pushToast} onClose={() => { setShowCreate(false); load(); }} />}
-      {editRow    && <EditPlanModal   row={editRow} categories={categories} toast={pushToast} onClose={() => { setEditRow(null); load(); }} />}
+      {editRow && <EditPlanModal row={editRow} categories={categories} toast={pushToast} onClose={() => { setEditRow(null); load(); }} />}
       <SubscriptionRequiredModal open={showSubModal} onClose={() => setShowSubModal(false)} />
     </div>
   );

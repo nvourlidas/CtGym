@@ -9,7 +9,7 @@ const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 async function sendExpoPush(params: {
   admin: any;
   tenant_id: string;
-  user_id: string;
+  user_id: string; // auth/profile user id
   title: string;
   body: string;
   data?: Record<string, unknown>;
@@ -23,20 +23,23 @@ async function sendExpoPush(params: {
     .eq("user_id", user_id)
     .eq("is_active", true);
 
-  if (error) return { ok: false, sent: 0, error: error.message };
+  if (error) {
+    return { ok: false, sent: 0, error: error.message };
+  }
 
-type PushTokenRow = {
-  expo_push_token: string | null;
-};
+  type PushTokenRow = {
+    expo_push_token: string | null;
+  };
 
-const tokenRows = (tokens ?? []) as PushTokenRow[];
+  const tokenRows = (tokens ?? []) as PushTokenRow[];
 
-const expoTokens: string[] = tokenRows
-  .map((row) => row.expo_push_token)
-  .filter((token): token is string => !!token && token.length > 0);
+  const expoTokens: string[] = tokenRows
+    .map((row) => row.expo_push_token)
+    .filter((token): token is string => !!token && token.length > 0);
 
-
-  if (expoTokens.length === 0) return { ok: true, sent: 0 };
+  if (expoTokens.length === 0) {
+    return { ok: true, sent: 0 };
+  }
 
   const messages = expoTokens.map((token) => ({
     to: token,
@@ -51,6 +54,7 @@ const expoTokens: string[] = tokenRows
 
   for (let i = 0; i < messages.length; i += chunkSize) {
     const chunk = messages.slice(i, i + chunkSize);
+
     await fetch(expoUrl, {
       method: "POST",
       headers: {
@@ -70,9 +74,22 @@ serve(async (req) => {
     return new Response("method_not_allowed", { status: 405 });
   }
 
-  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+  const admin = createClient(URL, SERVICE, {
+    auth: { persistSession: false },
+  });
 
-  const payload = await req.json();
+  let payload: any;
+  try {
+    payload = await req.json();
+  } catch {
+    return new Response(
+      JSON.stringify({ ok: false, error: "invalid_json" }),
+      {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  }
 
   // Supabase DB Webhook payload shape typically includes: record, old_record, type
   const record = payload?.record ?? null;
@@ -80,18 +97,31 @@ serve(async (req) => {
   const eventType = payload?.type ?? payload?.eventType ?? null;
 
   if (!record) {
-    return new Response(JSON.stringify({ ok: true, ignored: "no_record" }), {
-      status: 200,
-    });
+    return new Response(
+      JSON.stringify({ ok: true, ignored: "no_record" }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   const tenant_id = String(record.tenant_id ?? "").trim();
   const questionnaire_id = String(record.id ?? "").trim();
 
+  if (!tenant_id || !questionnaire_id) {
+    return new Response(
+      JSON.stringify({ ok: false, error: "missing_record_fields" }),
+      {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  }
+
   const oldStatus = String(oldRecord?.status ?? "").toLowerCase();
   const newStatus = String(record?.status ?? "").toLowerCase();
 
-  // ✅ Fire ONLY when it becomes published
   const becamePublished =
     (eventType === "UPDATE" || eventType === "update" || !!oldRecord) &&
     oldStatus !== "published" &&
@@ -104,32 +134,49 @@ serve(async (req) => {
   if (!becamePublished && !insertedPublished) {
     return new Response(
       JSON.stringify({ ok: true, ignored: "not_published_transition" }),
-      { status: 200 },
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
     );
   }
 
-  // Get questionnaire title (if not in record)
   const qTitle =
-    (record.title ?? record.name ?? "Νέο ερωτηματολόγιο") as string;
+    String(record.title ?? record.name ?? "Νέο ερωτηματολόγιο");
 
-  // 1) members of tenant
+  // 1) tenant members -> get linked auth/profile user ids
   const { data: members, error: mErr } = await admin
-    .from("profiles")
-    .select("id")
+    .from("members")
+    .select("id, user_id, role")
     .eq("tenant_id", tenant_id)
     .eq("role", "member");
 
   if (mErr) {
-    return new Response(JSON.stringify({ ok: false, error: mErr.message }), {
-      status: 400,
-    });
+    return new Response(
+      JSON.stringify({ ok: false, error: mErr.message }),
+      {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
-  const memberIds = (members ?? []).map((m: any) => m.id);
-  if (memberIds.length === 0) {
-    return new Response(JSON.stringify({ ok: true, message: "no_members" }), {
-      status: 200,
-    });
+  const memberUserIds = Array.from(
+    new Set(
+      (members ?? [])
+        .map((m: any) => String(m.user_id ?? "").trim())
+        .filter((id: string) => id.length > 0),
+    ),
+  );
+
+  if (memberUserIds.length === 0) {
+    return new Response(
+      JSON.stringify({ ok: true, message: "no_members" }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 
   const notifTitle = "Νέο ερωτηματολόγιο";
@@ -143,27 +190,29 @@ serve(async (req) => {
     publishedAt: new Date().toISOString(),
   };
 
-  // 2) store inbox notifications (bulk insert)
-  const rows = memberIds.map((user_id: string) => ({
+  // 2) store inbox notifications
+  const nowIso = new Date().toISOString();
+  const rows = memberUserIds.map((user_id: string) => ({
     tenant_id,
     user_id,
     title: notifTitle,
     body: notifBody,
     type: "questionnaire",
     data: notifData,
-    sent_at: new Date().toISOString(),
+    sent_at: nowIso,
   }));
 
-  const { error: insErr } = await admin.from("user_notifications").insert(rows);
+  const { error: insErr } = await admin
+    .from("user_notifications")
+    .insert(rows);
+
   if (insErr) {
-    // still can push; but report
     console.log("user_notifications insert error:", insErr.message);
   }
 
-  // 3) push (best effort)
-  // (Simple loop; if you want faster, we can batch tokens by tenant and send one big Expo chunk)
+  // 3) push notifications
   let pushed = 0;
-  for (const user_id of memberIds) {
+  for (const user_id of memberUserIds) {
     const res = await sendExpoPush({
       admin,
       tenant_id,
@@ -172,16 +221,20 @@ serve(async (req) => {
       body: notifBody,
       data: notifData,
     });
+
     if (res.ok) pushed += res.sent ?? 0;
   }
 
   return new Response(
     JSON.stringify({
       ok: true,
-      members: memberIds.length,
+      members: memberUserIds.length,
       inbox_ok: !insErr,
       pushed,
     }),
-    { status: 200, headers: { "Content-Type": "application/json" } },
+    {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    },
   );
 });

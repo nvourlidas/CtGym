@@ -21,21 +21,58 @@ export function AuthProvider({ children }: React.PropsWithChildren) {
 
     setProfileLoading(true);
     try {
-      const { data, error } = await supabase.rpc('get_my_profile').single();
-      if (error) {
-        console.warn('get_my_profile error:', error);
+      const userId = s.user.id;
+
+      const [{ data: profileRow, error: profileErr }, { data: tenantUserRow, error: tenantUserErr }] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, created_at')
+          .eq('id', userId)
+          .maybeSingle(),
+
+        supabase
+          .from('tenant_users')
+          .select('tenant_id, role')
+          .eq('user_id', userId)
+          .maybeSingle(),
+      ]);
+
+      if (profileErr) {
+        console.warn('profiles load error:', profileErr);
         setProfile(null);
         setSubscription(null);
-      } else {
-        const p = data as Profile;
-        setProfile(p);
-        await loadSubscription(p?.tenant_id); // ✅ add this
+        return;
       }
+
+      if (tenantUserErr) {
+        console.warn('tenant_users load error:', tenantUserErr);
+        setProfile(null);
+        setSubscription(null);
+        return;
+      }
+
+      const email = s.user.email ?? null;
+      const fullName =
+        (s.user.user_metadata?.full_name as string | undefined) ??
+        null;
+
+      const p = profileRow
+        ? {
+          ...(profileRow as any),
+          tenant_id: tenantUserRow?.tenant_id ?? null,
+          role: tenantUserRow?.role ?? null,
+          email,
+          full_name: fullName,
+          display_name: fullName ?? email?.split('@')[0] ?? 'Account',
+        }
+        : null;
+
+      setProfile(p as Profile);
+      await loadSubscription(tenantUserRow?.tenant_id);
     } finally {
       setProfileLoading(false);
     }
   }
-
 
   async function loadSubscription(tenantId: string | null | undefined) {
     if (!tenantId) { setSubscription(null); return; }

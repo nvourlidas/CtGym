@@ -4,13 +4,14 @@ import {
   Loader2, Plus, Search, Trash2, X, ArrowLeft, Save,
   Dumbbell, ChevronRight, User, StickyNote,
 } from 'lucide-react';
+import { useAuth } from '../../auth';
 
 type Props = { open: boolean; templateId: string; onClose: () => void; onSaved?: () => void };
-type WgerCategory  = { id: number; name: string };
+type WgerCategory = { id: number; name: string };
 type WgerEquipment = { id: number; name: string };
-type Coach         = { id: string; full_name: string | null; email?: string | null };
+type Coach = { id: string; full_name: string | null; email?: string | null };
 type ExerciseCatalogRow = { wger_id: number; name: string; category_name?: string | null; images?: Array<{ url?: string | null; is_main?: boolean | null }> | null };
-type LocalSet      = { key: string; reps: string; weight: string };
+type LocalSet = { key: string; reps: string; weight: string };
 type LocalExercise = { wger_id: number; name: string; imageUrl?: string | null; sets: LocalSet[] };
 
 function key() { return `${Date.now()}_${Math.random().toString(16).slice(2)}`; }
@@ -22,21 +23,22 @@ function pickMainImageUrl(ex: ExerciseCatalogRow): string | null {
 const STEP_LABELS = { category: 'Κατηγορία', equipment: 'Εξοπλισμός', exercise: 'Άσκηση' };
 
 export default function EditWorkoutTemplateModal({ open, templateId, onClose, onSaved }: Props) {
-  const [step, setStep]   = useState<'category'|'equipment'|'exercise'>('category');
-  const [name, setName]   = useState('');
+  const { profile } = useAuth();
+  const [step, setStep] = useState<'category' | 'equipment' | 'exercise'>('category');
+  const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  const [coaches, setCoaches]         = useState<Coach[]>([]);
+  const [coaches, setCoaches] = useState<Coach[]>([]);
   const [selectedCoachId, setSelectedCoachId] = useState('');
-  const [categories, setCategories]   = useState<WgerCategory[]>([]);
-  const [equipment, setEquipment]     = useState<WgerEquipment[]>([]);
-  const [selectedCategory, setSelectedCategory]   = useState<WgerCategory|null>(null);
-  const [selectedEquipment, setSelectedEquipment] = useState<WgerEquipment|null>(null);
-  const [q, setQ]             = useState('');
+  const [categories, setCategories] = useState<WgerCategory[]>([]);
+  const [equipment, setEquipment] = useState<WgerEquipment[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<WgerCategory | null>(null);
+  const [selectedEquipment, setSelectedEquipment] = useState<WgerEquipment | null>(null);
+  const [q, setQ] = useState('');
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<ExerciseCatalogRow[]>([]);
-  const [items, setItems]     = useState<LocalExercise[]>([]);
-  const [busy, setBusy]       = useState(false);
-  const [error, setError]     = useState<string|null>(null);
+  const [items, setItems] = useState<LocalExercise[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !templateId) return;
@@ -46,9 +48,9 @@ export default function EditWorkoutTemplateModal({ open, templateId, onClose, on
     (async () => {
       try {
         const [catsRes, eqRes, coachesRes] = await Promise.all([
-          supabase.from('wger_exercise_categories').select('id,name').order('name',{ascending:true}),
-          supabase.from('wger_equipment').select('id,name').order('name',{ascending:true}),
-          supabase.from('coaches').select('id,full_name,email').order('full_name',{ascending:true}),
+          supabase.from('wger_exercise_categories').select('id,name').order('name', { ascending: true }),
+          supabase.from('wger_equipment').select('id,name').order('name', { ascending: true }),
+          supabase.from('coaches').select('id,full_name,email').order('full_name', { ascending: true }),
         ]);
         if (catsRes.error) throw catsRes.error;
         if (eqRes.error) throw eqRes.error;
@@ -62,7 +64,7 @@ export default function EditWorkoutTemplateModal({ open, templateId, onClose, on
         setName(tpl?.name ?? ''); setNotes(tpl?.notes ?? ''); setSelectedCoachId(tpl?.coach_id ?? '');
 
         const { data: exRows, error: exErr } = await supabase.from('workout_template_exercises')
-          .select('id,exercise_wger_id,sort_order,workout_template_sets(set_no,reps,weight)').eq('template_id', templateId).order('sort_order',{ascending:true});
+          .select('id,exercise_wger_id,sort_order,workout_template_sets(set_no,reps,weight)').eq('template_id', templateId).order('sort_order', { ascending: true });
         if (exErr) throw exErr;
 
         const wgerIds = (exRows ?? []).map((r: any) => r.exercise_wger_id);
@@ -76,7 +78,7 @@ export default function EditWorkoutTemplateModal({ open, templateId, onClose, on
         const local: LocalExercise[] = (exRows ?? []).map((r: any) => {
           const ex = namesMap.get(r.exercise_wger_id);
           const sets = (r.workout_template_sets ?? []).slice().sort((a: any, b: any) => (a.set_no ?? 0) - (b.set_no ?? 0)).map((s: any) => ({ key: key(), reps: s?.reps == null ? '' : String(s.reps), weight: s?.weight == null ? '' : String(s.weight) }));
-          return { wger_id: r.exercise_wger_id, name: ex?.name ?? `wger ${r.exercise_wger_id}`, imageUrl: ex ? pickMainImageUrl(ex) : null, sets: sets.length ? sets : [{ key: key(), reps:'', weight:'' }] };
+          return { wger_id: r.exercise_wger_id, name: ex?.name ?? `wger ${r.exercise_wger_id}`, imageUrl: ex ? pickMainImageUrl(ex) : null, sets: sets.length ? sets : [{ key: key(), reps: '', weight: '' }] };
         });
         setItems(local);
       } catch (e: any) { console.error(e); setError(e?.message ?? 'Αποτυχία φόρτωσης template.'); }
@@ -88,7 +90,7 @@ export default function EditWorkoutTemplateModal({ open, templateId, onClose, on
     const t = setTimeout(async () => {
       try {
         setSearching(true);
-        const { data, error } = await supabase.from('exercise_catalog').select('wger_id,name,category_name,images').ilike('name',`%${q.trim()}%`).eq('category_id', selectedCategory.id).order('name',{ascending:true}).limit(60);
+        const { data, error } = await supabase.from('exercise_catalog').select('wger_id,name,category_name,images').ilike('name', `%${q.trim()}%`).eq('category_id', selectedCategory.id).order('name', { ascending: true }).limit(60);
         if (error) throw error;
         setResults((data ?? []) as ExerciseCatalogRow[]);
       } catch (e) { console.error(e); setResults([]); } finally { setSearching(false); }
@@ -96,36 +98,78 @@ export default function EditWorkoutTemplateModal({ open, templateId, onClose, on
     return () => clearTimeout(t);
   }, [open, step, selectedCategory, selectedEquipment, q]);
 
-  const addExercise    = (ex: ExerciseCatalogRow) => setItems((prev) => prev.some((p) => p.wger_id === ex.wger_id) ? prev : [...prev, { wger_id: ex.wger_id, name: ex.name, imageUrl: pickMainImageUrl(ex), sets: [{ key: key(), reps:'', weight:'' }] }]);
+  const addExercise = (ex: ExerciseCatalogRow) => setItems((prev) => prev.some((p) => p.wger_id === ex.wger_id) ? prev : [...prev, { wger_id: ex.wger_id, name: ex.name, imageUrl: pickMainImageUrl(ex), sets: [{ key: key(), reps: '', weight: '' }] }]);
   const removeExercise = (wgerId: number) => setItems((prev) => prev.filter((p) => p.wger_id !== wgerId));
-  const addSet    = (wgerId: number) => setItems((prev) => prev.map((ex) => ex.wger_id !== wgerId ? ex : { ...ex, sets: [...ex.sets, { key: key(), reps:'', weight:'' }] }));
-  const removeSet = (wgerId: number, setKey: string) => setItems((prev) => prev.map((ex) => { if (ex.wger_id !== wgerId) return ex; const next = ex.sets.filter((s) => s.key !== setKey); return { ...ex, sets: next.length ? next : [{ key: key(), reps:'', weight:'' }] }; }));
-  const updateSet = (wgerId: number, setKey: string, field: 'reps'|'weight', value: string) => {
-    const clean = value.replace(',','.');
+  const addSet = (wgerId: number) => setItems((prev) => prev.map((ex) => ex.wger_id !== wgerId ? ex : { ...ex, sets: [...ex.sets, { key: key(), reps: '', weight: '' }] }));
+  const removeSet = (wgerId: number, setKey: string) => setItems((prev) => prev.map((ex) => { if (ex.wger_id !== wgerId) return ex; const next = ex.sets.filter((s) => s.key !== setKey); return { ...ex, sets: next.length ? next : [{ key: key(), reps: '', weight: '' }] }; }));
+  const updateSet = (wgerId: number, setKey: string, field: 'reps' | 'weight', value: string) => {
+    const clean = value.replace(',', '.');
     setItems((prev) => prev.map((ex) => ex.wger_id !== wgerId ? ex : { ...ex, sets: ex.sets.map((s) => s.key === setKey ? { ...s, [field]: clean } : s) }));
   };
   const goBack = () => {
-    if (step==='exercise') { setStep('equipment'); setQ(''); setResults([]); return; }
-    if (step==='equipment') { setStep('category'); setSelectedEquipment(null); }
+    if (step === 'exercise') { setStep('equipment'); setQ(''); setResults([]); return; }
+    if (step === 'equipment') { setStep('category'); setSelectedEquipment(null); }
   };
 
   const save = async () => {
-    if (!name.trim()) { setError('Βάλε όνομα template.'); return; }
-    if (items.length === 0) { setError('Πρόσθεσε τουλάχιστον 1 άσκηση.'); return; }
+    if (!name.trim()) {
+      setError('Βάλε όνομα template.');
+      return;
+    }
+
+    if (items.length === 0) {
+      setError('Πρόσθεσε τουλάχιστον 1 άσκηση.');
+      return;
+    }
+
+    if (!profile?.tenant_id) {
+      setError('Δεν βρέθηκε tenant.');
+      return;
+    }
+
     try {
-      setBusy(true); setError(null);
-      const res = await supabase.functions.invoke('workout-template-update', { body: { id: templateId, name: name.trim(), notes: notes.trim()||null, coach_id: selectedCoachId||null, items: items.map((ex) => ({ wger_id: ex.wger_id, sets: ex.sets.map((s) => ({ reps: s.reps, weight: s.weight })) })) } });
-      const payload = typeof res.data==='string' ? JSON.parse(res.data) : res.data;
+      setBusy(true);
+      setError(null);
+
+      const res = await supabase.functions.invoke('workout-template-update', {
+        body: {
+          id: templateId,
+          tenant_id: profile.tenant_id, // ✅ REQUIRED
+          name: name.trim(),
+          notes: notes.trim() || null,
+          coach_id: selectedCoachId || null,
+          items: items.map((ex) => ({
+            wger_id: ex.wger_id,
+            sets: ex.sets.map((s) => ({
+              reps: s.reps,
+              weight: s.weight,
+            })),
+          })),
+        },
+      });
+
+      const payload =
+        typeof res.data === 'string' ? JSON.parse(res.data) : res.data;
+
       const errMsg = payload?.error ?? res.error?.message ?? '';
-      if (res.error || payload?.error) throw new Error(errMsg || 'Απέτυχε η ενημέρωση template.');
-      onSaved?.(); onClose();
-    } catch (e: any) { console.error(e); setError(e?.message ?? 'Αποτυχία αποθήκευσης. Δοκίμασε ξανά.'); }
-    finally { setBusy(false); }
+
+      if (res.error || payload?.error) {
+        throw new Error(errMsg || 'Απέτυχε η ενημέρωση template.');
+      }
+
+      onSaved?.();
+      onClose();
+    } catch (e: any) {
+      console.error(e);
+      setError(e?.message ?? 'Αποτυχία αποθήκευσης. Δοκίμασε ξανά.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const titleRight = useMemo(() => {
-    if (step==='category') return 'Επιλογή κατηγορίας';
-    if (step==='equipment') return selectedCategory?.name ?? 'Εξοπλισμός';
+    if (step === 'category') return 'Επιλογή κατηγορίας';
+    if (step === 'equipment') return selectedCategory?.name ?? 'Εξοπλισμός';
     return `${selectedCategory?.name ?? ''}${selectedEquipment ? ` · ${selectedEquipment.name}` : ' · All'}`;
   }, [step, selectedCategory, selectedEquipment]);
 
@@ -204,9 +248,9 @@ export default function EditWorkoutTemplateModal({ open, templateId, onClose, on
                   <span className="text-sm font-black text-text-primary">{titleRight}</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-text-secondary">
-                  {(['category','equipment','exercise'] as const).map((s, i) => (
-                    <span key={s} className={`flex items-center gap-1 ${step===s?'text-primary font-bold':''}`}>
-                      {i>0 && <ChevronRight className="h-3 w-3 opacity-40" />}
+                  {(['category', 'equipment', 'exercise'] as const).map((s, i) => (
+                    <span key={s} className={`flex items-center gap-1 ${step === s ? 'text-primary font-bold' : ''}`}>
+                      {i > 0 && <ChevronRight className="h-3 w-3 opacity-40" />}
                       {STEP_LABELS[s]}
                     </span>
                   ))}
@@ -338,10 +382,10 @@ function ExerciseCard({ ex, onRemoveExercise, onAddSet, onRemoveSet, onUpdateSet
         {ex.sets.map((s: any, idx: number) => (
           <div key={s.key} className="grid grid-cols-[40px_1fr_1fr_32px] gap-2 items-center">
             <span className="text-xs font-bold text-text-secondary text-center">{idx + 1}</span>
-            <input value={s.reps} onChange={(e: any) => onUpdateSet(ex.wger_id, s.key, 'reps', e.target.value.replace(/[^0-9]/g,''))} placeholder="0"
+            <input value={s.reps} onChange={(e: any) => onUpdateSet(ex.wger_id, s.key, 'reps', e.target.value.replace(/[^0-9]/g, ''))} placeholder="0"
               className="h-8 px-2 text-center rounded-xl border border-border/15 bg-background text-sm outline-none focus:border-primary/40 transition-all"
             />
-            <input value={s.weight} onChange={(e: any) => onUpdateSet(ex.wger_id, s.key, 'weight', e.target.value.replace(/[^0-9.,]/g,''))} placeholder="0"
+            <input value={s.weight} onChange={(e: any) => onUpdateSet(ex.wger_id, s.key, 'weight', e.target.value.replace(/[^0-9.,]/g, ''))} placeholder="0"
               className="h-8 px-2 text-center rounded-xl border border-border/15 bg-background text-sm outline-none focus:border-primary/40 transition-all"
             />
             <button type="button" onClick={() => onRemoveSet(ex.wger_id, s.key)} className="h-8 w-8 rounded-xl border border-border/10 flex items-center justify-center text-text-secondary hover:text-danger hover:border-danger/20 transition-all cursor-pointer"><X className="h-3 w-3" /></button>

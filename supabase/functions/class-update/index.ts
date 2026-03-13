@@ -1,3 +1,4 @@
+// supabase/functions/class-update/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
@@ -13,15 +14,17 @@ function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";
   const allowOrigin = ALLOWED.has(origin) ? origin : "";
   const reqHdrs = req.headers.get("access-control-request-headers") ?? "";
+
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
+
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
   return new Response(body, {
     ...init,
@@ -35,24 +38,20 @@ const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 async function getAuthContext(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
+
   const supa = createClient(URL, ANON, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
   });
+
   const {
     data: { user },
+    error: userErr,
   } = await supa.auth.getUser();
-  if (!user) return { error: "unauthorized" };
 
-  const { data: prof, error: pErr } = await supa
-    .from("profiles")
-    .select("tenant_id, role")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (pErr || !prof) return { error: "profile_not_found" };
+  if (userErr || !user) return { error: "unauthorized" as const };
 
-  const isAdmin = user.app_metadata?.role === "admin" || prof.role === "admin";
-  return { tenantId: prof.tenant_id as string, isAdmin };
+  return { supa, user };
 }
 
 async function assertTenantActive(admin: any, tenantId: string) {
@@ -79,26 +78,21 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return withCors(null, { status: 204 }, req);
   }
+
   if (req.method !== "POST") {
     return withCors("Method not allowed", { status: 405 }, req);
   }
 
   const auth = await getAuthContext(req);
-  if ((auth as any).error) {
+  if ("error" in auth) {
     return withCors(
-      JSON.stringify({ error: (auth as any).error }),
+      JSON.stringify({ error: auth.error }),
       { status: 401 },
       req,
     );
   }
-  const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
-  if (!isAdmin) {
-    return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
-      req,
-    );
-  }
+
+  const { supa, user } = auth;
 
   let body: any;
   try {
@@ -111,25 +105,25 @@ serve(async (req) => {
     );
   }
 
-  const id = (body?.id ?? "").trim();
-  const title = (body?.title ?? "").trim();
-  const description = (body?.description ?? null) || null;
+  const id = String(body?.id ?? "").trim();
+  const title = String(body?.title ?? "").trim();
+  const description =
+    typeof body?.description === "string" && body.description.trim().length > 0
+      ? body.description.trim()
+      : null;
 
-  // optional category_id (string or null)
   const category_id_raw = body?.category_id ?? null;
   const category_id =
     typeof category_id_raw === "string" && category_id_raw.trim().length > 0
       ? category_id_raw.trim()
       : null;
 
-  // optional coach_id
   const coach_id_raw = body?.coach_id ?? null;
   const coach_id =
     typeof coach_id_raw === "string" && coach_id_raw.trim().length > 0
       ? coach_id_raw.trim()
       : null;
 
-  // drop-in fields
   const drop_in_enabled: boolean = !!body?.drop_in_enabled;
 
   let drop_in_price: number | null = null;
@@ -145,14 +139,9 @@ serve(async (req) => {
         );
       }
       drop_in_price = parsed;
-    } else {
-      drop_in_price = null;
     }
-  } else {
-    drop_in_price = null;
   }
 
-  // NEW: member_drop_in_price
   let member_drop_in_price: number | null = null;
   if (drop_in_enabled) {
     const rawMember = body?.member_drop_in_price;
@@ -166,11 +155,7 @@ serve(async (req) => {
         );
       }
       member_drop_in_price = parsedMember;
-    } else {
-      member_drop_in_price = null;
     }
-  } else {
-    member_drop_in_price = null;
   }
 
   if (!id) {
@@ -180,6 +165,7 @@ serve(async (req) => {
       req,
     );
   }
+
   if (!title) {
     return withCors(
       JSON.stringify({ error: "title_required" }),
@@ -188,23 +174,11 @@ serve(async (req) => {
     );
   }
 
-  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+  const admin = createClient(URL, SERVICE, {
+    auth: { persistSession: false },
+  });
 
-  // ✅ subscription gate (service role bypasses RLS)
-  try {
-    await assertTenantActive(admin, tenantId);
-  } catch (e: any) {
-    return withCors(
-      JSON.stringify({
-        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
-        details: e?.details ?? null,
-      }),
-      { status: 402 },
-      req,
-    );
-  }
-
-  // 1) Ensure class exists and belongs to this tenant
+  // 1) Ensure class exists and get tenant
   const { data: existing, error: fErr } = await admin
     .from("classes")
     .select("id, tenant_id")
@@ -218,6 +192,7 @@ serve(async (req) => {
       req,
     );
   }
+
   if (!existing) {
     return withCors(
       JSON.stringify({ error: "not_found" }),
@@ -225,15 +200,62 @@ serve(async (req) => {
       req,
     );
   }
-  if (existing.tenant_id !== tenantId) {
+
+  const tenantId = String(existing.tenant_id);
+
+  // 2) Caller must belong to same tenant and be admin/owner there
+  const { data: callerTenantUser, error: callerTenantUserErr } = await supa
+    .from("tenant_users")
+    .select("tenant_id, user_id, role")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (callerTenantUserErr) {
     return withCors(
-      JSON.stringify({ error: "tenant_mismatch" }),
+      JSON.stringify({ error: callerTenantUserErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_access_denied" }),
       { status: 403 },
       req,
     );
   }
 
-  // 2) Validate category_id
+  const callerRole = String(callerTenantUser.role ?? "").toLowerCase();
+  const isAdmin =
+    callerRole === "admin" ||
+    callerRole === "owner" ||
+    user.app_metadata?.role === "admin";
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  // 3) Subscription gate
+  try {
+    await assertTenantActive(admin, tenantId);
+  } catch (e: any) {
+    return withCors(
+      JSON.stringify({
+        error: e?.message ?? "SUBSCRIPTION_INACTIVE",
+        details: e?.details ?? null,
+      }),
+      { status: 402 },
+      req,
+    );
+  }
+
+  // 4) Validate category
   if (category_id) {
     const { data: cat, error: cErr } = await admin
       .from("class_categories")
@@ -248,7 +270,8 @@ serve(async (req) => {
         req,
       );
     }
-    if (cat.tenant_id !== tenantId) {
+
+    if (String(cat.tenant_id) !== tenantId) {
       return withCors(
         JSON.stringify({ error: "category_tenant_mismatch" }),
         { status: 403 },
@@ -257,7 +280,7 @@ serve(async (req) => {
     }
   }
 
-  // 3) Validate coach_id
+  // 5) Validate coach
   if (coach_id) {
     const { data: coach, error: coachErr } = await admin
       .from("coaches")
@@ -272,7 +295,8 @@ serve(async (req) => {
         req,
       );
     }
-    if (coach.tenant_id !== tenantId) {
+
+    if (String(coach.tenant_id) !== tenantId) {
       return withCors(
         JSON.stringify({ error: "coach_tenant_mismatch" }),
         { status: 403 },
@@ -281,7 +305,7 @@ serve(async (req) => {
     }
   }
 
-  // 4) Update class
+  // 6) Update class
   const updateFields: any = {
     title,
     description,
@@ -289,7 +313,7 @@ serve(async (req) => {
     coach_id,
     drop_in_enabled,
     drop_in_price,
-    member_drop_in_price, // 👈 NEW
+    member_drop_in_price,
   };
 
   const { data, error } = await admin

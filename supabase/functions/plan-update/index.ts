@@ -21,8 +21,8 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -56,47 +56,39 @@ async function assertTenantActive(admin: any, tenantId: string) {
 
 async function getAuth(req: Request) {
   const auth = req.headers.get("Authorization") ?? "";
+
   const supa = createClient(URL, ANON, {
     global: { headers: { Authorization: auth } },
     auth: { persistSession: false },
   });
+
   const {
     data: { user },
+    error,
   } = await supa.auth.getUser();
-  if (!user) return { error: "unauthorized" };
-  const { data: prof } = await supa
-    .from("profiles")
-    .select("tenant_id, role")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!prof) return { error: "profile_not_found" };
-  const isAdmin = user.app_metadata?.role === "admin" ||
-    (prof as any).role === "admin";
-  return { tenantId: (prof as any).tenant_id as string, isAdmin };
+
+  if (error || !user) return { error: "unauthorized" as const };
+
+  return { supa, user };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
+
   if (req.method !== "POST") {
     return withCors("Method not allowed", { status: 405 }, req);
   }
 
   const auth = await getAuth(req);
-  if ((auth as any).error) {
+  if ("error" in auth) {
     return withCors(
-      JSON.stringify({ error: (auth as any).error }),
+      JSON.stringify({ error: auth.error }),
       { status: 401 },
       req,
     );
   }
-  const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
-  if (!isAdmin) {
-    return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
-      req,
-    );
-  }
+
+  const { supa, user } = auth;
 
   let body: any;
   try {
@@ -109,7 +101,53 @@ serve(async (req) => {
     );
   }
 
-  const id = (body?.id ?? "").trim();
+  const tenantId = String(body?.tenant_id ?? "").trim();
+  if (!tenantId) {
+    return withCors(
+      JSON.stringify({ error: "tenant_required" }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  const { data: callerTenantUser, error: callerTenantUserErr } = await supa
+    .from("tenant_users")
+    .select("tenant_id, user_id, role")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (callerTenantUserErr) {
+    return withCors(
+      JSON.stringify({ error: callerTenantUserErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_access_denied" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const callerRole = String(callerTenantUser.role ?? "").toLowerCase();
+  const isAdmin =
+    callerRole === "admin" ||
+    callerRole === "owner" ||
+    user.app_metadata?.role === "admin";
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const id = String(body?.id ?? "").trim();
   if (!id) {
     return withCors(
       JSON.stringify({ error: "id_required" }),
@@ -142,6 +180,7 @@ serve(async (req) => {
   if (Number.isFinite(body?.duration_days)) {
     updates.duration_days = Math.max(0, body.duration_days);
   }
+
   if (Number.isFinite(body?.session_credits)) {
     updates.session_credits = Math.max(0, body.session_credits);
   }
@@ -149,7 +188,6 @@ serve(async (req) => {
   if (updates.duration_days === 0) updates.duration_days = null;
   if (updates.session_credits === 0) updates.session_credits = null;
 
-  // NEW: category_ids – if present we will fully replace existing mappings
   let categoryIdsToSet: string[] | undefined = undefined;
   if ("category_ids" in body) {
     const rawCategoryIds = body.category_ids;
@@ -163,10 +201,8 @@ serve(async (req) => {
         ),
       );
     } else if (rawCategoryIds == null) {
-      // explicit clear
       categoryIdsToSet = [];
     } else {
-      // malformed → treat as clear
       categoryIdsToSet = [];
     }
   }
@@ -175,7 +211,6 @@ serve(async (req) => {
     auth: { persistSession: false },
   });
 
-  // ✅ subscription gate (service role bypasses RLS)
   try {
     await assertTenantActive(admin, tenantId);
   } catch (e: any) {
@@ -189,7 +224,6 @@ serve(async (req) => {
     );
   }
 
-  // verify tenant & get existing benefit values
   const { data: existing, error: findErr } = await admin
     .from("membership_plans")
     .select("id, tenant_id, duration_days, session_credits")
@@ -211,7 +245,8 @@ serve(async (req) => {
       req,
     );
   }
-  if (existing.tenant_id !== tenantId) {
+
+  if (String(existing.tenant_id) !== tenantId) {
     return withCors(
       JSON.stringify({ error: "tenant_mismatch" }),
       { status: 403 },
@@ -219,7 +254,6 @@ serve(async (req) => {
     );
   }
 
-  // Ensure plan still has at least one benefit (days or credits)
   const newDuration = "duration_days" in updates
     ? updates.duration_days
     : existing.duration_days;
@@ -229,6 +263,7 @@ serve(async (req) => {
 
   const dVal = newDuration ?? 0;
   const cVal = newCredits ?? 0;
+
   if (dVal === 0 && cVal === 0) {
     return withCors(
       JSON.stringify({ error: "plan_must_have_days_or_credits" }),
@@ -237,7 +272,6 @@ serve(async (req) => {
     );
   }
 
-  // If categories are being set/changed, validate them
   if (categoryIdsToSet !== undefined && categoryIdsToSet.length > 0) {
     const { data: cats, error: catErr } = await admin
       .from("class_categories")
@@ -264,8 +298,9 @@ serve(async (req) => {
     }
 
     const tenantMismatch = (cats as any[]).some(
-      (c) => c.tenant_id !== tenantId,
+      (c) => String(c.tenant_id) !== tenantId,
     );
+
     if (tenantMismatch) {
       return withCors(
         JSON.stringify({ error: "category_tenant_mismatch" }),
@@ -275,7 +310,6 @@ serve(async (req) => {
     }
   }
 
-  // Update membership_plans
   const { data, error } = await admin
     .from("membership_plans")
     .update(updates)
@@ -293,9 +327,7 @@ serve(async (req) => {
     );
   }
 
-  // Replace membership_plan_categories if categoryIdsToSet is provided
   if (categoryIdsToSet !== undefined) {
-    // delete existing mappings
     const { error: delErr } = await admin
       .from("membership_plan_categories")
       .delete()

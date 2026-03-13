@@ -18,8 +18,8 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -63,33 +63,26 @@ async function getAuthContext(req: Request) {
     auth: { persistSession: false },
   });
 
-  const { data: { user } } = await supa.auth.getUser();
-  if (!user) return { error: "unauthorized" as const };
+  const {
+    data: { user },
+    error: userErr,
+  } = await supa.auth.getUser();
 
-  const { data: prof, error: pErr } = await supa
-    .from("profiles")
-    .select("role, tenant_id")
-    .eq("id", user.id)
-    .maybeSingle();
+  if (userErr || !user) return { error: "unauthorized" as const };
 
-  if (pErr || !prof) return { error: "profile_not_found" as const };
-
-  const isAdmin = user.app_metadata?.role === "admin" ||
-    (prof as any).role === "admin";
-  return { user, isAdmin, tenant_id: (prof as any).tenant_id as string | null };
+  return { supa, user };
 }
 
 async function sendExpoPush(params: {
   admin: any;
   tenant_id: string;
-  user_id: string;
+  user_id: string; // here this should be auth/profile user id
   title: string;
   body: string;
   data?: Record<string, unknown>;
 }) {
   const { admin, tenant_id, user_id, title, body, data } = params;
 
-  // tokens for this user in this tenant
   const { data: tokens, error } = await admin
     .from("push_tokens")
     .select("expo_push_token")
@@ -114,7 +107,7 @@ async function sendExpoPush(params: {
     return { ok: true, sent: 0, message: "no_tokens_found" };
   }
 
-  const messages = expoTokens.map((token: any) => ({
+  const messages = expoTokens.map((token: string) => ({
     to: token,
     sound: "default",
     title,
@@ -146,36 +139,25 @@ async function sendExpoPush(params: {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
+
   if (req.method !== "POST") {
-    return withCors(JSON.stringify({ error: "method_not_allowed" }), {
-      status: 405,
-    }, req);
-  }
-
-  const auth = await getAuthContext(req);
-  if ((auth as any).error) {
-    return withCors(JSON.stringify({ error: (auth as any).error }), {
-      status: 401,
-    }, req);
-  }
-
-  const { isAdmin, tenant_id, user } = auth as {
-    isAdmin: boolean;
-    tenant_id: string | null;
-    user: any;
-  };
-  if (!isAdmin) {
     return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
+      JSON.stringify({ error: "method_not_allowed" }),
+      { status: 405 },
       req,
     );
   }
-  if (!tenant_id) {
-    return withCors(JSON.stringify({ error: "tenant_required" }), {
-      status: 400,
-    }, req);
+
+  const auth = await getAuthContext(req);
+  if ("error" in auth) {
+    return withCors(
+      JSON.stringify({ error: auth.error }),
+      { status: 401 },
+      req,
+    );
   }
+
+  const { supa, user } = auth;
 
   let body: any;
   try {
@@ -188,29 +170,78 @@ serve(async (req) => {
     );
   }
 
+  const tenant_id = String(body?.tenant_id ?? "").trim();
   const template_id = String(body?.template_id ?? "").trim();
-  const member_id = String(body?.member_id ?? "").trim();
+  const member_id = String(body?.member_id ?? "").trim(); // members.id
   const coach_id_raw = String(body?.coach_id ?? "").trim() || null;
-  const adminMessage = typeof body?.message === "string"
-    ? body.message.trim()
-    : null;
+  const adminMessage =
+    typeof body?.message === "string" ? body.message.trim() : null;
+
+  if (!tenant_id) {
+    return withCors(
+      JSON.stringify({ error: "tenant_required" }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  const { data: callerTenantUser, error: callerTenantUserErr } = await supa
+    .from("tenant_users")
+    .select("tenant_id, user_id, role")
+    .eq("tenant_id", tenant_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (callerTenantUserErr) {
+    return withCors(
+      JSON.stringify({ error: callerTenantUserErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_access_denied" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const callerRole = String(callerTenantUser.role ?? "").toLowerCase();
+  const isAdmin =
+    callerRole === "admin" ||
+    callerRole === "owner" ||
+    user.app_metadata?.role === "admin";
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
 
   if (!template_id) {
-    return withCors(JSON.stringify({ error: "template_required" }), {
-      status: 400,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: "template_required" }),
+      { status: 400 },
+      req,
+    );
   }
+
   if (!member_id) {
-    return withCors(JSON.stringify({ error: "member_required" }), {
-      status: 400,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: "member_required" }),
+      { status: 400 },
+      req,
+    );
   }
 
   const adminClient = createClient(URL, SERVICE, {
     auth: { persistSession: false },
   });
 
-  // ✅ subscription gate (service role bypasses RLS)
   try {
     await assertTenantActive(adminClient, tenant_id);
   } catch (e: any) {
@@ -224,7 +255,7 @@ serve(async (req) => {
     );
   }
 
-  // 1) template exists + must be same tenant
+  // 1) template exists and belongs to tenant
   const { data: tpl, error: tErr } = await adminClient
     .from("workout_templates")
     .select("id, tenant_id, coach_id, name")
@@ -238,22 +269,29 @@ serve(async (req) => {
       req,
     );
   }
+
   if (!tpl) {
-    return withCors(JSON.stringify({ error: "template_not_found" }), {
-      status: 404,
-    }, req);
-  }
-  if ((tpl as any).tenant_id !== tenant_id) {
-    return withCors(JSON.stringify({ error: "cross_tenant_forbidden" }), {
-      status: 403,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: "template_not_found" }),
+      { status: 404 },
+      req,
+    );
   }
 
-  // 2) member exists + role member + must be same tenant
+  if (String((tpl as any).tenant_id) !== tenant_id) {
+    return withCors(
+      JSON.stringify({ error: "cross_tenant_forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  // 2) member exists in this tenant
   const { data: mem, error: mErr } = await adminClient
-    .from("profiles")
-    .select("id, role, tenant_id")
+    .from("members")
+    .select("id, tenant_id, user_id, role")
     .eq("id", member_id)
+    .eq("tenant_id", tenant_id)
     .maybeSingle();
 
   if (mErr) {
@@ -263,33 +301,43 @@ serve(async (req) => {
       req,
     );
   }
+
   if (!mem) {
-    return withCors(JSON.stringify({ error: "member_not_found" }), {
-      status: 404,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: "member_not_found" }),
+      { status: 404 },
+      req,
+    );
   }
-  if ((mem as any).role !== "member") {
+
+  if (String((mem as any).role ?? "") !== "member") {
     return withCors(
       JSON.stringify({ error: "not_a_member" }),
       { status: 400 },
       req,
     );
   }
-  if ((mem as any).tenant_id !== tenant_id) {
-    return withCors(JSON.stringify({ error: "cross_tenant_member" }), {
-      status: 403,
-    }, req);
+
+  const memberProfileUserId = String((mem as any).user_id ?? "");
+  if (!memberProfileUserId) {
+    return withCors(
+      JSON.stringify({ error: "member_profile_link_missing" }),
+      { status: 400 },
+      req,
+    );
   }
 
   // 3) choose coach_id: body.coach_id OR template.coach_id
   const coach_id = coach_id_raw ?? (tpl as any).coach_id ?? null;
   if (!coach_id) {
-    return withCors(JSON.stringify({ error: "coach_required" }), {
-      status: 400,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: "coach_required" }),
+      { status: 400 },
+      req,
+    );
   }
 
-  // 4) validate coach exists + same tenant (if coaches are tenant-scoped)
+  // 4) validate coach exists and belongs to tenant
   const { data: coach, error: cErr } = await adminClient
     .from("coaches")
     .select("id, tenant_id")
@@ -303,26 +351,31 @@ serve(async (req) => {
       req,
     );
   }
+
   if (!coach) {
-    return withCors(JSON.stringify({ error: "coach_not_found" }), {
-      status: 404,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: "coach_not_found" }),
+      { status: 404 },
+      req,
+    );
   }
 
-  if ((coach as any).tenant_id && (coach as any).tenant_id !== tenant_id) {
-    return withCors(JSON.stringify({ error: "cross_tenant_coach" }), {
-      status: 403,
-    }, req);
+  if ((coach as any).tenant_id && String((coach as any).tenant_id) !== tenant_id) {
+    return withCors(
+      JSON.stringify({ error: "cross_tenant_coach" }),
+      { status: 403 },
+      req,
+    );
   }
 
-  // 5) insert assignment (tenant scoped)
+  // 5) insert assignment
   const { data: assignment, error: insErr } = await adminClient
     .from("workout_template_assignments")
     .insert({
       tenant_id,
       template_id,
       coach_id,
-      member_id,
+      member_id, // members.id
       message: adminMessage || null,
       status: "sent",
     })
@@ -339,13 +392,12 @@ serve(async (req) => {
     );
   }
 
-  // ✅ Predefined notification title/body
   const templateName = (tpl as any).name ?? "Πρόγραμμα";
   const notifTitle = "Νέο πρόγραμμα προπόνησης";
   let notifBody =
     `Σου ανατέθηκε το template: ${templateName}. Άνοιξε την εφαρμογή για να το δεις.`;
+
   if (adminMessage) {
-    // optional: add admin message as extra line
     notifBody += `\n\nΜήνυμα προπονητή: ${adminMessage}`;
   }
 
@@ -357,13 +409,12 @@ serve(async (req) => {
     sentAt: new Date().toISOString(),
   };
 
-  // ✅ Store inbox notification
-  // (service role bypasses RLS)
+  // inbox notification should go to the real profile/auth user id
   const { error: inboxErr } = await adminClient
     .from("user_notifications")
     .insert({
       tenant_id,
-      user_id: member_id,
+      user_id: memberProfileUserId,
       title: notifTitle,
       body: notifBody,
       type: "workout",
@@ -372,7 +423,6 @@ serve(async (req) => {
     });
 
   if (inboxErr) {
-    // assignment succeeded; still return ok but report inbox failure
     return withCors(
       JSON.stringify({
         ok: true,
@@ -385,11 +435,11 @@ serve(async (req) => {
     );
   }
 
-  // ✅ Push notification (best effort)
+  // push should also use the real profile/auth user id
   const pushRes = await sendExpoPush({
     admin: adminClient,
     tenant_id,
-    user_id: member_id,
+    user_id: memberProfileUserId,
     title: notifTitle,
     body: notifBody,
     data: notifData,

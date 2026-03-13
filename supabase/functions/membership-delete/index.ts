@@ -10,6 +10,7 @@ const ALLOWED = new Set<string>([
   "https://mycreatorapp.cloudtec.gr",
   "https://ctgym.cloudtec.gr",
 ]);
+
 function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";
   const allowOrigin = ALLOWED.has(origin) ? origin : "";
@@ -18,11 +19,12 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Vary": "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
+
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
   return new Response(body, {
     ...init,
@@ -58,40 +60,39 @@ const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 async function getAuth(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
+
   const anon = createClient(URL, ANON, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
   });
-  const { data: { user } } = await anon.auth.getUser();
-  if (!user) return { error: "unauthorized" };
-  const { data: prof } = await anon.from("profiles").select("tenant_id, role")
-    .eq("id", user.id).maybeSingle();
-  if (!prof) return { error: "profile_not_found" };
-  const isAdmin = user.app_metadata?.role === "admin" ||
-    (prof as any).role === "admin";
-  return { tenantId: (prof as any).tenant_id as string, isAdmin };
+
+  const {
+    data: { user },
+    error,
+  } = await anon.auth.getUser();
+
+  if (error || !user) return { error: "unauthorized" as const };
+
+  return { anon, user };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
+
   if (req.method !== "POST") {
     return withCors("Method not allowed", { status: 405 }, req);
   }
 
   const auth = await getAuth(req);
-  if ((auth as any).error) {
-    return withCors(JSON.stringify({ error: (auth as any).error }), {
-      status: 401,
-    }, req);
-  }
-  const { tenantId, isAdmin } = auth as { tenantId: string; isAdmin: boolean };
-  if (!isAdmin) {
+  if ("error" in auth) {
     return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
+      JSON.stringify({ error: auth.error }),
+      { status: 401 },
       req,
     );
   }
+
+  const { anon, user } = auth;
 
   let body: any;
   try {
@@ -104,7 +105,9 @@ serve(async (req) => {
     );
   }
 
-  const id = String(body?.id ?? "");
+  const id = String(body?.id ?? "").trim();
+  const tenantId = String(body?.tenant_id ?? "").trim();
+
   if (!id) {
     return withCors(
       JSON.stringify({ error: "id_required" }),
@@ -113,9 +116,55 @@ serve(async (req) => {
     );
   }
 
-  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+  if (!tenantId) {
+    return withCors(
+      JSON.stringify({ error: "tenant_required" }),
+      { status: 400 },
+      req,
+    );
+  }
 
-  // ✅ subscription gate (service role bypasses RLS)
+  const { data: callerTenantUser, error: callerTenantUserErr } = await anon
+    .from("tenant_users")
+    .select("tenant_id, user_id, role")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (callerTenantUserErr) {
+    return withCors(
+      JSON.stringify({ error: callerTenantUserErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_access_denied" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const callerRole = String(callerTenantUser.role ?? "").toLowerCase();
+  const isAdmin =
+    callerRole === "admin" ||
+    callerRole === "owner" ||
+    user.app_metadata?.role === "admin";
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const admin = createClient(URL, SERVICE, {
+    auth: { persistSession: false },
+  });
+
   try {
     await assertTenantActive(admin, tenantId);
   } catch (e: any) {
@@ -129,7 +178,6 @@ serve(async (req) => {
     );
   }
 
-  // Verify tenant ownership
   const { data: existing, error: exErr } = await admin
     .from("memberships")
     .select("id, tenant_id")
@@ -137,17 +185,26 @@ serve(async (req) => {
     .maybeSingle();
 
   if (exErr || !existing) {
-    return withCors(JSON.stringify({ error: exErr?.message ?? "not_found" }), {
-      status: 404,
-    }, req);
-  }
-  if (existing.tenant_id !== tenantId) {
-    return withCors(JSON.stringify({ error: "tenant_mismatch" }), {
-      status: 403,
-    }, req);
+    return withCors(
+      JSON.stringify({ error: exErr?.message ?? "not_found" }),
+      { status: 404 },
+      req,
+    );
   }
 
-  const { error } = await admin.from("memberships").delete().eq("id", id);
+  if (String(existing.tenant_id) !== tenantId) {
+    return withCors(
+      JSON.stringify({ error: "tenant_mismatch" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const { error } = await admin
+    .from("memberships")
+    .delete()
+    .eq("id", id);
+
   if (error) {
     return withCors(
       JSON.stringify({ error: error.message }),
@@ -156,5 +213,9 @@ serve(async (req) => {
     );
   }
 
-  return withCors(JSON.stringify({ ok: true }), { status: 200 }, req);
+  return withCors(
+    JSON.stringify({ ok: true }),
+    { status: 200 },
+    req,
+  );
 });

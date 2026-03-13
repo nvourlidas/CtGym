@@ -14,12 +14,13 @@ function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";
   const allowOrigin = ALLOWED.has(origin) ? origin : "";
   const reqHdrs = req.headers.get("access-control-request-headers") ?? "";
+
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -58,48 +59,43 @@ const SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 async function getAuthContext(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
+
   const supa = createClient(URL, ANON, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
   });
 
-  const { data: { user } } = await supa.auth.getUser();
-  if (!user) return { error: "unauthorized" as const };
+  const {
+    data: { user },
+    error: userErr,
+  } = await supa.auth.getUser();
 
-  const { data: prof, error: pErr } = await supa
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .maybeSingle();
+  if (userErr || !user) return { error: "unauthorized" as const };
 
-  if (pErr || !prof) return { error: "profile_not_found" as const };
-
-  const isAdmin = user.app_metadata?.role === "admin" || prof.role === "admin";
-  return { user, isAdmin };
+  return { supa, user };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
-  if (req.method !== "POST") {
-    return withCors(JSON.stringify({ error: "method_not_allowed" }), {
-      status: 405,
-    }, req);
-  }
 
-  const auth = await getAuthContext(req);
-  if ((auth as any).error) {
-    return withCors(JSON.stringify({ error: (auth as any).error }), {
-      status: 401,
-    }, req);
-  }
-  const { isAdmin } = auth as { isAdmin: boolean };
-  if (!isAdmin) {
+  if (req.method !== "POST") {
     return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
+      JSON.stringify({ error: "method_not_allowed" }),
+      { status: 405 },
       req,
     );
   }
+
+  const auth = await getAuthContext(req);
+  if ("error" in auth) {
+    return withCors(
+      JSON.stringify({ error: auth.error }),
+      { status: 401 },
+      req,
+    );
+  }
+
+  const { supa, user } = auth;
 
   let body: any;
   try {
@@ -121,11 +117,76 @@ serve(async (req) => {
     );
   }
 
-  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+  const admin = createClient(URL, SERVICE, {
+    auth: { persistSession: false },
+  });
 
-  // ✅ subscription gate (service role bypasses RLS)
+  // 1) Load template first so we know its tenant
+  const { data: existing, error: exErr } = await admin
+    .from("workout_templates")
+    .select("id, tenant_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (exErr) {
+    return withCors(
+      JSON.stringify({ error: exErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!existing) {
+    return withCors(
+      JSON.stringify({ error: "not_found" }),
+      { status: 404 },
+      req,
+    );
+  }
+
+  const tenantId = String(existing.tenant_id);
+
+  // 2) Caller must belong to the same tenant and be admin/owner
+  const { data: callerTenantUser, error: callerTenantUserErr } = await supa
+    .from("tenant_users")
+    .select("tenant_id, user_id, role")
+    .eq("tenant_id", tenantId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (callerTenantUserErr) {
+    return withCors(
+      JSON.stringify({ error: callerTenantUserErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_access_denied" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const callerRole = String(callerTenantUser.role ?? "").toLowerCase();
+  const isAdmin =
+    callerRole === "admin" ||
+    callerRole === "owner" ||
+    user.app_metadata?.role === "admin";
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  // 3) Subscription gate
   try {
-    await assertTenantActive(admin, id); // or tenant_id (same here)
+    await assertTenantActive(admin, tenantId);
   } catch (e: any) {
     return withCors(
       JSON.stringify({
@@ -137,39 +198,16 @@ serve(async (req) => {
     );
   }
 
-  // ✅ ensure template exists
-  const { data: existing, error: exErr } = await admin
-    .from("workout_templates")
-    .select("id")
-    .eq("id", id)
-    .maybeSingle();
-
-  if (exErr) {
-    return withCors(
-      JSON.stringify({ error: exErr.message }),
-      { status: 400 },
-      req,
-    );
-  }
-  if (!existing) {
-    return withCors(
-      JSON.stringify({ error: "not_found" }),
-      { status: 404 },
-      req,
-    );
-  }
-
-  // ✅ delete assignments (optional table)
-  // Preferred column name in the NEW model:
+  // 4) Delete assignments first (if table exists / used)
   await admin
     .from("workout_template_assignments")
     .delete()
     .eq("template_id", id);
 
-  // If your table still uses the old column name, use this instead:
+  // If your DB still uses the old column name instead, use this:
   // await admin.from("workout_template_assignments").delete().eq("template_workout_id", id);
 
-  // ✅ delete template (cascade deletes exercises + sets)
+  // 5) Delete template (exercises + sets should cascade)
   const { error: delErr } = await admin
     .from("workout_templates")
     .delete()
@@ -183,5 +221,9 @@ serve(async (req) => {
     );
   }
 
-  return withCors(JSON.stringify({ ok: true }), { status: 200 }, req);
+  return withCors(
+    JSON.stringify({ ok: true }),
+    { status: 200 },
+    req,
+  );
 });

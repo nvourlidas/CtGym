@@ -215,7 +215,7 @@ useEffect(() => {
         */
         if (variant === "members") {
           const { count, error } = await supabase
-            .from("profiles")
+            .from("members")
             .select("id", { count: "exact", head: true })
             .eq("tenant_id", tenantId)
             .eq("role", "member");

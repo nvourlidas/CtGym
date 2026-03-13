@@ -21,7 +21,7 @@ function getInitialTheme(): ThemeMode {
 function applyTheme(mode: ThemeMode) {
   document.documentElement.dataset.theme = mode;
   localStorage.setItem('theme', mode);
-  window.dispatchEvent(new Event('storage')); 
+  window.dispatchEvent(new Event('storage'));
 }
 
 type PlanTier = 'free' | 'starter' | 'pro';
@@ -126,18 +126,25 @@ export default function AppShell() {
 
   const onSubscribe = async (planId: string) => {
     if (!profile?.tenant_id) return;
-    setPlansBusy(true); setPlansError(null);
+    setPlansBusy(true);
+    setPlansError(null);
+
     try {
       const { data, error } = await supabase.functions.invoke('viva-create-checkout', {
         body: {
-          tenant_id: profile.tenant_id, plan_id: planId,
-          customer_email: profile.email ?? null, customer_full_name: profile.full_name ?? null,
+          tenant_id: profile.tenant_id,
+          plan_id: planId,
+          customer_email: profile?.email ?? null,
+          customer_full_name: profile?.full_name ?? null,
           request_lang: 'el',
         },
       });
+
       if (error) throw error;
+
       const url = data?.checkoutUrl ?? data?.checkout_url;
       if (!url) throw new Error('Δεν επιστράφηκε checkout url από Viva.');
+
       window.open(url, '_blank');
     } catch (e: any) {
       setPlansError(e?.message || 'Αποτυχία εκκίνησης πληρωμής.');
@@ -267,6 +274,7 @@ export default function AppShell() {
 // ─────────────────────────────────────────────
 function SidebarNav() {
   const { profile, subscription } = useAuth();
+  const sidebarDisplayName = profile?.display_name ?? 'Dashboard';
   const role = profile?.role ?? 'member';
   const location = useLocation();
 
@@ -295,7 +303,7 @@ function SidebarNav() {
           <div className="min-w-0">
             <div className="text-[11px] font-bold uppercase tracking-widest text-text-secondary">Admin</div>
             <div className="text-xs font-semibold text-text-primary truncate">
-              {profile?.full_name?.split(' ')[0] ?? 'Dashboard'}
+              {sidebarDisplayName.split(' ')[0]}
             </div>
           </div>
         </div>
@@ -339,10 +347,10 @@ function SidebarNav() {
       <div className="shrink-0 border-t border-border/10 px-3 py-3">
         <div className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl">
           <div className="w-7 h-7 rounded-full bg-primary/20 border border-primary/20 flex items-center justify-center text-[11px] font-bold text-primary uppercase shrink-0">
-            {(profile?.full_name?.[0] ?? profile?.email?.[0] ?? '?')}
+            {(profile?.display_name?.[0] ?? '?')}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-xs font-semibold text-text-primary truncate">{profile?.full_name ?? '—'}</div>
+            <div className="text-xs font-semibold text-text-primary truncate">{sidebarDisplayName}</div>
             <div className="text-[10px] text-text-secondary truncate">{profile?.role}</div>
           </div>
         </div>
@@ -443,14 +451,15 @@ function NavItem({
 // UserMenu
 // ─────────────────────────────────────────────
 function UserMenu({ theme, onToggleTheme }: { theme: ThemeMode; onToggleTheme: () => void }) {
-  const { session, profile } = useAuth();
+  const { profile } = useAuth();
+  const displayName = profile?.display_name ?? 'Account';
   const [open, setOpen] = useState(false);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => { if (!boxRef.current?.contains(e.target as Node)) setOpen(false); };
-    const onKey  = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
@@ -458,9 +467,9 @@ function UserMenu({ theme, onToggleTheme }: { theme: ThemeMode; onToggleTheme: (
 
   const signOut = async () => { await supabase.auth.signOut(); window.location.href = '/login'; };
 
-  const initials = profile?.full_name
-    ? profile.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
-    : (session?.user?.email?.[0] ?? '?').toUpperCase();
+const initials = profile?.full_name
+  ? profile.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
+  : (profile?.email?.[0] ?? '?').toUpperCase();
 
   return (
     <div className="relative" ref={boxRef}>
@@ -472,14 +481,14 @@ function UserMenu({ theme, onToggleTheme }: { theme: ThemeMode; onToggleTheme: (
           {initials}
         </div>
         <span className="text-xs font-medium text-text-primary hidden sm:block max-w-25 truncate">
-          {profile?.full_name?.split(' ')[0] || session?.user?.email?.split('@')[0] || 'Account'}
+          {displayName.split(' ')[0]}
         </span>
         <ChevronDown className={`h-3 w-3 text-text-secondary transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
         <div className="absolute right-0 mt-2 w-56 rounded-xl border border-border/10 bg-secondary-background shadow-xl overflow-hidden z-50"
-             style={{ animation: 'menuIn 0.15s ease' }}>
+          style={{ animation: 'menuIn 0.15s ease' }}>
 
           {/* User info */}
           <div className="px-4 py-3 border-b border-border/10">
@@ -488,8 +497,8 @@ function UserMenu({ theme, onToggleTheme }: { theme: ThemeMode; onToggleTheme: (
                 {initials}
               </div>
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-text-primary truncate">{profile?.full_name || '—'}</div>
-                <div className="text-[11px] text-text-secondary truncate">{session?.user?.email}</div>
+                <div className="text-sm font-semibold text-text-primary truncate">{displayName}</div>
+                <div className="text-[11px] text-text-secondary truncate">{profile?.email}</div>
               </div>
             </div>
             <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-border/10 bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-text-secondary">

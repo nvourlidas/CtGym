@@ -1,9 +1,7 @@
-// supabase/functions/member-create/index.ts
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
-/** 🔐 Set your allowed origins here */
 const ALLOWED = new Set<string>([
   "http://localhost:5173",
   "http://127.0.0.1:5173",
@@ -11,7 +9,6 @@ const ALLOWED = new Set<string>([
   "https://ctgym.cloudtec.gr",
 ]);
 
-/** Build proper CORS headers for this request */
 function buildCors(req: Request) {
   const origin = req.headers.get("origin") ?? "";
   const allowOrigin = ALLOWED.has(origin) ? origin : "";
@@ -27,7 +24,6 @@ function buildCors(req: Request) {
   };
 }
 
-/** Always respond with CORS headers */
 function withCors(body: BodyInit | null, init: ResponseInit, req: Request) {
   return new Response(body, {
     ...init,
@@ -55,9 +51,7 @@ async function assertTenantActive(admin: any, tenantId: string) {
   }
 }
 
-/** ✅ Get effective max_members for tenant (NULL = unlimited). Falls back to Free plan. */
 async function getEffectiveMaxMembers(admin: any, tenantId: string) {
-  // 1) try active/trial/past_due plan
   const { data: sub, error: subErr } = await admin
     .from("tenant_subscriptions")
     .select("plan_id, status")
@@ -67,7 +61,7 @@ async function getEffectiveMaxMembers(admin: any, tenantId: string) {
 
   if (subErr) throw new Error(subErr.message);
 
-  const planId = sub?.plan_id ?? "free"; // 🔁 change if your free plan id is different
+  const planId = sub?.plan_id ?? "free";
 
   const { data: plan, error: planErr } = await admin
     .from("subscription_plans")
@@ -77,15 +71,12 @@ async function getEffectiveMaxMembers(admin: any, tenantId: string) {
 
   if (planErr) throw new Error(planErr.message);
 
-  // If free plan row is missing or max_members null, treat as unlimited only if truly null.
-  // (Normally: Free=25, Starter=120, Pro=NULL)
   return plan?.max_members ?? null;
 }
 
-/** ✅ Count current members (profiles with role='member') for tenant */
 async function countTenantMembers(admin: any, tenantId: string) {
   const { count, error } = await admin
-    .from("profiles")
+    .from("members")
     .select("id", { count: "exact", head: true })
     .eq("tenant_id", tenantId)
     .eq("role", "member");
@@ -94,18 +85,41 @@ async function countTenantMembers(admin: any, tenantId: string) {
   return count ?? 0;
 }
 
+async function findAuthUserByEmail(admin: any, email: string) {
+  let page = 1;
+  const perPage = 200;
+  const normalized = email.trim().toLowerCase();
+
+  while (true) {
+    const { data, error } = await admin.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+
+    if (error) throw new Error(error.message);
+
+    const users = data?.users ?? [];
+    const found = users.find((u: any) =>
+      String(u.email ?? "").trim().toLowerCase() === normalized
+    );
+
+    if (found) return found;
+    if (users.length < perPage) break;
+    page += 1;
+  }
+
+  return null;
+}
+
 serve(async (req) => {
-  // 1) Preflight
   if (req.method === "OPTIONS") {
     return withCors(null, { status: 204 }, req);
   }
 
-  // 2) Validate method
   if (req.method !== "POST") {
     return withCors("Method not allowed", { status: 405 }, req);
   }
 
-  // 3) Parse + validate body
   let payload: any;
   try {
     payload = await req.json();
@@ -130,7 +144,7 @@ serve(async (req) => {
     notes,
   } = payload || {};
 
-  if (!email || !password || !tenant_id) {
+  if (!email || !tenant_id) {
     return withCors(
       JSON.stringify({ error: "missing_fields" }),
       { status: 400 },
@@ -138,14 +152,12 @@ serve(async (req) => {
     );
   }
 
-  // 4) Admin client
   const url = Deno.env.get("SUPABASE_URL")!;
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const admin = createClient(url, serviceKey, {
     auth: { persistSession: false },
   });
 
-  // ✅ subscription gate (service role bypasses RLS)
   try {
     await assertTenantActive(admin, String(tenant_id));
   } catch (e: any) {
@@ -159,7 +171,6 @@ serve(async (req) => {
     );
   }
 
-  // ✅ PLAN LIMIT: members (profiles)
   try {
     const maxMembers = await getEffectiveMaxMembers(admin, String(tenant_id));
     if (maxMembers !== null) {
@@ -184,70 +195,195 @@ serve(async (req) => {
     );
   }
 
-  // 5) Create auth user
-  const { data: created, error: createErr } = await admin.auth.admin.createUser(
-    {
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: {
-        full_name,
-        phone,
-      },
-    },
-  );
+  let user: any = null;
+  let createdNow = false;
+  let reusedExistingAuthUser = false;
 
-  if (createErr || !created?.user) {
+  try {
+    user = await findAuthUserByEmail(admin, String(email));
+  } catch (e: any) {
     return withCors(
-      JSON.stringify({
-        error: createErr?.message ?? "create_user_failed",
-      }),
+      JSON.stringify({ error: e?.message ?? "auth_lookup_failed" }),
+      { status: 500 },
+      req,
+    );
+  }
+
+  if (user) {
+    reusedExistingAuthUser = true;
+  }
+
+  if (!user) {
+    if (!password) {
+      return withCors(
+        JSON.stringify({ error: "Το password είναι απαραίτητο για νέο χρήστη" }),
+        { status: 400 },
+        req,
+      );
+    }
+
+    const { data: created, error: createErr } = await admin.auth.admin
+      .createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: {
+          full_name,
+          phone,
+        },
+      });
+
+    if (createErr || !created?.user) {
+      return withCors(
+        JSON.stringify({
+          error: createErr?.message ?? "Αποτυχία δημιουργίας χρήστη",
+        }),
+        { status: 400 },
+        req,
+      );
+    }
+
+    user = created.user;
+    createdNow = true;
+  }
+
+  const userId = user.id;
+
+  const { data: existingProfile, error: profileFetchErr } = await admin
+    .from("profiles")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profileFetchErr) {
+    return withCors(
+      JSON.stringify({ error: profileFetchErr.message }),
       { status: 400 },
       req,
     );
   }
 
-  // 6) Insert profile
-  const userId = created.user.id;
+  if (!existingProfile) {
+    const { error: profErr } = await admin.from("profiles").insert({
+      id: userId,
+    });
 
-  // ensure numeric or null for max_dropin_debt
+    if (profErr) {
+      if (createdNow) await admin.auth.admin.deleteUser(userId);
+      return withCors(
+        JSON.stringify({ error: profErr.message }),
+        { status: 400 },
+        req,
+      );
+    }
+  }
+
+  const { data: existingTenantUser, error: tenantUserErr } = await admin
+    .from("tenant_users")
+    .select("id")
+    .eq("tenant_id", tenant_id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (tenantUserErr) {
+    if (createdNow) await admin.auth.admin.deleteUser(userId);
+    return withCors(
+      JSON.stringify({ error: tenantUserErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!existingTenantUser) {
+    const { error: insertTenantUserErr } = await admin
+      .from("tenant_users")
+      .insert({
+        tenant_id,
+        user_id: userId,
+        role: "member",
+      });
+
+    if (insertTenantUserErr) {
+      if (createdNow) await admin.auth.admin.deleteUser(userId);
+      return withCors(
+        JSON.stringify({ error: insertTenantUserErr.message }),
+        { status: 400 },
+        req,
+      );
+    }
+  }
+
   let maxDropinValue: number | null = null;
   if (
-    max_dropin_debt !== undefined && max_dropin_debt !== null &&
+    max_dropin_debt !== undefined &&
+    max_dropin_debt !== null &&
     max_dropin_debt !== ""
   ) {
     const n = Number(max_dropin_debt);
     maxDropinValue = Number.isFinite(n) ? n : null;
   }
 
-  const { error: profErr } = await admin.from("profiles").insert({
-    id: userId,
-    full_name,
-    phone,
-    tenant_id,
-    role: "member",
-    email,
-    birth_date: birth_date || null,
-    address: address || null,
-    afm: afm || null,
-    max_dropin_debt: maxDropinValue,
-    notes: notes || null,
-  });
+  const { data: existingMember, error: existingMemberErr } = await admin
+    .from("members")
+    .select("id")
+    .eq("tenant_id", tenant_id)
+    .eq("user_id", userId)
+    .maybeSingle();
 
-  if (profErr) {
-    // rollback auth user if profile insert fails
-    await admin.auth.admin.deleteUser(userId);
+  if (existingMemberErr) {
     return withCors(
-      JSON.stringify({ error: profErr.message }),
+      JSON.stringify({ error: existingMemberErr.message }),
       { status: 400 },
       req,
     );
   }
 
-  // 7) Success
-  return withCors(
-    JSON.stringify({ ok: true, id: userId }),
-    { status: 200 },
-    req,
-  );
+  if (existingMember) {
+    return withCors(
+      JSON.stringify({
+        error: "Υπάρχει ήδη μέλος με αυτό το email",
+        member_id: existingMember.id,
+      }),
+      { status: 409 },
+      req,
+    );
+  }
+
+  const { data: memberRow, error: memberErr } = await admin
+    .from("members")
+    .insert({
+      tenant_id,
+      user_id: userId,
+      full_name: full_name || null,
+      phone: phone || null,
+      role: "member",
+      email: email || null,
+      birth_date: birth_date || null,
+      address: address || null,
+      afm: afm || null,
+      max_dropin_debt: maxDropinValue,
+      notes: notes || null,
+    })
+    .select("id")
+    .single();
+
+  if (memberErr) {
+    if (createdNow) await admin.auth.admin.deleteUser(userId);
+    return withCors(
+      JSON.stringify({ error: memberErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+return withCors(
+  JSON.stringify({
+    ok: true,
+    id: memberRow.id,
+    user_id: userId,
+    reused_existing_auth_user: reusedExistingAuthUser,
+  }),
+  { status: 200 },
+  req,
+);
 });

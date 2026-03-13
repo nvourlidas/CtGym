@@ -17,8 +17,8 @@ function buildCors(req: Request) {
     "Access-Control-Allow-Origin": allowOrigin,
     Vary: "Origin",
     "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": reqHdrs ||
-      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      reqHdrs || "authorization, x-client-info, apikey, content-type",
     "Access-Control-Max-Age": "86400",
   };
 }
@@ -59,7 +59,11 @@ type IncomingSet = {
   reps?: string | number | null;
   weight?: string | number | null;
 };
-type IncomingItem = { wger_id: number; sets?: IncomingSet[] };
+
+type IncomingItem = {
+  wger_id: number;
+  sets?: IncomingSet[];
+};
 
 function toIntOrNull(v: unknown): number | null {
   if (v === null || v === undefined) return null;
@@ -81,58 +85,43 @@ function toNumOrNull(v: unknown): number | null {
 
 async function getAuthContext(req: Request) {
   const authHeader = req.headers.get("Authorization") ?? "";
+
   const supa = createClient(URL, ANON, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
   });
 
-  const { data: { user } } = await supa.auth.getUser();
-  if (!user) return { error: "unauthorized" as const };
+  const {
+    data: { user },
+    error: userErr,
+  } = await supa.auth.getUser();
 
-  const { data: prof, error: pErr } = await supa
-    .from("profiles")
-    .select("role, tenant_id")
-    .eq("id", user.id)
-    .maybeSingle();
+  if (userErr || !user) return { error: "unauthorized" as const };
 
-  if (pErr || !prof) return { error: "profile_not_found" as const };
-
-  const isAdmin = user.app_metadata?.role === "admin" || prof.role === "admin";
-  return { user, isAdmin, tenant_id: prof.tenant_id as string | null };
+  return { supa, user };
 }
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return withCors(null, { status: 204 }, req);
+
   if (req.method !== "POST") {
-    return withCors(JSON.stringify({ error: "method_not_allowed" }), {
-      status: 405,
-    }, req);
-  }
-
-  const auth = await getAuthContext(req);
-  if ((auth as any).error) {
-    return withCors(JSON.stringify({ error: (auth as any).error }), {
-      status: 401,
-    }, req);
-  }
-
-  const { user, isAdmin, tenant_id } = auth as {
-    user: any;
-    isAdmin: boolean;
-    tenant_id: string | null;
-  };
-  if (!isAdmin) {
     return withCors(
-      JSON.stringify({ error: "forbidden" }),
-      { status: 403 },
+      JSON.stringify({ error: "method_not_allowed" }),
+      { status: 405 },
       req,
     );
   }
-  if (!tenant_id) {
-    return withCors(JSON.stringify({ error: "tenant_required" }), {
-      status: 400,
-    }, req);
+
+  const auth = await getAuthContext(req);
+  if ("error" in auth) {
+    return withCors(
+      JSON.stringify({ error: auth.error }),
+      { status: 401 },
+      req,
+    );
   }
+
+  const { supa, user } = auth;
 
   let body: any;
   try {
@@ -146,6 +135,7 @@ serve(async (req) => {
   }
 
   const id = String(body?.id ?? "").trim();
+  const tenant_id = String(body?.tenant_id ?? "").trim();
   const nameRaw = body?.name;
   const notesRaw = body?.notes;
   const coachRaw = body?.coach_id;
@@ -159,14 +149,61 @@ serve(async (req) => {
     );
   }
 
+  if (!tenant_id) {
+    return withCors(
+      JSON.stringify({ error: "tenant_required" }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  const { data: callerTenantUser, error: callerTenantUserErr } = await supa
+    .from("tenant_users")
+    .select("tenant_id, user_id, role")
+    .eq("tenant_id", tenant_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (callerTenantUserErr) {
+    return withCors(
+      JSON.stringify({ error: callerTenantUserErr.message }),
+      { status: 400 },
+      req,
+    );
+  }
+
+  if (!callerTenantUser) {
+    return withCors(
+      JSON.stringify({ error: "tenant_access_denied" }),
+      { status: 403 },
+      req,
+    );
+  }
+
+  const callerRole = String(callerTenantUser.role ?? "").toLowerCase();
+  const isAdmin =
+    callerRole === "admin" ||
+    callerRole === "owner" ||
+    user.app_metadata?.role === "admin";
+
+  if (!isAdmin) {
+    return withCors(
+      JSON.stringify({ error: "forbidden" }),
+      { status: 403 },
+      req,
+    );
+  }
+
   const patch: Record<string, any> = {};
 
   if (nameRaw !== undefined) {
     const name = String(nameRaw ?? "").trim();
     if (!name) {
-      return withCors(JSON.stringify({ error: "name_required" }), {
-        status: 400,
-      }, req);
+      return withCors(
+        JSON.stringify({ error: "name_required" }),
+        { status: 400 },
+        req,
+      );
     }
     patch.name = name;
   }
@@ -175,10 +212,8 @@ serve(async (req) => {
     patch.notes = String(notesRaw ?? "").trim() || null;
   }
 
-  // ✅ support coach_id updates
   if (coachRaw !== undefined) {
-    const coach_id = String(coachRaw ?? "").trim() || null;
-    patch.coach_id = coach_id;
+    patch.coach_id = String(coachRaw ?? "").trim() || null;
   }
 
   const hasItems = itemsRaw !== undefined;
@@ -194,10 +229,13 @@ serve(async (req) => {
 
   if (hasItems) {
     if (!Array.isArray(items) || items.length === 0) {
-      return withCors(JSON.stringify({ error: "items_required" }), {
-        status: 400,
-      }, req);
+      return withCors(
+        JSON.stringify({ error: "items_required" }),
+        { status: 400 },
+        req,
+      );
     }
+
     for (let i = 0; i < items.length; i++) {
       const wgerId = Number(items[i]?.wger_id);
       if (!Number.isFinite(wgerId) || wgerId <= 0) {
@@ -210,11 +248,12 @@ serve(async (req) => {
     }
   }
 
-  const admin = createClient(URL, SERVICE, { auth: { persistSession: false } });
+  const admin = createClient(URL, SERVICE, {
+    auth: { persistSession: false },
+  });
 
-  // ✅ subscription gate (service role bypasses RLS)
   try {
-    await assertTenantActive(admin, tenant_id); // or tenant_id (same here)
+    await assertTenantActive(admin, tenant_id);
   } catch (e: any) {
     return withCors(
       JSON.stringify({
@@ -226,7 +265,6 @@ serve(async (req) => {
     );
   }
 
-  // ✅ Ensure template exists AND belongs to same tenant
   const { data: existing, error: exErr } = await admin
     .from("workout_templates")
     .select("id, created_by, tenant_id")
@@ -240,6 +278,7 @@ serve(async (req) => {
       req,
     );
   }
+
   if (!existing) {
     return withCors(
       JSON.stringify({ error: "not_found" }),
@@ -247,14 +286,49 @@ serve(async (req) => {
       req,
     );
   }
-  if (existing.tenant_id !== tenant_id) {
-    return withCors(JSON.stringify({ error: "cross_tenant_forbidden" }), {
-      status: 403,
-    }, req);
+
+  if (String(existing.tenant_id) !== tenant_id) {
+    return withCors(
+      JSON.stringify({ error: "cross_tenant_forbidden" }),
+      { status: 403 },
+      req,
+    );
   }
 
-  // 1) Update header
+  if (patch.coach_id) {
+    const { data: coach, error: coachErr } = await admin
+      .from("coaches")
+      .select("id, tenant_id")
+      .eq("id", patch.coach_id)
+      .maybeSingle();
+
+    if (coachErr) {
+      return withCors(
+        JSON.stringify({ error: coachErr.message }),
+        { status: 400 },
+        req,
+      );
+    }
+
+    if (!coach) {
+      return withCors(
+        JSON.stringify({ error: "coach_not_found" }),
+        { status: 404 },
+        req,
+      );
+    }
+
+    if (String(coach.tenant_id) !== tenant_id) {
+      return withCors(
+        JSON.stringify({ error: "coach_tenant_mismatch" }),
+        { status: 403 },
+        req,
+      );
+    }
+  }
+
   let updatedTemplate: any;
+
   if (Object.keys(patch).length > 0) {
     const { data: t, error: uErr } = await admin
       .from("workout_templates")
@@ -272,6 +346,7 @@ serve(async (req) => {
         req,
       );
     }
+
     updatedTemplate = t;
   } else {
     const { data: t, error: tErr } = await admin
@@ -289,24 +364,25 @@ serve(async (req) => {
         req,
       );
     }
+
     updatedTemplate = t;
   }
 
-  // 2) Replace items (if provided)
   let exCount = 0;
   let setCount = 0;
 
   if (hasItems) {
-    // delete old exercises (sets should cascade or be FK-dependent)
     const { error: delErr } = await admin
       .from("workout_template_exercises")
       .delete()
       .eq("template_id", id);
 
     if (delErr) {
-      return withCors(JSON.stringify({ error: delErr.message }), {
-        status: 400,
-      }, req);
+      return withCors(
+        JSON.stringify({ error: delErr.message }),
+        { status: 400 },
+        req,
+      );
     }
 
     const exercisesPayload = items.map((it, idx) => ({
@@ -322,7 +398,9 @@ serve(async (req) => {
 
     if (insErr || !insertedExercises) {
       return withCors(
-        JSON.stringify({ error: insErr?.message ?? "exercises_insert_failed" }),
+        JSON.stringify({
+          error: insErr?.message ?? "exercises_insert_failed",
+        }),
         { status: 400 },
         req,
       );
@@ -340,9 +418,10 @@ serve(async (req) => {
       const teId = exIdByWger.get(Number(it.wger_id));
       if (!teId) continue;
 
-      const sets = Array.isArray(it.sets) && it.sets.length
+      const sets = Array.isArray(it.sets) && it.sets.length > 0
         ? it.sets
         : [{ reps: null, weight: null }];
+
       for (let s = 0; s < sets.length; s++) {
         setsPayload.push({
           template_exercise_id: teId,
@@ -355,13 +434,16 @@ serve(async (req) => {
     }
 
     if (setsPayload.length > 0) {
-      const { error: sErr } = await admin.from("workout_template_sets").insert(
-        setsPayload,
-      );
+      const { error: sErr } = await admin
+        .from("workout_template_sets")
+        .insert(setsPayload);
+
       if (sErr) {
-        return withCors(JSON.stringify({ error: sErr.message }), {
-          status: 400,
-        }, req);
+        return withCors(
+          JSON.stringify({ error: sErr.message }),
+          { status: 400 },
+          req,
+        );
       }
     }
 

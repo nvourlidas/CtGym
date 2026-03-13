@@ -11,26 +11,26 @@ import TenantOnboardingModal from "../components/onboarding/TenantOnboardingModa
 import CreatedInfoModal from "../components/onboarding/CreatedInfoModal";
 
 const FEATURES = [
-  { icon: <Users size={14} />,       label: 'Διαχείριση μελών, συνδρομών & πληρωμών'          },
-  { icon: <CalendarDays size={14} />, label: 'Προγράμματα, κρατήσεις, παρουσίες & ιστορικό'   },
-  { icon: <BarChart3 size={14} />,    label: 'Dashboard εσόδων + reports σε πραγματικό χρόνο'  },
-  { icon: <Smartphone size={14} />,   label: 'Mobile εφαρμογή για τους πελάτες σου'            },
+  { icon: <Users size={14} />, label: 'Διαχείριση μελών, συνδρομών & πληρωμών' },
+  { icon: <CalendarDays size={14} />, label: 'Προγράμματα, κρατήσεις, παρουσίες & ιστορικό' },
+  { icon: <BarChart3 size={14} />, label: 'Dashboard εσόδων + reports σε πραγματικό χρόνο' },
+  { icon: <Smartphone size={14} />, label: 'Mobile εφαρμογή για τους πελάτες σου' },
 ];
 
 export default function LoginPage() {
-  const [email, setEmail]             = useState('');
-  const [pw, setPw]                   = useState('');
-  const [error, setError]             = useState<string | null>(null);
-  const [pending, setPending]         = useState(false);
-  const [params]                      = useSearchParams();
-  const navigate                      = useNavigate();
+  const [email, setEmail] = useState('');
+  const [pw, setPw] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
 
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [showPassword, setShowPassword]     = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  const [showForgot, setShowForgot]   = useState(false);
-  const [resetBusy, setResetBusy]     = useState(false);
-  const [resetMsg, setResetMsg]       = useState<string | null>(null);
+  const [showForgot, setShowForgot] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
 
   const [createdInfo, setCreatedInfo] = useState<{ tenantId: string; adminEmail: string } | null>(null);
 
@@ -54,16 +54,22 @@ export default function LoginPage() {
       const userId = data.user?.id;
       if (!userId) throw new Error('Δεν βρέθηκε συνεδρία χρήστη.');
 
-      const { data: profile, error: pErr } = await supabase
-        .from('profiles').select('role').eq('id', userId).maybeSingle();
-      if (pErr) throw pErr;
+      const { data: tenantUser, error: tuErr } = await supabase
+        .from('tenant_users')
+        .select('role')
+        .eq('user_id', userId)
+        .in('role', ['owner', 'admin'])
+        .limit(1)
+        .maybeSingle();
 
-      const role = profile?.role;
-      const isAdmin = role === 'owner' || role === 'admin';
+      if (tuErr) throw tuErr;
+
+      const isAdmin = !!tenantUser;
       if (!isAdmin) {
         await supabase.auth.signOut();
         throw new Error('Μόνο διαχειριστές μπορούν να συνδεθούν στην Admin εφαρμογή.');
       }
+
       navigate('/', { replace: true });
     } catch (e: any) {
       setError(e?.message || 'Αποτυχία σύνδεσης.');
@@ -135,11 +141,11 @@ export default function LoginPage() {
 
       {/* ── Logo + tagline ── */}
       <div className="relative z-10 flex flex-col items-center mb-10 text-center"
-           style={{ animation: 'loginFadeUp 0.5s ease both' }}>
+        style={{ animation: 'loginFadeUp 0.5s ease both' }}>
         <div className="relative">
           <img src={logo} alt="Cloudtec Gym" className="h-54 w-54 object-contain drop-shadow-lg" />
           {/* glow ring around logo */}
-          
+
         </div>
         <h1 className="mt-5 text-3xl font-black tracking-tight text-white">Cloudtec Gym</h1>
         <p className="text-sm text-slate-400 mt-1.5 font-light tracking-wide">Admin Platform · Διαχείριση γυμναστηρίου</p>
@@ -386,11 +392,10 @@ export default function LoginPage() {
             </div>
 
             {resetMsg && (
-              <div className={`mt-3 flex items-start gap-2 px-3.5 py-3 rounded-xl text-sm border ${
-                resetMsg.includes("Σου στείλαμε")
+              <div className={`mt-3 flex items-start gap-2 px-3.5 py-3 rounded-xl text-sm border ${resetMsg.includes("Σου στείλαμε")
                   ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
                   : "bg-red-500/10 border-red-500/20 text-red-400"
-              }`}>
+                }`}>
                 {resetMsg.includes("Σου στείλαμε") && <CheckCircle2 size={14} className="shrink-0 mt-px" />}
                 {resetMsg}
               </div>

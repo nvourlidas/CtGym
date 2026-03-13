@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
 import { RefreshCw, ChevronLeft, ChevronRight, QrCode, AlertTriangle, Loader2, CalendarDays, Clock, Zap } from 'lucide-react';
+import { useAuth } from '../auth';
 
 type SessionRow = {
   id: string; tenant_id: string; class_id: string;
@@ -28,29 +29,14 @@ function startOfTodayISO()    { const d = new Date(); d.setHours(0,0,0,0); retur
 function startOfTomorrowISO() { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()+1); return d.toISOString(); }
 
 export default function SessionQrPage() {
-  const [tenantId, setTenantId] = useState<string | null>(null);
+  const { profile } = useAuth();
+const tenantId = profile?.tenant_id ?? null;
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [index, setIndex]       = useState(0);
   const [loading, setLoading]   = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError]       = useState<string | null>(null);
 
-  // Load tenantId
-  useEffect(() => {
-    let cancelled = false;
-    async function loadTenant() {
-      const { data: auth } = await supabase.auth.getUser();
-      const userId = auth?.user?.id;
-      if (!userId) { if (!cancelled) { setTenantId(null); setLoading(false); } return; }
-      const { data, error } = await supabase.from('profiles').select('tenant_id').eq('id', userId).single();
-      if (!cancelled) {
-        if (error) { setError('Δεν βρέθηκε tenant.'); setLoading(false); return; }
-        setTenantId(data?.tenant_id ?? null);
-      }
-    }
-    loadTenant();
-    return () => { cancelled = true; };
-  }, []);
 
   async function loadTodaySessions(currentTenantId: string, isRefresh = false) {
     if (isRefresh) setRefreshing(true); else setLoading(true);

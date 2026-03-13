@@ -17,12 +17,12 @@ type SendMemberPushModalProps = {
 export default function SendMemberPushModal({
   isOpen, onClose, tenantId, tenantName, selectedMembers = [],
 }: SendMemberPushModalProps) {
-  const [title, setTitle]               = useState('Cloudtec Gym');
-  const [body, setBody]                 = useState('');
+  const [title, setTitle] = useState('Cloudtec Gym');
+  const [body, setBody] = useState('');
   const [recipientMode, setRecipientMode] = useState<RecipientMode>('selected');
-  const [loading, setLoading]           = useState(false);
-  const [errorMsg, setErrorMsg]         = useState<string | null>(null);
-  const [successMsg, setSuccessMsg]     = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -44,14 +44,19 @@ export default function SendMemberPushModal({
     if (recipientMode === 'all') {
       payload.send_to_all = true;
     } else {
-      const userIds = selectedMembers.map((m) => m.user_id).filter((x): x is string => Boolean(x));
-      if (!userIds.length) { setErrorMsg('Δεν βρέθηκαν users με συνδεδεμένο λογαριασμό για τα επιλεγμένα μέλη.'); return; }
-      payload.user_ids = userIds;
-    }
+      const userIds = selectedMembers.map((m) => m.id).filter((x): x is string => Boolean(x));
+      if (!userIds.length) {
+        setErrorMsg('Δεν βρέθηκαν users με συνδεδεμένο λογαριασμό για τα επιλεγμένα μέλη.');
+        return;
+      }
 
+      payload.send_to_all = false;
+      payload.user_ids = userIds;
+
+    }
     setLoading(true);
     try {
-      const {error } = await supabase.functions.invoke('send-push', { body: payload });
+      const { error } = await supabase.functions.invoke('send-push', { body: payload });
       if (error) { setErrorMsg(error.message ?? 'Κάτι πήγε στραβά κατά την αποστολή.'); return; }
       setSuccessMsg('Η ειδοποίηση στάλθηκε με επιτυχία!');
       setBody('');

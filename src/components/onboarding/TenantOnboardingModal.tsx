@@ -150,7 +150,7 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
             postal_code: gymInfo.postal_code.trim() || null, website: gymInfo.website.trim() || null,
             description: gymInfo.description.trim() || null, logo_url: gymInfo.logo_url.trim() || null,
           },
-          admin: { email, password: pw, full_name: admin.full_name.trim() || null, role: "owner" },
+          admin: { email, password: pw, full_name: admin.full_name.trim() || null, role: "admin" },
         },
       });
 
