@@ -3,6 +3,7 @@ import { supabase } from "../../lib/supabase";
 import {
   X, ArrowLeft, ChevronRight, Dumbbell, Info, ShieldCheck,
   Zap, MapPin, Globe, Phone, Mail, User, Lock, Building2, CheckCircle2,
+  Eye, EyeOff,
 } from "lucide-react";
 
 type StepKey = "tenant" | "gymInfo" | "admin";
@@ -19,7 +20,7 @@ type GymInfoForm = {
   postal_code: string; website: string; description: string; logo_url: string;
 };
 
-type AdminForm = { email: string; password: string; full_name: string };
+type AdminForm = { email: string; password: string; confirmPassword: string; full_name: string };
 
 const STEPS: { key: StepKey; title: string; subtitle: string; icon: React.ReactNode }[] = [
   { key: "tenant",  title: "Γυμναστήριο", subtitle: "Ξεκινήστε με το όνομα",    icon: <Dumbbell size={14} />    },
@@ -89,6 +90,77 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function PasswordInput({
+  icon, value, onChange, placeholder, autoComplete, show, onToggleShow,
+}: {
+  icon: React.ReactNode; value: string; onChange: (v: string) => void;
+  placeholder: string; autoComplete?: string; show: boolean; onToggleShow: () => void;
+}) {
+  return (
+    <div className="relative">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none flex">
+        {icon}
+      </span>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        type={show ? "text" : "password"}
+        autoComplete={autoComplete}
+        className="w-full pl-9 pr-9 py-2.5 text-sm text-slate-800 placeholder:text-slate-300
+                   bg-white border border-slate-200 rounded-xl outline-none
+                   transition-all duration-150
+                   focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100
+                   hover:border-slate-300"
+      />
+      <button
+        type="button"
+        onClick={onToggleShow}
+        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+        tabIndex={-1}
+      >
+        {show ? <EyeOff size={14} /> : <Eye size={14} />}
+      </button>
+    </div>
+  );
+}
+
+function getPasswordStrength(pw: string): { score: number; label: string; color: string } {
+  if (!pw) return { score: 0, label: "", color: "" };
+  let score = 0;
+  if (pw.length >= 8)  score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 1) return { score, label: "Πολύ αδύναμος", color: "bg-red-400" };
+  if (score === 2) return { score, label: "Αδύναμος",     color: "bg-orange-400" };
+  if (score === 3) return { score, label: "Μέτριος",      color: "bg-yellow-400" };
+  if (score === 4) return { score, label: "Ισχυρός",      color: "bg-emerald-400" };
+  return                        { score, label: "Πολύ ισχυρός", color: "bg-emerald-500" };
+}
+
+function PasswordStrength({ password }: { password: string }) {
+  const { score, label, color } = getPasswordStrength(password);
+  if (!password) return null;
+  const bars = 5;
+  return (
+    <div className="space-y-1">
+      <div className="flex gap-1">
+        {Array.from({ length: bars }).map((_, i) => (
+          <div
+            key={i}
+            className={`h-1 flex-1 rounded-full transition-all duration-300 ${i < score ? color : "bg-slate-100"}`}
+          />
+        ))}
+      </div>
+      <p className={`text-[11px] font-semibold ${score <= 1 ? "text-red-500" : score <= 2 ? "text-orange-500" : score === 3 ? "text-yellow-600" : "text-emerald-600"}`}>
+        {label}
+      </p>
+    </div>
+  );
+}
+
 export default function TenantOnboardingModal({ open, onClose, onDone, onCreated }: Props) {
   const [stepIndex, setStepIndex] = useState(0);
   const step = STEPS[stepIndex]?.key ?? "tenant";
@@ -104,7 +176,9 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
     email: "", phone: "", address: "", city: "",
     postal_code: "", website: "", description: "", logo_url: "",
   });
-  const [admin, setAdmin] = useState<AdminForm>({ email: "", password: "", full_name: "" });
+  const [admin, setAdmin] = useState<AdminForm>({ email: "", password: "", confirmPassword: "", full_name: "" });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const canClose = !pending;
   const progressPct = useMemo(() => Math.round(((stepIndex + 1) / STEPS.length) * 100), [stepIndex]);
@@ -113,7 +187,7 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
     setStepIndex(0); setPending(false); setError(null);
     setTenantName(""); setTenantId(null);
     setGymInfo({ email: "", phone: "", address: "", city: "", postal_code: "", website: "", description: "", logo_url: "" });
-    setAdmin({ email: "", password: "", full_name: "" });
+    setAdmin({ email: "", password: "", confirmPassword: "", full_name: "" });
   };
 
   const close = () => { if (!canClose) return; resetAll(); onClose(); };
@@ -137,6 +211,7 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
     if (name.length < 2) { setError("Λείπει όνομα γυμναστηρίου."); return; }
     if (!isValidEmail(email)) { setError("Βάλε ένα έγκυρο email για τον διαχειριστή."); return; }
     if (pw.length < 8) { setError("Ο κωδικός πρέπει να είναι τουλάχιστον 8 χαρακτήρες."); return; }
+    if (pw !== admin.confirmPassword) { setError("Οι κωδικοί δεν ταιριάζουν."); return; }
 
     setPending(true); setError(null);
     try {
@@ -365,7 +440,35 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
                 <IconInput icon={<Mail size={14} />} value={admin.email} onChange={(v) => setAdmin((p) => ({ ...p, email: v }))} placeholder="admin@yourgym.gr" type="email" />
               </Field>
               <Field label="Κωδικός">
-                <IconInput icon={<Lock size={14} />} value={admin.password} onChange={(v) => setAdmin((p) => ({ ...p, password: v }))} placeholder="Τουλάχιστον 8 χαρακτήρες" type="password" autoComplete="new-password" />
+                <PasswordInput
+                  icon={<Lock size={14} />}
+                  value={admin.password}
+                  onChange={(v) => setAdmin((p) => ({ ...p, password: v }))}
+                  placeholder="Τουλάχιστον 8 χαρακτήρες"
+                  autoComplete="new-password"
+                  show={showPassword}
+                  onToggleShow={() => setShowPassword((s) => !s)}
+                />
+                <PasswordStrength password={admin.password} />
+              </Field>
+              <Field label="Επιβεβαίωση κωδικού">
+                <PasswordInput
+                  icon={<Lock size={14} />}
+                  value={admin.confirmPassword}
+                  onChange={(v) => setAdmin((p) => ({ ...p, confirmPassword: v }))}
+                  placeholder="Επανάληψη κωδικού"
+                  autoComplete="new-password"
+                  show={showConfirmPassword}
+                  onToggleShow={() => setShowConfirmPassword((s) => !s)}
+                />
+                {admin.confirmPassword && admin.password !== admin.confirmPassword && (
+                  <p className="text-[11px] font-semibold text-red-500">Οι κωδικοί δεν ταιριάζουν</p>
+                )}
+                {admin.confirmPassword && admin.password === admin.confirmPassword && admin.confirmPassword.length > 0 && (
+                  <p className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
+                    <CheckCircle2 size={11} /> Οι κωδικοί ταιριάζουν
+                  </p>
+                )}
               </Field>
               <div className="flex items-start gap-2.5 px-4 py-3 bg-emerald-50 border border-emerald-100 rounded-xl">
                 <ShieldCheck size={14} className="text-emerald-500 shrink-0 mt-px" />
