@@ -409,13 +409,15 @@ serve(async (req) => {
 
     if (chosenMembership) {
       finalType = "membership";
-    } else if (cls.drop_in_enabled) {
-      finalType = "drop_in";
     } else {
+      // Return an error so the caller can decide whether to fall back to drop-in.
+      // Do NOT auto-book as drop_in here; the admin UI will prompt the user first.
+      // Content-Type: application/json is required so supabase-js parses the body
+      // into res.data (instead of returning a raw string via res.text()).
       return withCors(
         req,
         JSON.stringify({ error: "no_active_membership" }),
-        { status: 409 },
+        { status: 200, headers: { "Content-Type": "application/json" } },
       );
     }
   }

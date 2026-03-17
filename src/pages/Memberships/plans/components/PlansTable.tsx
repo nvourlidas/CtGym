@@ -1,5 +1,5 @@
 import { Pencil, Loader2, CreditCard, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { Plan, Category } from '../types';
+import type { Plan } from '../types';
 import { formatMoney, formatDateDMY, renderBenefits, PLAN_KIND_LABEL, PLAN_KIND_COLOR } from '../planUtils';
 import CategoryChip from './CategoryChip';
 import IconButton from './IconButton';

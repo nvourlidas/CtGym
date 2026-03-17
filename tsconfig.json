@@ -18,6 +18,7 @@
       "react"
     ],
     "moduleResolution": "node",
+    "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"]
     }

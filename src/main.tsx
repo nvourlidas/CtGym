@@ -33,6 +33,10 @@ import SessionQrPage from './pages/SessionQrPage';
 import QuestionnairesPage from './pages/Questionnaires/QuestionnairesPage';
 import QuestionnaireBuilderPage from './pages/Questionnaires/QuestionnaireBuilderPage';
 import OpeningHours from './pages/Settings/OpeningHoursPage';
+import AccountInfoPage from './pages/Settings/AccountInfoPage';
+import HelpSupportPage from './pages/Settings/HelpSupportPage';
+import PaymentSuccessPage from './pages/Settings/PaymentSuccessPage';
+import PaymentFailedPage from './pages/Settings/PaymentFailedPage';
 
 //test program
 import ProgramsPage2 from './pages/Classes/ProgramsPage2';
@@ -72,6 +76,10 @@ const router = createBrowserRouter([
       { path: '/questionnaires/new', element: <QuestionnaireBuilderPage /> },
       { path: '/questionnaires/:id', element: <QuestionnaireBuilderPage /> },
       { path: 'settings/opninghours', element: <OpeningHours /> },
+      { path: 'settings/account', element: <AccountInfoPage /> },
+      { path: 'settings/billing/success', element: <PaymentSuccessPage /> },
+      { path: 'settings/billing/failed', element: <PaymentFailedPage /> },
+      { path: 'help', element: <HelpSupportPage /> },
     ],
   },
 ]);

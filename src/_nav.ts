@@ -13,6 +13,8 @@ import {
   QrCode,
   ClipboardList,
   Clock,
+  UserCog,
+  LifeBuoy,
 } from 'lucide-react';
 
 
@@ -97,17 +99,23 @@ export const NAV: NavEntry[] = [
     ],
   },
   { type: 'item', label: 'Οικονομικά', to: '/finances', icon: EuroIcon, minPlan: 'starter'  },
-    { type: 'section', title: 'ριθμισεισ' },
+    
+
+  { type: 'section', title: 'ριθμισεισ' },
   
   {
     type: 'group',
     label: 'Ρυθμίσεις',
     icon: Settings,
     children: [
+      { label: 'Στοιχεία Λογαριασμού', to: '/settings/account', icon: UserCog },
       { label: 'Εμφάνιση εφαρμογής', to: '/settings/themesettings', icon: Palette, minPlan: 'pro'  },
       { label: 'Πληροφορίες Γυμναστηρίου', to: '/settings/gyminfo', icon: Info },
       { label: 'Ωράριο Γυμναστηρίου', to: '/settings/opninghours', icon: Clock },
       { label: 'Διαχείριση Συνδρομής', to: '/settings/billing', icon: CreditCard },
     ],
   },
+
+   { type: 'section', title: 'υποστήριξη' },
+   { type: 'item', label: 'Βοήθεια & Υποστήριξη', to: '/help', icon: LifeBuoy },
 ];

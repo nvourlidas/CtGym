@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Turnstile } from "@marsidev/react-turnstile";
 import { supabase } from "../../lib/supabase";
 import {
   X, ArrowLeft, ChevronRight, Dumbbell, Info, ShieldCheck,
@@ -168,9 +169,7 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState("");
-  const [tenantId, setTenantId] = useState<string | null>(null);
 
-  console.log(tenantId);
 
   const [gymInfo, setGymInfo] = useState<GymInfoForm>({
     email: "", phone: "", address: "", city: "",
@@ -179,13 +178,14 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
   const [admin, setAdmin] = useState<AdminForm>({ email: "", password: "", confirmPassword: "", full_name: "" });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
 
   const canClose = !pending;
   const progressPct = useMemo(() => Math.round(((stepIndex + 1) / STEPS.length) * 100), [stepIndex]);
 
   const resetAll = () => {
     setStepIndex(0); setPending(false); setError(null);
-    setTenantName(""); setTenantId(null);
+    setTenantName(""); setTurnstileToken("");
     setGymInfo({ email: "", phone: "", address: "", city: "", postal_code: "", website: "", description: "", logo_url: "" });
     setAdmin({ email: "", password: "", confirmPassword: "", full_name: "" });
   };
@@ -212,6 +212,7 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
     if (!isValidEmail(email)) { setError("Βάλε ένα έγκυρο email για τον διαχειριστή."); return; }
     if (pw.length < 8) { setError("Ο κωδικός πρέπει να είναι τουλάχιστον 8 χαρακτήρες."); return; }
     if (pw !== admin.confirmPassword) { setError("Οι κωδικοί δεν ταιριάζουν."); return; }
+    if (!turnstileToken) { setError("Ολοκληρώστε την επαλήθευση ασφαλείας."); return; }
 
     setPending(true); setError(null);
     try {
@@ -226,6 +227,7 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
             description: gymInfo.description.trim() || null, logo_url: gymInfo.logo_url.trim() || null,
           },
           admin: { email, password: pw, full_name: admin.full_name.trim() || null, role: "admin" },
+          turnstile_token: turnstileToken,
         },
       });
 
@@ -476,6 +478,12 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
                   Ο διαχειριστής θα έχει <strong className="font-bold">πλήρη πρόσβαση</strong> στην πλατφόρμα.
                 </p>
               </div>
+              <Turnstile
+                siteKey={import.meta.env.VITE_TURNSTILE_SITE_KEY}
+                onSuccess={setTurnstileToken}
+                onExpire={() => setTurnstileToken("")}
+                onError={() => setTurnstileToken("")}
+              />
             </div>
           )}
         </div>

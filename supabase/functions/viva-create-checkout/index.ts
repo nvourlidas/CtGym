@@ -28,9 +28,14 @@ type Body = {
   return_url?: string | null;
 };
 
-function getVivaBases() {
+function getEnvInfo() {
   const env = (Deno.env.get("VIVA_ENV") ?? "demo").toLowerCase();
   const isProd = env === "prod";
+  return { env, isProd };
+}
+
+function getVivaBases() {
+  const { env, isProd } = getEnvInfo();
 
   return {
     env,
@@ -47,22 +52,19 @@ function getVivaBases() {
 }
 
 async function getAccessToken() {
-  const env = (Deno.env.get("VIVA_ENV") ?? "demo").toLowerCase();
-  const isProd = env === "prod";
+  const { isProd } = getEnvInfo();
 
   const clientId = isProd
-    ? (Deno.env.get("VIVA_PROD_CLIENT_ID") ?? "")
+    ? (Deno.env.get("VIVA_CLIENT_ID") ?? "")
     : (Deno.env.get("VIVA_DEMO_CLIENT_ID") ?? "");
 
   const clientSecret = isProd
-    ? (Deno.env.get("VIVA_PROD_CLIENT_SECRET") ?? "")
+    ? (Deno.env.get("VIVA_CLIENT_SECRET") ?? "")
     : (Deno.env.get("VIVA_DEMO_CLIENT_SECRET") ?? "");
 
   if (!clientId || !clientSecret) {
     throw new Error(
-      `Missing Viva OAuth credentials for ${isProd ? "PROD" : "DEMO"} (VIVA_${
-        isProd ? "PROD" : "DEMO"
-      }_CLIENT_ID / VIVA_${isProd ? "PROD" : "DEMO"}_CLIENT_SECRET)`,
+      `Missing Viva OAuth credentials for ${isProd ? "PROD" : "DEMO"}`,
     );
   }
 
@@ -92,7 +94,6 @@ async function getAccessToken() {
 }
 
 Deno.serve(async (req) => {
-  // ✅ CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
@@ -106,9 +107,7 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
     if (!supabaseUrl) throw new Error("Missing SUPABASE_URL secret");
-    if (!serviceKey) {
-      throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY secret");
-    }
+    if (!serviceKey) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY secret");
 
     const sb = createClient(supabaseUrl, serviceKey);
 
@@ -139,26 +138,60 @@ Deno.serve(async (req) => {
       return res(400, { error: "Invalid plan price" });
     }
 
-    // 2) Create Viva order
+    // 2) Create local pending billing order first
+    const { data: billingOrder, error: billingErr } = await sb
+      .from("tenant_billing_orders")
+      .insert({
+        tenant_id,
+        plan_id,
+        status: "pending",
+        amount_cents: amount,
+        currency: plan.currency ?? "EUR",
+        customer_email: body.customer_email ?? null,
+        customer_full_name: body.customer_full_name ?? null,
+        metadata: {
+          request_lang: body.request_lang ?? "el",
+          viva_env: getEnvInfo().env,
+        },
+      })
+      .select("id")
+      .single();
+
+    if (billingErr) {
+      throw new Error(`tenant_billing_orders insert failed: ${billingErr.message}`);
+    }
+
+    // 3) Create Viva order
     const token = await getAccessToken();
     const { apiBase, checkoutBase } = getVivaBases();
+    const { isProd } = getEnvInfo();
 
-    const merchantTrns = `tenant=${tenant_id};plan=${plan_id}`;
+    const merchantTrns = `tenant=${tenant_id};plan=${plan_id};billing_order_id=${billingOrder.id}`;
 
-    const payload: any = {
+    const sourceCode = isProd
+      ? (Deno.env.get("VIVA_PROD_SOURCE_CODE") ?? "")
+      : (Deno.env.get("VIVA_DEMO_SOURCE_CODE") ?? "");
+
+    if (!sourceCode) {
+      throw new Error(`Missing Viva source code for ${isProd ? "PROD" : "DEMO"}`);
+    }
+
+    const payload: Record<string, unknown> = {
       amount,
+      sourceCode,
+      allowRecurring: true,
       customerTrns: `Συνδρομή: ${plan.name}`,
       merchantTrns,
       customer: {
         email: body.customer_email ?? undefined,
         fullName: body.customer_full_name ?? undefined,
-        requestLang: body.request_lang ?? "EL",
+        requestLang: (body.request_lang ?? "el").toUpperCase(),
       },
     };
 
-    // remove empties
-    if (!payload.customer.email) delete payload.customer.email;
-    if (!payload.customer.fullName) delete payload.customer.fullName;
+    const customer = payload.customer as Record<string, unknown>;
+    if (!customer.email) delete customer.email;
+    if (!customer.fullName) delete customer.fullName;
 
     const orderRes = await fetch(`${apiBase}/checkout/v2/orders`, {
       method: "POST",
@@ -171,6 +204,18 @@ Deno.serve(async (req) => {
 
     const orderText = await orderRes.text();
     if (!orderRes.ok) {
+      await sb
+        .from("tenant_billing_orders")
+        .update({
+          status: "failed",
+          metadata: {
+            request_lang: body.request_lang ?? "el",
+            viva_env: getEnvInfo().env,
+            viva_error: orderText,
+          },
+        })
+        .eq("id", billingOrder.id);
+
       throw new Error(`Create order failed (${orderRes.status}): ${orderText}`);
     }
 
@@ -181,16 +226,33 @@ Deno.serve(async (req) => {
       throw new Error(`Create order response was not JSON: ${orderText}`);
     }
 
-    const orderCode = String(
-      orderJson?.orderCode ?? orderJson?.OrderCode ?? "",
-    );
-    if (!orderCode) throw new Error(`No orderCode returned: ${orderText}`);
+    const orderCode = String(orderJson?.orderCode ?? orderJson?.OrderCode ?? "");
+    if (!orderCode) {
+      throw new Error(`No orderCode returned: ${orderText}`);
+    }
 
     const brandColor = (Deno.env.get("VIVA_BRAND_COLOR") ?? "ffc947").replace("#", "");
-const checkoutUrl = `${checkoutBase}${encodeURIComponent(orderCode)}&color=${encodeURIComponent(brandColor)}`;
+    const checkoutUrl =
+      `${checkoutBase}${encodeURIComponent(orderCode)}&color=${encodeURIComponent(brandColor)}`;
 
+    // 4) Update local billing order with Viva info
+    const { error: updErr } = await sb
+      .from("tenant_billing_orders")
+      .update({
+        viva_order_code: orderCode,
+        checkout_url: checkoutUrl,
+      })
+      .eq("id", billingOrder.id);
 
-    return res(200, { orderCode, checkoutUrl });
+    if (updErr) {
+      throw new Error(`tenant_billing_orders update failed: ${updErr.message}`);
+    }
+
+    return res(200, {
+      billingOrderId: billingOrder.id,
+      orderCode,
+      checkoutUrl,
+    });
   } catch (e: any) {
     console.error("viva-create-checkout error:", e);
     return res(500, {

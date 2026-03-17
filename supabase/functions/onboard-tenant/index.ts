@@ -133,6 +133,30 @@ serve(async (req) => {
       }
 
       // ----------------------------
+      // Turnstile verification
+      // ----------------------------
+      const turnstile_token = String(body?.turnstile_token ?? "").trim();
+      const turnstileSecret = Deno.env.get("TURNSTILE_SECRET") ?? "";
+      if (turnstileSecret) {
+        if (!turnstile_token) {
+          return json(403, { code: "CAPTCHA_MISSING", error: "Λείπει ο έλεγχος ασφαλείας." }, cors);
+        }
+        const verifyRes = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            secret: turnstileSecret,
+            response: turnstile_token,
+            remoteip: req.headers.get("CF-Connecting-IP") ?? "",
+          }),
+        });
+        const verifyData = await verifyRes.json();
+        if (!verifyData.success) {
+          return json(403, { code: "CAPTCHA_FAILED", error: "Η επαλήθευση ασφαλείας απέτυχε. Δοκιμάστε ξανά." }, cors);
+        }
+      }
+
+      // ----------------------------
       // PRE-CHECK: Tenant name uniqueness
       // ----------------------------
       const safeName = tenant_name.replace(/[%_]/g, "\\$&");
@@ -295,45 +319,6 @@ serve(async (req) => {
           error: e?.message ?? "commit_before_payment failed",
         }, cors);
       }
-    }
-
-    // ----------------------------
-    // ACTION: create_checkout
-    // Delegate to your existing function viva-create-checkout
-    // ----------------------------
-    if (action === "create_checkout") {
-      const tenant_id = String(body?.tenant_id ?? "").trim();
-      const plan_id = String(body?.plan_id ?? "").trim();
-      if (!tenant_id) return json(400, { error: "tenant_id required" }, cors);
-      if (!plan_id) return json(400, { error: "plan_id required" }, cors);
-
-      const customer_email = body?.customer_email
-        ? String(body.customer_email).trim()
-        : null;
-      const customer_full_name = body?.customer_full_name
-        ? String(body.customer_full_name).trim()
-        : null;
-
-      const { data, error } = await sb.functions.invoke(
-        "viva-create-checkout",
-        {
-          body: {
-            tenant_id,
-            plan_id, // ✅ directly
-            customer_email,
-            customer_full_name,
-            request_lang: "el",
-            return_url: body?.return_url ?? null,
-          },
-        },
-      );
-
-      if (error) return json(400, { error: error.message }, cors);
-
-      return json(200, {
-        orderCode: data?.orderCode ?? null,
-        checkout_url: data?.checkoutUrl ?? null,
-      }, cors);
     }
 
     return json(400, { error: "Unknown action" }, cors);

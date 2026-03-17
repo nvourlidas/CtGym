@@ -1,5 +1,5 @@
 // src/components/widgets/TodayBookingsPieWidget.tsx
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { Pie } from 'react-chartjs-2'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
@@ -73,6 +73,10 @@ export default function TodayBookingsPieWidget({ tenantId }: Props) {
 
   const hasBookings = data.totalBookings > 0
 
+  // Ref so the plugin (created once) always reads the latest values
+  const centerRef = useRef({ hasBookings: false, total: 0 })
+  centerRef.current = { hasBookings, total: data.totalBookings }
+
   const chartData = {
     labels: STAT_META.map((s) => s.label),
     datasets: [{
@@ -110,25 +114,32 @@ export default function TodayBookingsPieWidget({ tenantId }: Props) {
     animation: { animateRotate: true, animateScale: true, duration: 600 },
   }
 
-  // Centre label plugin
-  const centerTextPlugin = {
+  // Centre label plugin — created once via useMemo, reads live values through ref
+  const centerTextPlugin = useMemo(() => ({
     id: 'centerText',
     afterDraw(chart: any) {
+      const { hasBookings: hb, total } = centerRef.current
       const { ctx, chartArea: { top, bottom, left, right } } = chart
       const cx = (left + right) / 2
       const cy = (top + bottom) / 2
+
+      const style = getComputedStyle(document.documentElement)
+      const primaryColor = style.getPropertyValue('--color-text-primary').trim() || '#fff'
+      const mutedColor   = style.getPropertyValue('--color-text-secondary').trim() || 'rgba(255,255,255,0.4)'
+
       ctx.save()
       ctx.textAlign = 'center'
       ctx.textBaseline = 'middle'
-      ctx.fillStyle = 'rgba(255,255,255,0.9)'
+      ctx.fillStyle = primaryColor
       ctx.font = 'bold 22px system-ui'
-      ctx.fillText(hasBookings ? String(data.totalBookings) : '0', cx, cy - 8)
-      ctx.fillStyle = 'rgba(255,255,255,0.4)'
+      ctx.fillText(hb ? String(total) : '0', cx, cy - 8)
+      ctx.fillStyle = mutedColor
       ctx.font = '11px system-ui'
       ctx.fillText('κρατήσεις', cx, cy + 12)
       ctx.restore()
     },
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [])
 
   return (
     <div className="rounded-2xl border border-border/10 bg-secondary-background shadow-sm overflow-hidden">

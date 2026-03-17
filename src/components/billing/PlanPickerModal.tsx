@@ -3,7 +3,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../auth";
 import {
   ExternalLink, Sparkles, X, Check, Minus, ShieldCheck, Star,
-  Zap, ArrowRight, Crown,
+  Zap, ArrowRight, Crown, RefreshCcw,
 } from "lucide-react";
 
 type PlanRow = {
@@ -129,11 +129,13 @@ function tierAccent(tier: PlanKey) {
 }
 
 export default function PlanPickerModal({
-  open, plans, currentPlanId, busy, error, onClose, onSubscribe,
+  open, plans, currentPlanId, subAllowed, busy, error, onClose, onSubscribe,
 }: {
   open: boolean;
   plans: PlanRow[];
   currentPlanId?: string | null;
+  /** Whether the current subscription is actively granting access */
+  subAllowed?: boolean;
   busy: boolean;
   error: string | null;
   onClose: () => void;
@@ -174,8 +176,9 @@ export default function PlanPickerModal({
     const plan = visiblePlans.find((p) => p.id === planId);
     if (!plan) return;
     const key = getPlanKey(plan);
-    const isTrialEligible = !hasEverActivated && key !== "free";
-    if (currentPlanId === planId) return;
+    const isTrialEligible = !hasEverActivated && key !== "free" && (!currentPlanId || currentPlanId === "free");
+    // Block only if the subscription is currently active on this plan
+    if (currentPlanId === planId && subAllowed) return;
 
     if (isTrialEligible) {
       setPendingTrialPlanId(planId);
@@ -270,14 +273,15 @@ export default function PlanPickerModal({
               {/* ── Plan cards ── */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {visiblePlans.map((p) => {
-                  const isCurrent      = currentPlanId === p.id;
-                  const isPopular      = p.id === popularId;
-                  const isFree         = p.id === "free";
-                  const key            = getPlanKey(p);
-                  const lim            = PLAN_LIMITS_BY_PLAN[key];
-                  const isTrialEligible = !hasEverActivated && key !== "free";
-                  const isThisBusy     = busy || checkingEver || trialBusyId === p.id;
-                  const isDisabled     = isThisBusy || isCurrent || isFree;
+                  const isCurrent           = currentPlanId === p.id;
+                  const isCurrentAndActive  = isCurrent && !!subAllowed;
+                  const isPopular           = p.id === popularId;
+                  const isFree              = p.id === "free";
+                  const key                 = getPlanKey(p);
+                  const lim                 = PLAN_LIMITS_BY_PLAN[key];
+                  const isTrialEligible     = !hasEverActivated && key !== "free" && (!currentPlanId || currentPlanId === "free");
+                  const isThisBusy          = busy || checkingEver || trialBusyId === p.id;
+                  const isDisabled          = isThisBusy || isCurrentAndActive || isFree;
                   const accent         = tierAccent(key);
                   const enabledFeatures = FEATURES.filter((f) => featureEnabled(f.key, p)).slice(0, 6);
 
@@ -384,9 +388,11 @@ export default function PlanPickerModal({
                                 <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce [animation-delay:300ms]" />
                               </span>
                             ) : isFree ? "Μη Διαθέσιμο"
-                              : isCurrent ? "Τρέχον πλάνο"
+                              : isCurrentAndActive ? "Τρέχον πλάνο"
                               : isTrialEligible ? (
                                 <><Zap className="h-4 w-4" />Δωρεάν Δοκιμή 14 ημερών</>
+                              ) : isCurrent ? (
+                                <><RefreshCcw className="h-4 w-4" /><span>Ανανέωση</span></>
                               ) : (
                                 <><span>Απόκτησέ το</span><ArrowRight className="h-4 w-4" /></>
                               )}
