@@ -237,7 +237,7 @@ export default function BillingPage() {
           customer_email: (profile as any)?.email ?? null,
           customer_full_name: (profile as any)?.full_name ?? null,
           request_lang: 'el',
-          return_url: window.location.href,
+          return_url:  `${window.location.origin}/settings/billing`,
         },
       });
 

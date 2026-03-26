@@ -77,13 +77,21 @@ export function BookingsLineChart() {
         start.setMonth(start.getMonth() - 11);
         start.setDate(1); start.setHours(0,0,0,0);
 
-        const { data: rows, error } = await supabase
-          .from('bookings').select('id, class_sessions!inner(starts_at)')
-          .eq('tenant_id', tenantId).gte('class_sessions.starts_at', start.toISOString());
-        if (error) throw error;
+        const PAGE = 1000;
+        let allRows: any[] = [];
+        let from = 0;
+        while (true) {
+          const { data: page, error } = await supabase
+            .from('bookings_list').select('starts_at')
+            .eq('tenant_id', tenantId).gte('starts_at', start.toISOString())
+            .range(from, from + PAGE - 1);
+          if (error) throw error;
+          allRows = allRows.concat(page ?? []);
+          if (!page || page.length < PAGE) break;
+          from += PAGE;
+        }
 
-        const flat = (rows ?? []).map((r: any) => ({ starts_at: r.class_sessions?.starts_at }));
-        setData(buildMonthBuckets(flat, 'starts_at'));
+        setData(buildMonthBuckets(allRows, 'starts_at'));
       } catch (err: any) {
         setError(err?.message ?? 'Κάτι πήγε στραβά.');
       } finally {

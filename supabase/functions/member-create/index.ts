@@ -82,6 +82,7 @@ async function countTenantMembers(admin: any, tenantId: string) {
     .eq("role", "member");
 
   if (error) throw new Error(error.message);
+  console.log(`Current member count for tenant:`, count);
   return count ?? 0;
 }
 

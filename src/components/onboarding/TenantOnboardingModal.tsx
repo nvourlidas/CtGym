@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Turnstile } from "@marsidev/react-turnstile";
 import { supabase } from "../../lib/supabase";
 import {
@@ -166,6 +166,12 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
   const [stepIndex, setStepIndex] = useState(0);
   const step = STEPS[stepIndex]?.key ?? "tenant";
 
+  useEffect(() => {
+    if (open) {
+      window.gtag?.('event', 'onboarding_modal_opened', { page_location: '/login' });
+    }
+  }, [open]);
+
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState("");
@@ -190,7 +196,14 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
     setAdmin({ email: "", password: "", confirmPassword: "", full_name: "" });
   };
 
-  const close = () => { if (!canClose) return; resetAll(); onClose(); };
+  const close = () => {
+    if (!canClose) return;
+    if (tenantName.trim().length > 0) {
+      window.gtag?.('event', 'onboarding_aborted', { step: step, step_index: stepIndex });
+    }
+    resetAll();
+    onClose();
+  };
 
   const createTenant = async () => {
     const name = tenantName.trim();
@@ -236,6 +249,7 @@ export default function TenantOnboardingModal({ open, onClose, onDone, onCreated
       if (!data?.tenant_id) throw new Error("Δεν επιστράφηκε tenant_id.");
 
       const info = { tenantId: data.tenant_id, adminEmail: email };
+      window.gtag?.('event', 'onboarding_completed', { tenant_id: data.tenant_id });
       onCreated?.(info);
       resetAll();
       onClose();

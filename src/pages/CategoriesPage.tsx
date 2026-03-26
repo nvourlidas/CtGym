@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../auth';
 import SubscriptionRequiredModal from '../components/SubscriptionRequiredModal';
@@ -23,6 +24,7 @@ export default function CategoriesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const subscriptionInactive = !subscription?.is_active;
 
@@ -85,7 +87,13 @@ export default function CategoriesPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!window.confirm('Διαγραφή αυτής της κατηγορίας; Τα τμήματα θα χάσουν απλά την κατηγορία.')) return;
+    setConfirmDeleteId(id);
+  }
+
+  async function handleConfirmDelete() {
+    if (!confirmDeleteId) return;
+    const id = confirmDeleteId;
+    setConfirmDeleteId(null);
 
     const { error } = await supabase
       .from('class_categories')
@@ -94,7 +102,6 @@ export default function CategoriesPage() {
 
     if (error) {
       console.error(error);
-      alert('Αποτυχία διαγραφής κατηγορίας');
       return;
     }
 
@@ -242,6 +249,35 @@ export default function CategoriesPage() {
         open={showSubModal}
         onClose={() => setShowSubModal(false)}
       />
+
+      {confirmDeleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl border border-border/15 bg-secondary-background shadow-2xl p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-danger/10 border border-danger/20 shrink-0">
+                <AlertTriangle className="h-5 w-5 text-danger" />
+              </div>
+              <div>
+                <h3 className="font-bold text-text-primary text-sm">Διαγραφή κατηγορίας</h3>
+                <p className="text-xs text-text-secondary mt-0.5">Αυτή η ενέργεια δεν μπορεί να αναιρεθεί.</p>
+              </div>
+            </div>
+            <p className="text-sm text-text-secondary mb-6">
+              Είστε σίγουροι ότι θέλετε να διαγράψετε αυτή την κατηγορία; Τα τμήματα που την χρησιμοποιούν θα χάσουν την κατηγορία τους.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button type="button" onClick={() => setConfirmDeleteId(null)}
+                className="px-4 py-2 rounded-xl text-sm font-medium border border-border/20 text-text-secondary hover:bg-secondary/20 transition-all cursor-pointer">
+                Ακύρωση
+              </button>
+              <button type="button" onClick={handleConfirmDelete}
+                className="px-4 py-2 rounded-xl text-sm font-bold bg-danger text-white hover:bg-danger/90 transition-all cursor-pointer">
+                Διαγραφή
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

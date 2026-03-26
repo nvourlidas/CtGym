@@ -35,6 +35,10 @@ export default function LoginPage() {
   const [createdInfo, setCreatedInfo] = useState<{ tenantId: string; adminEmail: string } | null>(null);
 
   useEffect(() => {
+    window.gtag?.('event', 'page_view', { page_title: 'Login', page_location: '/login' });
+  }, []);
+
+  useEffect(() => {
     if (params.get('err') === 'unauthorized') {
       setError('Ο λογαριασμός σας δεν έχει πρόσβαση διαχειριστή.');
     }

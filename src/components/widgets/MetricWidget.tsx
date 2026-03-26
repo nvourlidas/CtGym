@@ -247,15 +247,15 @@ useEffect(() => {
             new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1),
           );
 
-          const { data, error } = await supabase
+          const { count, error } = await supabase
             .from("bookings")
-            .select("id, status, class_sessions!inner(starts_at)")
+            .select("id, class_sessions!inner(starts_at)", { count: "exact", head: true })
             .eq("status", status)
             .gte("class_sessions.starts_at", fromISO)
             .lt("class_sessions.starts_at", toISO);
 
           if (error) throw error;
-          setValue((data ?? []).length);
+          setValue(count ?? 0);
           return;
         }
 
